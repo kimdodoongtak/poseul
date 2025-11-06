@@ -1,2 +1,24 @@
-/* Tab4 specific styles */
+.container {
+  padding: 16px;
+}
 
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  gap: 10px;
+}
+
+.air-conditioner-card {
+  margin-bottom: 16px;
+}
+
+.air-conditioner-card ion-card-header {
+  padding-bottom: 8px;
+}
+
+.air-conditioner-card ion-card-content {
+  padding-top: 8px;
+}

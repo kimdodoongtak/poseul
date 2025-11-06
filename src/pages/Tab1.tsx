@@ -176,6 +176,21 @@ const Tab1: React.FC = () => {
         hrv: normalizedHrv,
         oxygenSaturation: normalizedOxygen,
       });
+
+      // iOS에서 받은 데이터를 서버에 저장 (안드로이드에서 사용할 수 있도록)
+      if (platform === 'ios' && (normalizedHeartRate || normalizedHrv || normalizedOxygen)) {
+        try {
+          const { HealthDataService } = await import('../services');
+          await HealthDataService.saveHealthData({
+            heartRate: normalizedHeartRate,
+            hrv: normalizedHrv,
+            oxygenSaturation: normalizedOxygen,
+          });
+          console.log('건강 데이터를 서버에 저장했습니다.');
+        } catch (err) {
+          console.error('서버에 건강 데이터 저장 실패:', err);
+        }
+      }
     } catch (err: any) {
       console.error('HealthData 데이터 가져오기 실패:', err);
       const errorMsg = err?.message || err?.toString() || String(err);

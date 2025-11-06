@@ -11,7 +11,7 @@ import {
 } from '@ionic/react';
 import { IonReactRouter } from '@ionic/react-router';
 
-import { ellipse, square, triangle, heart } from 'ionicons/icons';
+import { ellipse, square, triangle, heart, home, person, settings } from 'ionicons/icons';
 import Tab1 from './pages/Tab1';
 import Tab2 from './pages/Tab2';
 import Tab3 from './pages/Tab3';
@@ -54,38 +54,38 @@ const App: React.FC = () => (
     <IonReactRouter>
       <IonTabs>
         <IonRouterOutlet>
-          <Route exact path="/home">
-            <Home />
+          <Route exact path="/tab1">
+            <Tab1 />
           </Route>
-          <Route exact path="/user">
-            <User />
+          <Route exact path="/tab2">
+            <Tab2 />
           </Route>
-          <Route exact path="/iot">
-            <Iot />
+          <Route exact path="/tab3">
+            <Tab3 />
           </Route>
           <Route exact path="/tab4">
             <Tab4 />
           </Route>
           <Route exact path="/">
-            <Redirect to="/home" />
+            <Redirect to="/tab1" />
           </Route>
         </IonRouterOutlet>
         <IonTabBar slot="bottom">
-          <IonTabButton tab="home" href="/home">
+          <IonTabButton tab="tab1" href="/tab1">
             <IonIcon aria-hidden="true" icon={home} />
             <IonLabel>홈</IonLabel>
           </IonTabButton>
-          <IonTabButton tab="user" href="/user">
+          <IonTabButton tab="tab2" href="/tab2">
+            <IonIcon aria-hidden="true" icon={home} />
+            <IonLabel>홈페이지</IonLabel>
+          </IonTabButton>
+          <IonTabButton tab="tab3" href="/tab3">
             <IonIcon aria-hidden="true" icon={person} />
             <IonLabel>사용자</IonLabel>
           </IonTabButton>
-          <IonTabButton tab="iot" href="/iot">
+          <IonTabButton tab="tab4" href="/tab4">
             <IonIcon aria-hidden="true" icon={settings} />
             <IonLabel>IoT</IonLabel>
-          </IonTabButton>
-          <IonTabButton tab="tab4" href="/tab4">
-            <IonIcon aria-hidden="true" icon={heart} />
-            <IonLabel>Tab 4</IonLabel>
           </IonTabButton>
         </IonTabBar>
       </IonTabs>
