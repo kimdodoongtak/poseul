@@ -41,12 +41,24 @@ const Home: React.FC = () => {
     setLoading(true);
     try {
       const result = await ModelService.predictTemperature(formData);
-      setPrediction({
-        temperature: result.predictedTemperature,
-        status: result.status,
-      });
-    } catch (error) {
+      if (result.success) {
+        // 서버 응답 형식 변환
+        const statusMap: { [key: string]: 'COMFORTABLE' | 'COLD' | 'HOT' } = {
+          '적정': 'COMFORTABLE',
+          '추움': 'COLD',
+          '더움': 'HOT',
+        };
+        
+        setPrediction({
+          temperature: result.predictedTemperature,
+          status: statusMap[result.temperatureCategory] || 'COMFORTABLE',
+        });
+      } else {
+        alert(result.error || '예측 실패');
+      }
+    } catch (error: any) {
       console.error('Prediction failed:', error);
+      alert(error.message || '예측 실패');
     } finally {
       setLoading(false);
     }
@@ -57,8 +69,9 @@ const Home: React.FC = () => {
     try {
       const result = await ModelService.testModel();
       alert(result.message);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Model test failed:', error);
+      alert(error.message || '서버 연결 실패');
     } finally {
       setLoading(false);
     }
