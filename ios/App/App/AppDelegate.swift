@@ -1,14 +1,65 @@
 import UIKit
 import Capacitor
+import BackgroundTasks
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
 
     var window: UIWindow?
+    
+    private let backgroundTaskIdentifier = "com.poseul.app.health.refresh"
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        // Background Task 등록
+        BGTaskScheduler.shared.register(forTaskWithIdentifier: backgroundTaskIdentifier, using: nil) { task in
+            self.handleBackgroundTask(task: task as! BGAppRefreshTask)
+        }
+        
         return true
+    }
+    
+    func handleBackgroundTask(task: BGAppRefreshTask) {
+        print("🔄 Background Task 실행: HealthKit 데이터 가져오기")
+        
+        // 작업 완료 핸들러 설정 (작업이 취소될 경우 대비)
+        task.expirationHandler = {
+            print("⚠️ 백그라운드 작업이 만료되었습니다")
+            task.setTaskCompleted(success: false)
+        }
+        
+        // 다음 작업 예약 (현재 작업이 완료되기 전에 예약)
+        scheduleNextBackgroundTask()
+        
+        // HealthKit 데이터 가져오기 및 서버 전송
+        fetchHealthDataInBackground { success in
+            task.setTaskCompleted(success: success)
+        }
+    }
+    
+    func scheduleNextBackgroundTask() {
+        let request = BGAppRefreshTaskRequest(identifier: backgroundTaskIdentifier)
+        request.earliestBeginDate = Date(timeIntervalSinceNow: 600) // 10분(600초) 후
+        
+        do {
+            try BGTaskScheduler.shared.submit(request)
+            print("✅ 다음 백그라운드 작업 예약됨: 10분 후")
+        } catch {
+            print("❌ 백그라운드 작업 예약 실패: \(error.localizedDescription)")
+        }
+    }
+    
+    func fetchHealthDataInBackground(completion: @escaping (Bool) -> Void) {
+        // HealthData 플러그인에 알림 전송하여 데이터 가져오기 및 서버 전송
+        print("📊 백그라운드에서 HealthKit 데이터 가져오기 시작")
+        
+        // HealthData 플러그인에 알림 전송
+        NotificationCenter.default.post(name: NSNotification.Name("HealthDataBackgroundFetch"), object: nil)
+        
+        // HealthData 플러그인이 데이터를 가져오는 동안 대기
+        // 실제로는 HealthData 플러그인에서 비동기로 처리되므로, 짧은 대기 후 완료 처리
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
+            completion(true)
+        }
     }
 
     func applicationWillResignActive(_ application: UIApplication) {
