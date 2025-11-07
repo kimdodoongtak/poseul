@@ -14,8 +14,14 @@ import {
   IonCardHeader,
   IonCardTitle,
   IonCardContent,
-  IonToggle
+  IonToggle,
+  IonIcon,
+  IonGrid,
+  IonRow,
+  IonCol
 } from '@ionic/react';
+import { personOutline } from 'ionicons/icons';
+import SignIn from '../components/SignIn';
 import './Health_ios.css';
 
 interface HealthData {
@@ -33,11 +39,59 @@ const Health_ios: React.FC = () => {
     oxygenSaturation: null,
   });
   const [backgroundMonitoring, setBackgroundMonitoring] = useState<boolean>(false);
-  const [sleepFocus, setSleepFocus] = useState<boolean>(false);
   const [healthDataPlugin, setHealthDataPlugin] = useState<any>(null);
   const [platform, setPlatform] = useState<string>('web');
+  
+  // 초기 설정 단계 관리
+  const [setupStep, setSetupStep] = useState<'info' | 'permission' | 'monitoring' | 'complete'>('info');
+  const [isSetupComplete, setIsSetupComplete] = useState<boolean>(false);
+  const [hasHealthKitPermission, setHasHealthKitPermission] = useState<boolean>(false);
+  
+  // UI 템플릿 관련 상태
+  const [showSignIn, setShowSignIn] = useState<boolean>(false);
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
 
   useEffect(() => {
+    // 초기 설정 완료 여부 확인
+    const checkSetupComplete = () => {
+      try {
+        const savedAge = localStorage.getItem('userAge');
+        const savedBmi = localStorage.getItem('userBmi');
+        const setupComplete = localStorage.getItem('healthSetupComplete');
+        const hasPermission = localStorage.getItem('healthKitPermission') === 'true';
+        
+        if (setupComplete === 'true' && savedAge && savedBmi && hasPermission) {
+          setIsSetupComplete(true);
+          setSetupStep('complete');
+          if (savedAge) setAge(savedAge);
+          if (savedBmi) setBmi(savedBmi);
+          setHasHealthKitPermission(hasPermission);
+        } else {
+          // 저장된 정보가 있으면 불러오기
+          if (savedAge) setAge(savedAge);
+          if (savedBmi) setBmi(savedBmi);
+          if (hasPermission) setHasHealthKitPermission(true);
+          
+          // 설정 단계 결정
+          if (savedAge && savedBmi) {
+            if (hasPermission) {
+              // 나이, BMI, 권한 모두 있으면 설정 완료
+              setIsSetupComplete(true);
+              setSetupStep('complete');
+            } else {
+              setSetupStep('permission');
+            }
+          } else {
+            setSetupStep('info');
+          }
+        }
+      } catch (err) {
+        console.log('초기 설정 확인 실패:', err);
+      }
+    };
+    
+    checkSetupComplete();
+    
     // HealthData 플러그인을 비동기로 로드 (UI 렌더링을 막지 않음)
     const loadHealthData = async () => {
       try {
@@ -48,37 +102,10 @@ const Health_ios: React.FC = () => {
         const { HealthData } = await import('../plugins/healthdata');
         setHealthDataPlugin(HealthData);
         
-        // iOS에서만 HealthKit 권한 요청
-        if (currentPlatform === 'ios') {
-          try {
-            console.log('HealthData 권한 요청 중... (iOS)');
-            const result = await HealthData.requestAuthorization();
-            console.log('HealthData 권한 요청 결과:', result);
-            if (result.success) {
-              console.log('HealthData 권한 승인됨');
-              // 권한 승인 후 자동으로 데이터 가져오기는 useEffect에서 처리됨
-            } else {
-              console.log('HealthData 권한 거부됨 또는 미결정');
-              const message = result.message || 'HealthKit 권한이 필요합니다.';
-              alert(message + '\n\n설정 > Health > 데이터 액세스 및 기기 > poseul에서 권한을 허용해주세요.');
-            }
-            
-            // 저장된 age와 bmi 불러오기 (localStorage 사용)
-            try {
-              const savedAge = localStorage.getItem('userAge');
-              const savedBmi = localStorage.getItem('userBmi');
-              if (savedAge) setAge(savedAge);
-              if (savedBmi) setBmi(savedBmi);
-            } catch (err) {
-              console.log('저장된 나이/BMI 불러오기 실패:', err);
-            }
-          } catch (err: any) {
-            console.error('HealthData 권한 요청 실패:', err);
-            const errorMsg = err?.message || err?.toString() || String(err);
-            alert('HealthKit 권한 요청 중 오류가 발생했습니다:\n' + errorMsg);
-          }
-        } else if (currentPlatform === 'android') {
-          console.log('Android 플랫폼 - HealthData는 아직 구현되지 않았습니다.');
+        // iOS가 아니면 설정 완료로 표시
+        if (currentPlatform !== 'ios') {
+          setIsSetupComplete(true);
+          setSetupStep('complete');
         }
       } catch (err) {
         console.log('HealthData 플러그인 로드 실패:', err);
@@ -112,22 +139,17 @@ const Health_ios: React.FC = () => {
   }, [healthDataPlugin, platform]);
 
 
-  // 백그라운드 모니터링 이벤트 리스너 (HealthKit 데이터 업데이트 감지)
-  useEffect(() => {
-    if (!healthDataPlugin || platform !== 'ios' || !backgroundMonitoring) return;
-
-    // HealthKit 백그라운드 업데이트 이벤트 리스너
-    // 백그라운드에서는 서버 전송만 하고 UI 업데이트는 하지 않음
-    const listener = healthDataPlugin.addListener('healthDataUpdated', async () => {
-      console.log('🔄 백그라운드에서 HealthKit 데이터 업데이트 감지');
-      // 백그라운드에서는 데이터를 가져와서 서버로만 전송 (UI 업데이트 없음)
-      // fetchHealthData를 호출하지 않고 백그라운드에서만 서버 전송
-    });
-
-    return () => {
-      listener.remove();
-    };
-  }, [healthDataPlugin, platform, backgroundMonitoring]);
+  // 백그라운드 모니터링 이벤트 리스너는 제거 (10분마다만 가져오기)
+  // 실시간 업데이트 대신 10분마다만 데이터를 가져오도록 함
+  // useEffect(() => {
+  //   if (!healthDataPlugin || platform !== 'ios' || !backgroundMonitoring) return;
+  //   const listener = healthDataPlugin.addListener('healthDataUpdated', async () => {
+  //     await fetchHealthDataInBackground(healthDataPlugin);
+  //   });
+  //   return () => {
+  //     listener.remove();
+  //   };
+  // }, [healthDataPlugin, platform, backgroundMonitoring]);
 
   const fetchHealthData = async (HealthData: any) => {
     if (!HealthData) {
@@ -226,6 +248,62 @@ const Health_ios: React.FC = () => {
       console.error('HealthData 데이터 가져오기 실패:', err);
       const errorMsg = err?.message || err?.toString() || String(err);
       alert('데이터를 가져오는 중 오류가 발생했습니다:\n' + errorMsg);
+    }
+  };
+
+  // 백그라운드에서 데이터 가져오기 (UI 업데이트 및 서버 전송)
+  const fetchHealthDataInBackground = async (HealthData: any) => {
+    if (!HealthData) {
+      console.log('HealthData 플러그인이 없습니다.');
+      return;
+    }
+    
+    console.log('🔄 백그라운드에서 HealthData 가져오기 시작...');
+    
+    try {
+      const [heartRate, hrv, oxygenSaturation] = await Promise.all([
+        HealthData.getLatestHeartRate().catch(() => null),
+        HealthData.getLatestHeartRateVariability().catch(() => null),
+        HealthData.getLatestOxygenSaturation().catch(() => null),
+      ]);
+
+      // 빈 딕셔너리를 null로 변환
+      const normalizeData = (data: any) => {
+        if (!data || Object.keys(data).length === 0) return null;
+        return data;
+      };
+
+      const normalizedHeartRate = normalizeData(heartRate);
+      const normalizedHrv = normalizeData(hrv);
+      const normalizedOxygen = normalizeData(oxygenSaturation);
+
+      console.log('🔄 백그라운드 HealthData 가져오기 결과:', { 
+        heartRate: normalizedHeartRate ? `${normalizedHeartRate.value} bpm` : '없음',
+        hrv: normalizedHrv ? `${normalizedHrv.value} ms` : '없음',
+        oxygenSaturation: normalizedOxygen ? `${normalizedOxygen.value}%` : '없음'
+      });
+
+      // UI 업데이트 (백그라운드에서도 최신 데이터 표시)
+      setHealthData({
+        heartRate: normalizedHeartRate,
+        hrv: normalizedHrv,
+        oxygenSaturation: normalizedOxygen,
+      });
+
+      // 서버로 전송
+      if (normalizedHeartRate || normalizedHrv || normalizedOxygen) {
+        void sendToServer({
+          heartRate: normalizedHeartRate?.value || null,
+          HRV: normalizedHrv?.value || null,
+          oxygenSaturation: normalizedOxygen?.value || null,
+          bmi: bmi ? parseFloat(bmi) : null,
+          age: age ? parseFloat(age) : null,
+        }).catch((err) => {
+          console.error('🔄 백그라운드 서버 전송 실패:', err);
+        });
+      }
+    } catch (err: any) {
+      console.error('🔄 백그라운드 HealthData 가져오기 실패:', err);
     }
   };
 
@@ -374,37 +452,56 @@ const Health_ios: React.FC = () => {
     }
   };
 
-  const handleSleepFocusToggle = async (enabled: boolean) => {
-    if (platform !== 'ios') {
-      console.log('수면 집중모드는 iOS에서만 사용 가능합니다.');
-      return;
+  // 나이/BMI 입력 완료 후 다음 단계로
+  const handleInfoStepComplete = () => {
+    if (age && bmi) {
+      setSetupStep('permission');
+    } else {
+      alert('나이와 BMI를 모두 입력해주세요.');
+    }
+  };
+
+  // HealthKit 권한 요청 완료 후 다음 단계로
+  const handlePermissionRequest = async () => {
+    if (!healthDataPlugin || platform !== 'ios') {
+      alert('iOS에서만 HealthKit을 사용할 수 있습니다.');
+      return false;
     }
     try {
-      // iOS 설정 앱으로 이동하여 수면 집중모드를 제어
-      // 또는 네이티브 플러그인을 통해 제어
-      if (healthDataPlugin && typeof healthDataPlugin.setSleepFocus === 'function') {
-        const result = await healthDataPlugin.setSleepFocus({ enabled });
-        if (result.success) {
-          setSleepFocus(enabled);
-        }
+      const result = await healthDataPlugin.requestAuthorization();
+      if (result.success) {
+        setHasHealthKitPermission(true);
+        localStorage.setItem('healthKitPermission', 'true');
+        return true;
       } else {
-        // 네이티브 플러그인이 없으면 설정 앱으로 이동
-        try {
-          const { App } = await import('@capacitor/app');
-          // iOS 설정 앱 열기
-          if (typeof (window as any).webkit?.messageHandlers !== 'undefined') {
-            // 네이티브 브릿지를 통해 설정 앱 열기
-            window.location.href = 'app-settings:';
-          } else {
-            alert('설정 > 집중 모드 > 수면에서 수면 집중모드를 설정할 수 있습니다.');
-          }
-        } catch (err) {
-          alert('설정 > 집중 모드 > 수면에서 수면 집중모드를 설정할 수 있습니다.');
-        }
+        const message = result.message || 'HealthKit 권한이 필요합니다.';
+        alert(message + '\n\n설정 > Health > 데이터 액세스 및 기기 > poseul에서 권한을 허용해주세요.');
+        return false;
       }
     } catch (err: any) {
-      console.log('수면 집중모드 설정 실패:', err);
-      alert('수면 집중모드 설정에 실패했습니다.');
+      console.error('HealthKit 권한 요청 실패:', err);
+      const errorMsg = err?.message || err?.toString() || String(err);
+      alert('HealthKit 권한 요청 중 오류가 발생했습니다:\n' + errorMsg);
+      return false;
+    }
+  };
+
+  useEffect(() => {
+    // 다크모드 상태 불러오기
+    const savedDarkMode = localStorage.getItem('darkMode') === 'true';
+    setIsDarkMode(savedDarkMode);
+    if (savedDarkMode) {
+      document.body.classList.add('dark');
+    }
+  }, []);
+
+  const handleDarkModeToggle = (enabled: boolean) => {
+    setIsDarkMode(enabled);
+    localStorage.setItem('darkMode', enabled.toString());
+    if (enabled) {
+      document.body.classList.add('dark');
+    } else {
+      document.body.classList.remove('dark');
     }
   };
 
@@ -427,26 +524,76 @@ const Health_ios: React.FC = () => {
     <IonPage>
       <IonHeader>
         <IonToolbar>
-          <IonTitle>포술 🧃</IonTitle>
+          <IonTitle>포슬💤</IonTitle>
         </IonToolbar>
       </IonHeader>
       <IonContent>
         <IonHeader collapse="condense">
           <IonToolbar>
-            <IonTitle size="large">포술 🧃</IonTitle>
+            <IonTitle size="large">포슬💤</IonTitle>
           </IonToolbar>
         </IonHeader>
 
-        <IonText color="primary">
-          <h2>안녕, 뚱딱앱 세상에 오신 걸 환영합니다 🎉</h2>
-        </IonText>
+        {/* 로그인 버튼 */}
+        {isSetupComplete && (
+          <div 
+            className="on-boarding-btn" 
+            onClick={() => setShowSignIn(true)}
+            style={{
+              width: '36px',
+              height: '36px',
+              borderRadius: '18px',
+              background: 'white',
+              position: 'fixed',
+              top: 'calc(var(--safe-area-inset-top) + 20px)',
+              right: '16px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              boxShadow: '0 5px 5px rgba(0, 0, 0, 0.2)',
+              zIndex: 1000
+            }}
+          >
+            <IonIcon icon={personOutline} style={{ fontSize: '20px' }} />
+          </div>
+        )}
 
-        {/* 사용자 정보 입력 */}
-        <IonCard>
-          <IonCardHeader>
-            <IonCardTitle>사용자 정보</IonCardTitle>
-          </IonCardHeader>
-          <IonCardContent>
+        {/* 로그인 모달 */}
+        {showSignIn && (
+          <div style={{ 
+            position: 'fixed', 
+            top: 0, 
+            left: 0, 
+            right: 0, 
+            bottom: 0, 
+            zIndex: 2000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: 'rgba(0, 0, 0, 0.5)'
+          }}>
+            <SignIn onClose={() => setShowSignIn(false)} />
+          </div>
+        )}
+
+        {/* 초기 설정 화면 */}
+        {!isSetupComplete && platform === 'ios' && (
+          <>
+            <IonText color="primary">
+              <h2>초기 설정</h2>
+            </IonText>
+
+            {/* 단계 1: 나이, BMI 입력 */}
+            {setupStep === 'info' && (
+              <IonCard>
+                <IonCardHeader>
+                  <IonCardTitle>1단계: 기본 정보 입력</IonCardTitle>
+                </IonCardHeader>
+                <IonCardContent>
+                  <IonText color="medium">
+                    <p>나이와 BMI를 입력해주세요.</p>
+                  </IonText>
                   <IonItem>
                     <IonLabel position="stacked">나이</IonLabel>
                     <IonInput
@@ -456,10 +603,8 @@ const Health_ios: React.FC = () => {
                       onIonInput={async (e) => {
                         const value = e.detail.value!;
                         setAge(value);
-                        // localStorage에도 저장 (웹 호환성)
                         try {
                           localStorage.setItem('userAge', value || '');
-                          // iOS에서 UserDefaults에 저장
                           if (platform === 'ios' && healthDataPlugin) {
                             try {
                               await healthDataPlugin.saveUserInfo({
@@ -485,10 +630,8 @@ const Health_ios: React.FC = () => {
                       onIonInput={async (e) => {
                         const value = e.detail.value!;
                         setBmi(value);
-                        // localStorage에도 저장 (웹 호환성)
                         try {
                           localStorage.setItem('userBmi', value || '');
-                          // iOS에서 UserDefaults에 저장
                           if (platform === 'ios' && healthDataPlugin) {
                             try {
                               await healthDataPlugin.saveUserInfo({
@@ -505,176 +648,156 @@ const Health_ios: React.FC = () => {
                       }}
                     />
                   </IonItem>
-          </IonCardContent>
-        </IonCard>
-
-        {/* 백그라운드 모니터링 토글 */}
-        <IonCard>
-          <IonCardHeader>
-            <IonCardTitle>백그라운드 모니터링</IonCardTitle>
-          </IonCardHeader>
-          <IonCardContent>
-            <IonItem>
-              <IonLabel>백그라운드 모니터링 활성화</IonLabel>
-              <IonToggle
-                checked={backgroundMonitoring}
-                onIonChange={(e) => handleBackgroundMonitoringToggle(e.detail.checked)}
-                disabled={!healthDataPlugin || platform !== 'ios'}
-              />
-            </IonItem>
-            {platform === 'android' && (
-              <IonText color="warning">
-                <p>Android에서는 아직 HealthData가 구현되지 않았습니다.</p>
-              </IonText>
-            )}
-            {platform === 'web' && (
-              <IonText color="warning">
-                <p>웹에서는 HealthData를 사용할 수 없습니다. (iOS/Android에서만 사용 가능)</p>
-              </IonText>
-            )}
-            {platform === 'ios' && !healthDataPlugin && (
-              <IonText color="warning">
-                <p>HealthData 플러그인을 로드하는 중...</p>
-              </IonText>
-            )}
-          </IonCardContent>
-        </IonCard>
-
-        {/* 수면 집중모드 토글 */}
-        <IonCard>
-          <IonCardHeader>
-            <IonCardTitle>수면 집중모드</IonCardTitle>
-          </IonCardHeader>
-          <IonCardContent>
-            <IonItem>
-              <IonLabel>수면 집중모드 활성화</IonLabel>
-              <IonToggle
-                checked={sleepFocus}
-                onIonChange={(e) => handleSleepFocusToggle(e.detail.checked)}
-                disabled={platform !== 'ios'}
-              />
-            </IonItem>
-            {platform === 'android' && (
-              <IonText color="warning">
-                <p>수면 집중모드는 iOS에서만 사용 가능합니다.</p>
-              </IonText>
-            )}
-            {platform === 'web' && (
-              <IonText color="warning">
-                <p>수면 집중모드는 iOS에서만 사용 가능합니다.</p>
-              </IonText>
-            )}
-            {platform === 'ios' && (
-              <IonText color="medium">
-                <p style={{ fontSize: '0.9em', marginTop: '10px' }}>
-                  수면 집중모드를 활성화하면 방해 알림이 차단됩니다.
-                </p>
-              </IonText>
-            )}
-          </IonCardContent>
-        </IonCard>
-
-        {/* HealthData */}
-        <IonCard>
-          <IonCardHeader>
-            <IonCardTitle>
-              {platform === 'ios' ? 'HealthKit 데이터' : platform === 'android' ? 'HealthData (Android - 구현 예정)' : 'HealthData (웹 미지원)'}
-            </IonCardTitle>
-          </IonCardHeader>
-          <IonCardContent>
-            {platform === 'ios' && healthDataPlugin && (
-              <IonButton
-                expand="block"
-                color="primary"
-                onClick={async () => {
-                  try {
-                    console.log('HealthKit 권한 요청 버튼 클릭');
-                    const result = await healthDataPlugin.requestAuthorization();
-                    console.log('HealthKit 권한 요청 결과:', result);
-                    if (result.success) {
-                      alert('HealthKit 권한이 허용되었습니다!');
-                      // 권한 승인 후 자동으로 데이터 가져오기는 useEffect에서 처리됨
-                      // 권한 승인 후 데이터 가져오기 시도
-                      setTimeout(() => {
-                        fetchHealthData(healthDataPlugin);
-                      }, 500);
-                    } else {
-                      const message = result.message || 'HealthKit 권한이 거부되었습니다.';
-                      alert(message + '\n\n설정 > Health > 데이터 액세스 및 기기 > poseul에서 권한을 허용해주세요.');
-                    }
-                  } catch (err: any) {
-                    console.error('HealthKit 권한 요청 실패:', err);
-                    const errorMsg = err?.message || err?.toString() || String(err);
-                    alert('HealthKit 권한 요청 중 오류가 발생했습니다:\n' + errorMsg);
-                  }
-                }}
-              >
-                HealthKit 권한 요청
-              </IonButton>
+                  <IonButton
+                    expand="block"
+                    color="primary"
+                    onClick={handleInfoStepComplete}
+                    style={{ marginTop: '20px' }}
+                  >
+                    다음 단계
+                  </IonButton>
+                </IonCardContent>
+              </IonCard>
             )}
 
-            {platform === 'android' && (
-              <IonText color="warning">
-                <p>Android에서는 아직 HealthData가 구현되지 않았습니다. iOS에서만 사용 가능합니다.</p>
-              </IonText>
+            {/* 단계 2: HealthKit 권한 요청 */}
+            {setupStep === 'permission' && (
+              <IonCard>
+                <IonCardHeader>
+                  <IonCardTitle>2단계: HealthKit 권한 요청</IonCardTitle>
+                </IonCardHeader>
+                <IonCardContent>
+                  <IonText color="medium">
+                    <p>HealthKit 데이터를 사용하기 위해 권한이 필요합니다.</p>
+                  </IonText>
+                  {healthDataPlugin ? (
+                    <IonButton
+                      expand="block"
+                      color="primary"
+                      onClick={async () => {
+                        const success = await handlePermissionRequest();
+                        // 권한 요청 완료 후 설정 완료 처리 및 데이터 가져오기
+                        if (success) {
+                          localStorage.setItem('healthSetupComplete', 'true');
+                          setIsSetupComplete(true);
+                          setSetupStep('complete');
+                          // 권한 승인 후 바로 데이터 가져오기
+                          setTimeout(() => {
+                            fetchHealthData(healthDataPlugin);
+                          }, 500);
+                        }
+                      }}
+                      style={{ marginTop: '20px' }}
+                    >
+                      HealthKit 권한 요청
+                    </IonButton>
+                  ) : null}
+                </IonCardContent>
+              </IonCard>
             )}
-            {platform === 'web' && (
-              <IonText color="warning">
-                <p>웹에서는 HealthData를 사용할 수 없습니다.</p>
-              </IonText>
-            )}
-            {platform === 'ios' && !healthDataPlugin && (
-              <IonText color="warning">
-                <p>HealthData 플러그인을 로드하는 중...</p>
-              </IonText>
-            )}
+          </>
+        )}
 
-            {/* 심박수 */}
-            <IonItem>
-              <IonLabel>
-                <h2>심박수</h2>
-                {healthData.heartRate ? (
-                  <>
-                    <p>{healthData.heartRate.value.toFixed(0)} bpm</p>
-                    <p>{formatDate(healthData.heartRate.date)}</p>
-                  </>
-                ) : (
-                  <p>데이터 없음</p>
+        {/* 메인 화면 (설정 완료 후) */}
+        {isSetupComplete && (
+          <>
+
+            {/* 백그라운드 모니터링 토글 */}
+            <IonCard>
+              <IonCardHeader>
+                <IonCardTitle>백그라운드 모니터링</IonCardTitle>
+              </IonCardHeader>
+              <IonCardContent>
+                <IonItem>
+                  <IonLabel>백그라운드 모니터링 활성화</IonLabel>
+                  <IonToggle
+                    checked={backgroundMonitoring}
+                    onIonChange={(e) => handleBackgroundMonitoringToggle(e.detail.checked)}
+                    disabled={!healthDataPlugin || platform !== 'ios'}
+                  />
+                </IonItem>
+                {platform === 'android' && (
+                  <IonText color="warning">
+                    <p>Android에서는 아직 HealthData가 구현되지 않았습니다.</p>
+                  </IonText>
                 )}
-              </IonLabel>
-            </IonItem>
-
-            {/* 심박변이 */}
-            <IonItem>
-              <IonLabel>
-                <h2>심박변이 (HRV)</h2>
-                {healthData.hrv ? (
-                  <>
-                    <p>{healthData.hrv.value.toFixed(2)} ms</p>
-                    <p>{formatDate(healthData.hrv.date)}</p>
-                  </>
-                ) : (
-                  <p>데이터 없음</p>
+                {platform === 'web' && (
+                  <IonText color="warning">
+                    <p>웹에서는 HealthData를 사용할 수 없습니다. (iOS/Android에서만 사용 가능)</p>
+                  </IonText>
                 )}
-              </IonLabel>
-            </IonItem>
+              </IonCardContent>
+            </IonCard>
 
-            {/* 혈중산소포화도 */}
-            <IonItem>
-              <IonLabel>
-                <h2>혈중산소포화도</h2>
-                {healthData.oxygenSaturation ? (
-                  <>
-                    <p>{healthData.oxygenSaturation.value.toFixed(1)}%</p>
-                    <p>{formatDate(healthData.oxygenSaturation.date)}</p>
-                  </>
-                ) : (
-                  <p>데이터 없음</p>
-                )}
-              </IonLabel>
-            </IonItem>
-          </IonCardContent>
+            {/* HealthKit 데이터 표시 */}
+            <IonCard>
+              <IonCardHeader>
+                <IonCardTitle>
+                  {platform === 'ios' ? 'HealthKit 데이터' : platform === 'android' ? 'HealthData (Android - 구현 예정)' : 'HealthData (웹 미지원)'}
+                </IonCardTitle>
+              </IonCardHeader>
+              <IonCardContent>
+                <IonGrid>
+                  <IonRow>
+                    {/* 심박수 */}
+                    <IonCol size="4">
+                      <div className="health-data-box heart-rate-box">
+                        <div className="health-data-label">심박수</div>
+                        {healthData.heartRate ? (
+                          <>
+                            <div className="health-data-value-container">
+                              <div className="health-data-value">{healthData.heartRate.value.toFixed(0)}</div>
+                              <div className="health-data-unit">bpm</div>
+                            </div>
+                            <div className="health-data-date">{formatDate(healthData.heartRate.date)}</div>
+                          </>
+                        ) : (
+                          <div className="health-data-empty">데이터 없음</div>
+                        )}
+                      </div>
+                    </IonCol>
+
+                    {/* 심박변이 */}
+                    <IonCol size="4">
+                      <div className="health-data-box hrv-box">
+                        <div className="health-data-label">심박변이</div>
+                        {healthData.hrv ? (
+                          <>
+                            <div className="health-data-value-container">
+                              <div className="health-data-value">{healthData.hrv.value.toFixed(2)}</div>
+                              <div className="health-data-unit">ms</div>
+                            </div>
+                            <div className="health-data-date">{formatDate(healthData.hrv.date)}</div>
+                          </>
+                        ) : (
+                          <div className="health-data-empty">데이터 없음</div>
+                        )}
+                      </div>
+                    </IonCol>
+
+                    {/* 혈중산소포화도 */}
+                    <IonCol size="4">
+                      <div className="health-data-box oxygen-box">
+                        <div className="health-data-label">산소포화도</div>
+                        {healthData.oxygenSaturation ? (
+                          <>
+                            <div className="health-data-value-container">
+                              <div className="health-data-value">{healthData.oxygenSaturation.value.toFixed(1)}</div>
+                              <div className="health-data-unit">%</div>
+                            </div>
+                            <div className="health-data-date">{formatDate(healthData.oxygenSaturation.date)}</div>
+                          </>
+                        ) : (
+                          <div className="health-data-empty">데이터 없음</div>
+                        )}
+                      </div>
+                    </IonCol>
+                  </IonRow>
+                </IonGrid>
+              </IonCardContent>
         </IonCard>
+          </>
+        )}
       </IonContent>
     </IonPage>
   );

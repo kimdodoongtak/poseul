@@ -55,7 +55,7 @@ const App: React.FC = () => (
       <IonTabs>
         <IonRouterOutlet>
           <Route exact path="/">
-            <Health_ios />
+            <Home />
           </Route>
           <Route exact path="/health_ios">
             <Health_ios />

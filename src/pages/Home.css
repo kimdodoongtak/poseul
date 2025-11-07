@@ -1,19 +1,181 @@
+/* Home 페이지 스타일 */
+
+/* 컨테이너 */
 .container {
   padding: 16px;
+  max-width: 600px;
+  margin: 0 auto;
 }
 
+/* 카드 스타일 */
+ion-card {
+  margin: 20px 0;
+  border-radius: 20px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  overflow: hidden;
+  background: white;
+}
+
+ion-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+}
+
+ion-card-header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 24px;
+}
+
+ion-card-title {
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: white;
+  margin: 0;
+}
+
+ion-card-content {
+  padding: 24px;
+}
+
+/* 입력 폼 스타일 */
+ion-item {
+  --border-radius: 12px;
+  --padding-start: 16px;
+  --padding-end: 16px;
+  margin: 16px 0;
+  border-radius: 12px;
+  background: #f8f9fa;
+  transition: all 0.2s ease;
+  border: 2px solid transparent;
+}
+
+ion-item:focus-within {
+  background: white;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+ion-item ion-label {
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 8px;
+}
+
+ion-item ion-input,
+ion-item ion-select {
+  --padding-start: 0;
+  --padding-end: 0;
+  color: #333;
+}
+
+/* 예측 결과 스타일 */
 .prediction-result {
   text-align: center;
-  padding: 20px 0;
+  padding: 40px 20px;
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  border-radius: 20px;
+  margin: 20px 0;
+  box-shadow: 0 8px 24px rgba(245, 87, 108, 0.3);
 }
 
 .prediction-result h1 {
-  font-size: 3rem;
-  margin: 10px 0;
+  font-size: 4rem;
+  margin: 0;
+  color: white;
+  font-weight: 700;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
 }
 
 .status-text {
-  font-size: 1.5rem;
-  font-weight: bold;
+  font-size: 1.8rem;
+  font-weight: 600;
+  color: white;
+  margin-top: 16px;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
+/* 버튼 스타일 */
+ion-button {
+  --border-radius: 12px;
+  --box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  margin: 20px 0;
+  font-weight: 600;
+  font-size: 1rem;
+  text-transform: none;
+  height: 50px;
+  transition: all 0.3s ease;
+}
+
+ion-button:hover {
+  transform: translateY(-2px);
+  --box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+}
+
+ion-button:active {
+  transform: translateY(0);
+}
+
+/* 차트 영역 */
+.chart-placeholder {
+  text-align: center;
+  padding: 60px 20px;
+  color: #999;
+  font-style: italic;
+  background: #f8f9fa;
+  border-radius: 12px;
+  border: 2px dashed #ddd;
+}
+
+/* 로딩 스피너 */
+ion-spinner {
+  --color: #667eea;
+}
+
+/* 다크모드 지원 */
+@media (prefers-color-scheme: dark) {
+  ion-card {
+    background: #1e1e1e;
+  }
+
+  ion-card-content {
+    background: #1e1e1e;
+    color: white;
+  }
+
+  ion-item {
+    background: #2a2a2a;
+    color: white;
+  }
+
+  ion-item:focus-within {
+    background: #333;
+    border-color: #667eea;
+  }
+
+  ion-item ion-label {
+    color: #e0e0e0;
+  }
+
+  ion-item ion-input,
+  ion-item ion-select {
+    color: white;
+  }
+
+  .chart-placeholder {
+    background: #2a2a2a;
+    border-color: #444;
+    color: #999;
+  }
+}

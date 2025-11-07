@@ -1,13 +1,203 @@
+/* Iot 페이지 스타일 */
+
+/* 컨테이너 */
 .container {
   padding: 16px;
+  max-width: 600px;
+  margin: 0 auto;
 }
 
+/* 카드 스타일 */
+ion-card {
+  margin: 20px 0;
+  border-radius: 20px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  overflow: hidden;
+  background: white;
+}
+
+ion-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+}
+
+ion-card-header {
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  color: white;
+  padding: 24px;
+}
+
+ion-card-title {
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: white;
+  margin: 0;
+}
+
+ion-card-content {
+  padding: 24px;
+}
+
+/* 상태 표시 */
+.status-item {
+  padding: 16px;
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  border-radius: 16px;
+  margin: 12px 0;
+  color: white;
+  box-shadow: 0 4px 12px rgba(245, 87, 108, 0.3);
+}
+
+.status-item h2 {
+  margin: 0 0 8px 0;
+  font-size: 1rem;
+  opacity: 0.9;
+  font-weight: 500;
+}
+
+.status-item p {
+  margin: 0;
+  font-size: 2rem;
+  font-weight: 700;
+}
+
+/* 토글 스타일 */
+ion-toggle {
+  --background: #e0e0e0;
+  --background-checked: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  --handle-background: white;
+  --handle-background-checked: white;
+  --handle-width: 24px;
+  --handle-height: 24px;
+  --handle-max-height: 24px;
+  --handle-box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  width: 50px;
+  height: 30px;
+}
+
+/* 슬라이더 스타일 */
+ion-range {
+  --bar-background: #e0e0e0;
+  --bar-background-active: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  --knob-background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  --knob-size: 28px;
+  --knob-box-shadow: 0 2px 8px rgba(79, 172, 254, 0.4);
+  padding: 20px 0;
+}
+
+ion-range::part(tick) {
+  background: #4facfe;
+}
+
+ion-range::part(tick-active) {
+  background: #00f2fe;
+}
+
+/* 온도 표시 */
+.temperature-display {
+  text-align: center;
+  font-size: 3rem;
+  font-weight: 700;
+  color: #4facfe;
+  margin: 20px 0;
+  text-shadow: 0 2px 8px rgba(79, 172, 254, 0.2);
+}
+
+/* 아이템 스타일 */
+ion-item {
+  --border-radius: 12px;
+  --padding-start: 16px;
+  --padding-end: 16px;
+  margin: 16px 0;
+  border-radius: 12px;
+  background: #f8f9fa;
+  transition: all 0.2s ease;
+}
+
+ion-item ion-label {
+  font-weight: 600;
+  color: #333;
+}
+
+ion-item ion-select {
+  --padding-start: 0;
+  --padding-end: 0;
+  color: #333;
+}
+
+/* 로딩 컨테이너 */
 .loading-container {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 20px;
-  gap: 10px;
+  padding: 40px 20px;
+  gap: 16px;
+  background: rgba(79, 172, 254, 0.1);
+  border-radius: 16px;
+  margin: 20px 0;
 }
 
+.loading-container ion-spinner {
+  --color: #4facfe;
+}
+
+.loading-container ion-text {
+  color: #4facfe;
+  font-weight: 500;
+}
+
+/* 전원 OFF 상태 */
+.power-off {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* 버튼 스타일 */
+ion-button {
+  --border-radius: 12px;
+  --box-shadow: 0 4px 12px rgba(79, 172, 254, 0.3);
+  margin: 16px 0;
+  font-weight: 600;
+  text-transform: none;
+  transition: all 0.3s ease;
+}
+
+ion-button:hover {
+  transform: translateY(-2px);
+  --box-shadow: 0 6px 16px rgba(79, 172, 254, 0.4);
+}
+
+/* 다크모드 지원 */
+@media (prefers-color-scheme: dark) {
+  ion-card {
+    background: #1e1e1e;
+  }
+
+  ion-card-content {
+    background: #1e1e1e;
+    color: white;
+  }
+
+  ion-item {
+    background: #2a2a2a;
+    color: white;
+  }
+
+  ion-item ion-label {
+    color: #e0e0e0;
+  }
+
+  ion-item ion-select {
+    color: white;
+  }
+
+  .temperature-display {
+    color: #00f2fe;
+  }
+
+  .loading-container {
+    background: rgba(0, 242, 254, 0.1);
+  }
+}
