@@ -1,10 +1,18 @@
 /* Iot 페이지 스타일 */
 
+/* IonContent 스크롤 활성화 */
+ion-content {
+  --overflow: auto;
+  overflow-y: auto !important;
+}
+
 /* 컨테이너 */
 .container {
   padding: 16px;
+  padding-bottom: 100px; /* 하단 여백 추가로 스크롤 가능하게 */
   max-width: 600px;
   margin: 0 auto;
+  min-height: calc(100vh - 200px); /* 최소 높이 설정으로 스크롤 가능하게 */
 }
 
 /* 카드 스타일 */

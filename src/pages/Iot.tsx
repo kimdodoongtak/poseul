@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   IonContent,
   IonHeader,
@@ -11,10 +11,6 @@ import {
   IonCardContent,
   IonItem,
   IonLabel,
-  IonToggle,
-  IonRange,
-  IonSelect,
-  IonSelectOption,
   IonButton,
   IonSpinner,
   IonText,
@@ -33,14 +29,7 @@ const Iot: React.FC = () => {
     fanSpeed: FanSpeed;
   } | null>(null);
 
-  useEffect(() => {
-    loadStatus();
-    // 주기적으로 상태 업데이트 (5초마다)
-    const interval = setInterval(loadStatus, 5000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const loadStatus = async () => {
+  const loadStatus = useCallback(async () => {
     try {
       const result = await IotService.getStatus();
       setStatus({
@@ -53,8 +42,14 @@ const Iot: React.FC = () => {
       });
     } catch (error) {
       console.error('Failed to load status:', error);
+      // 에러 발생 시 조용히 실패 (이전 동작 유지)
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    // 페이지 로드 시에만 상태 조회
+    loadStatus();
+  }, [loadStatus]);
 
   const handlePowerToggle = async (power: boolean) => {
     setLoading(true);
@@ -169,14 +164,23 @@ const Iot: React.FC = () => {
               <IonCardTitle>전원</IonCardTitle>
             </IonCardHeader>
             <IonCardContent>
-              <IonItem>
-                <IonLabel>전원 {status?.power ? 'ON' : 'OFF'}</IonLabel>
-                <IonToggle
-                  checked={status?.power || false}
-                  onIonChange={(e) => handlePowerToggle(e.detail.checked)}
-                  disabled={loading}
-                />
-              </IonItem>
+              <IonButton
+                expand="block"
+                color={status?.power ? 'danger' : 'success'}
+                onClick={() => handlePowerToggle(!status?.power)}
+                disabled={loading}
+              >
+                {status?.power ? '전원 끄기' : '전원 켜기'}
+              </IonButton>
+              <IonButton
+                expand="block"
+                fill="outline"
+                onClick={loadStatus}
+                disabled={loading}
+                style={{ marginTop: '10px' }}
+              >
+                상태 새로고침
+              </IonButton>
             </IonCardContent>
           </IonCard>
 
@@ -192,19 +196,58 @@ const Iot: React.FC = () => {
                     <h2>{status.targetTemperature}°C</h2>
                   </IonLabel>
                 </IonItem>
-                <IonRange
-                  min={16}
-                  max={30}
-                  step={1}
-                  value={status.targetTemperature}
-                  onIonChange={(e) =>
-                    handleTemperatureChange(Number(e.detail.value))
-                  }
-                  disabled={loading}
-                >
-                  <IonLabel slot="start">16°C</IonLabel>
-                  <IonLabel slot="end">30°C</IonLabel>
-                </IonRange>
+                <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                  <IonButton
+                    expand="block"
+                    fill="outline"
+                    onClick={() => {
+                      if (status.targetTemperature > 16) {
+                        handleTemperatureChange(status.targetTemperature - 1);
+                      }
+                    }}
+                    disabled={loading || status.targetTemperature <= 16}
+                  >
+                    -1°C
+                  </IonButton>
+                  <IonButton
+                    expand="block"
+                    fill="outline"
+                    onClick={() => {
+                      if (status.targetTemperature < 30) {
+                        handleTemperatureChange(status.targetTemperature + 1);
+                      }
+                    }}
+                    disabled={loading || status.targetTemperature >= 30}
+                  >
+                    +1°C
+                  </IonButton>
+                </div>
+                <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                  <IonButton
+                    expand="block"
+                    fill="outline"
+                    onClick={() => handleTemperatureChange(18)}
+                    disabled={loading}
+                  >
+                    18°C
+                  </IonButton>
+                  <IonButton
+                    expand="block"
+                    fill="outline"
+                    onClick={() => handleTemperatureChange(22)}
+                    disabled={loading}
+                  >
+                    22°C
+                  </IonButton>
+                  <IonButton
+                    expand="block"
+                    fill="outline"
+                    onClick={() => handleTemperatureChange(26)}
+                    disabled={loading}
+                  >
+                    26°C
+                  </IonButton>
+                </div>
               </IonCardContent>
             </IonCard>
           )}
@@ -216,21 +259,40 @@ const Iot: React.FC = () => {
                 <IonCardTitle>작동 모드</IonCardTitle>
               </IonCardHeader>
               <IonCardContent>
-                <IonItem>
-                  <IonLabel position="stacked">모드 선택</IonLabel>
-                  <IonSelect
-                    value={status.mode}
-                    onIonChange={(e) =>
-                      handleModeChange(e.detail.value as AirConditionerMode)
-                    }
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <IonButton
+                    expand="block"
+                    color={status.mode === 'COOL' ? 'primary' : 'medium'}
+                    onClick={() => handleModeChange('COOL')}
                     disabled={loading}
                   >
-                    <IonSelectOption value="COOL">냉방</IonSelectOption>
-                    <IonSelectOption value="AIR_DRY">제습</IonSelectOption>
-                    <IonSelectOption value="AIR_CLEAN">공기청정</IonSelectOption>
-                    <IonSelectOption value="AUTO">자동</IonSelectOption>
-                  </IonSelect>
-                </IonItem>
+                    냉방
+                  </IonButton>
+                  <IonButton
+                    expand="block"
+                    color={status.mode === 'AIR_DRY' ? 'primary' : 'medium'}
+                    onClick={() => handleModeChange('AIR_DRY')}
+                    disabled={loading}
+                  >
+                    제습
+                  </IonButton>
+                  <IonButton
+                    expand="block"
+                    color={status.mode === 'AIR_CLEAN' ? 'primary' : 'medium'}
+                    onClick={() => handleModeChange('AIR_CLEAN')}
+                    disabled={loading}
+                  >
+                    공기청정
+                  </IonButton>
+                  <IonButton
+                    expand="block"
+                    color={status.mode === 'AUTO' ? 'primary' : 'medium'}
+                    onClick={() => handleModeChange('AUTO')}
+                    disabled={loading}
+                  >
+                    자동
+                  </IonButton>
+                </div>
               </IonCardContent>
             </IonCard>
           )}
@@ -242,21 +304,40 @@ const Iot: React.FC = () => {
                 <IonCardTitle>풍량</IonCardTitle>
               </IonCardHeader>
               <IonCardContent>
-                <IonItem>
-                  <IonLabel position="stacked">풍량 선택</IonLabel>
-                  <IonSelect
-                    value={status.fanSpeed}
-                    onIonChange={(e) =>
-                      handleFanSpeedChange(e.detail.value as FanSpeed)
-                    }
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <IonButton
+                    expand="block"
+                    color={status.fanSpeed === 'HIGH' ? 'primary' : 'medium'}
+                    onClick={() => handleFanSpeedChange('HIGH')}
                     disabled={loading}
                   >
-                    <IonSelectOption value="HIGH">강</IonSelectOption>
-                    <IonSelectOption value="MID">중</IonSelectOption>
-                    <IonSelectOption value="LOW">약</IonSelectOption>
-                    <IonSelectOption value="AUTO">자동</IonSelectOption>
-                  </IonSelect>
-                </IonItem>
+                    강
+                  </IonButton>
+                  <IonButton
+                    expand="block"
+                    color={status.fanSpeed === 'MID' ? 'primary' : 'medium'}
+                    onClick={() => handleFanSpeedChange('MID')}
+                    disabled={loading}
+                  >
+                    중
+                  </IonButton>
+                  <IonButton
+                    expand="block"
+                    color={status.fanSpeed === 'LOW' ? 'primary' : 'medium'}
+                    onClick={() => handleFanSpeedChange('LOW')}
+                    disabled={loading}
+                  >
+                    약
+                  </IonButton>
+                  <IonButton
+                    expand="block"
+                    color={status.fanSpeed === 'AUTO' ? 'primary' : 'medium'}
+                    onClick={() => handleFanSpeedChange('AUTO')}
+                    disabled={loading}
+                  >
+                    자동
+                  </IonButton>
+                </div>
               </IonCardContent>
             </IonCard>
           )}
