@@ -1,5 +1,30 @@
 /* Health_ios 페이지 스타일 */
 
+/* 헤더 및 타이틀 배경 투명 (다른 페이지와 통일) */
+ion-header {
+  --background: transparent !important;
+  background: transparent !important;
+}
+
+ion-header::part(native) {
+  background: transparent !important;
+}
+
+ion-toolbar {
+  --background: transparent !important;
+  --border-color: transparent !important;
+  background: transparent !important;
+}
+
+ion-toolbar::part(native) {
+  background: transparent !important;
+}
+
+ion-title {
+  --color: white;
+  background: transparent !important;
+}
+
 /* 컨테이너 */
 ion-content {
   --background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -38,6 +63,8 @@ ion-card-title {
 ion-card-content {
   padding: 20px;
   background: white;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 /* 건강 데이터 카드 */
@@ -75,14 +102,16 @@ ion-item {
   --border-radius: 12px;
   --padding-start: 16px;
   --padding-end: 16px;
+  --background: #f5f5f5;
+  --background-hover: #eeeeee;
   margin: 12px 0;
   border-radius: 12px;
-  background: #f5f5f5;
+  background: #f5f5f5 !important;
   transition: background 0.2s ease;
 }
 
 ion-item:hover {
-  background: #eeeeee;
+  background: #eeeeee !important;
 }
 
 ion-item ion-label {
@@ -93,6 +122,8 @@ ion-item ion-label {
 ion-item ion-input {
   --padding-start: 0;
   --padding-end: 0;
+  --background: transparent;
+  background: transparent !important;
 }
 
 /* 버튼 스타일 */
@@ -108,6 +139,47 @@ ion-button {
 ion-button:hover {
   transform: translateY(-2px);
   --box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+}
+
+/* 설정 버튼 스타일 (로그인 버튼과 동일한 색상) - 더 구체적인 선택자 사용 */
+.health-ios-page ion-button[color="primary"],
+ion-button[color="primary"] {
+  --background: linear-gradient(135deg, #80a0df 0%, #9080df 100%) !important;
+  --background-hover: linear-gradient(135deg, #7090cf 0%, #8070cf 100%) !important;
+  --background-activated: linear-gradient(135deg, #7090cf 0%, #8070cf 100%) !important;
+  --background-focused: linear-gradient(135deg, #7090cf 0%, #8070cf 100%) !important;
+  --color: white !important;
+  --box-shadow: 0 4px 12px rgba(128, 160, 223, 0.3) !important;
+  background: linear-gradient(135deg, #80a0df 0%, #9080df 100%) !important;
+  color: white !important;
+}
+
+.health-ios-page ion-button[color="primary"]:hover,
+ion-button[color="primary"]:hover {
+  --box-shadow: 0 6px 16px rgba(128, 160, 223, 0.4) !important;
+  background: linear-gradient(135deg, #7090cf 0%, #8070cf 100%) !important;
+}
+
+.health-ios-page ion-button[color="primary"]:active,
+ion-button[color="primary"]:active {
+  background: linear-gradient(135deg, #7090cf 0%, #8070cf 100%) !important;
+}
+
+.health-ios-page ion-button[color="primary"]::part(native),
+ion-button[color="primary"]::part(native) {
+  background: linear-gradient(135deg, #80a0df 0%, #9080df 100%) !important;
+}
+
+/* 설정 텍스트 색상 (매우 밝은 연하늘색) */
+.setup-title {
+  color: #e8f4ff !important;
+  font-weight: 600;
+  text-shadow: 0 2px 8px rgba(232, 244, 255, 0.6);
+}
+
+.setup-title h2 {
+  color: #e8f4ff !important;
+  margin: 0;
 }
 
 /* 토글 스타일 */
@@ -157,8 +229,8 @@ ion-toggle {
 /* 건강 데이터 박스 (정사각형) */
 .health-data-box {
   aspect-ratio: 1;
-  border-radius: 16px;
-  padding: 16px;
+  border-radius: clamp(12px, 2vw, 16px);
+  padding: clamp(8px, 1.5vw, 12px);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -166,8 +238,11 @@ ion-toggle {
   text-align: center;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
-  margin: 8px;
-  min-height: 120px;
+  margin: 0;
+  min-height: clamp(100px, 20vw, 140px);
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .health-data-box:hover {
@@ -198,13 +273,17 @@ ion-toggle {
 
 /* 건강 데이터 레이블 */
 .health-data-label {
-  font-size: 0.9rem;
+  font-size: clamp(0.7rem, 1.2vw, 0.9rem);
   font-weight: 600;
   opacity: 0.9;
   margin-bottom: auto;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  padding-top: 8px;
+  padding-top: 4px;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* 건강 데이터 값과 단위 컨테이너 */
@@ -219,26 +298,41 @@ ion-toggle {
 
 /* 건강 데이터 값 */
 .health-data-value {
-  font-size: 2rem;
+  font-size: clamp(1.2rem, 3vw, 2.2rem);
   font-weight: 700;
   margin: 0;
   line-height: 1.2;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
 }
 
 /* 건강 데이터 단위 */
 .health-data-unit {
-  font-size: 0.9rem;
+  font-size: clamp(0.7rem, 1.2vw, 0.9rem);
   font-weight: 500;
   opacity: 0.9;
   margin-top: 4px;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
 }
 
 /* 건강 데이터 날짜 */
 .health-data-date {
-  font-size: 0.75rem;
+  font-size: clamp(0.6rem, 1vw, 0.8rem);
   opacity: 0.8;
   margin-top: auto;
-  padding-bottom: 8px;
+  padding-bottom: 4px;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
 }
 
 /* 데이터 없음 */
@@ -252,15 +346,21 @@ ion-toggle {
 /* 그리드 간격 조정 */
 ion-grid {
   padding: 0;
+  margin: 0;
+  width: 100%;
 }
 
 ion-row {
-  margin: -8px;
+  margin: 0;
+  padding: 0;
+  width: 100%;
 }
 
 ion-col {
   padding: 8px;
+  margin: 0;
 }
+
 
 /* 다크모드 지원 */
 @media (prefers-color-scheme: dark) {
@@ -270,12 +370,14 @@ ion-col {
   }
 
   ion-item {
-    background: #2a2a2a;
+    --background: #2a2a2a;
+    --background-hover: #333;
+    background: #2a2a2a !important;
     color: white;
   }
 
   ion-item:hover {
-    background: #333;
+    background: #333 !important;
   }
 
   ion-item ion-label {

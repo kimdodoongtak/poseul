@@ -18,7 +18,9 @@ import {
   IonIcon,
   IonGrid,
   IonRow,
-  IonCol
+  IonCol,
+  IonSelect,
+  IonSelectOption
 } from '@ionic/react';
 import { personOutline } from 'ionicons/icons';
 import SignIn from '../components/SignIn';
@@ -33,6 +35,7 @@ interface HealthData {
 const Health_ios: React.FC = () => {
   const [age, setAge] = useState<string>('');
   const [bmi, setBmi] = useState<string>('');
+  const [gender, setGender] = useState<string>('0'); // 0: 여성, 1: 남성
   const [healthData, setHealthData] = useState<HealthData>({
     heartRate: null,
     hrv: null,
@@ -57,25 +60,41 @@ const Health_ios: React.FC = () => {
       try {
         const savedAge = localStorage.getItem('userAge');
         const savedBmi = localStorage.getItem('userBmi');
+        const savedGender = localStorage.getItem('userGender');
         const setupComplete = localStorage.getItem('healthSetupComplete');
         const hasPermission = localStorage.getItem('healthKitPermission') === 'true';
         
-        if (setupComplete === 'true' && savedAge && savedBmi && hasPermission) {
+        // 성별은 '0' 또는 '1'이면 유효 (빈 문자열이나 null이 아니면)
+        const hasValidGender = savedGender !== null && savedGender !== '';
+        const hasValidAge = savedAge !== null && savedAge !== '';
+        const hasValidBmi = savedBmi !== null && savedBmi !== '';
+        
+        if (setupComplete === 'true' && hasValidAge && hasValidBmi && hasValidGender && hasPermission) {
           setIsSetupComplete(true);
           setSetupStep('complete');
           if (savedAge) setAge(savedAge);
           if (savedBmi) setBmi(savedBmi);
+          if (savedGender) setGender(savedGender);
           setHasHealthKitPermission(hasPermission);
         } else {
           // 저장된 정보가 있으면 불러오기
           if (savedAge) setAge(savedAge);
           if (savedBmi) setBmi(savedBmi);
+          // 성별이 없으면 기본값 '0' 설정 및 저장
+          if (savedGender) {
+            setGender(savedGender);
+          } else {
+            setGender('0');
+            localStorage.setItem('userGender', '0');
+          }
           if (hasPermission) setHasHealthKitPermission(true);
           
-          // 설정 단계 결정
-          if (savedAge && savedBmi) {
+          // 설정 단계 결정 (성별은 기본값 '0'이 있으므로 항상 유효)
+          const finalGender = savedGender || '0';
+          if (hasValidAge && hasValidBmi) {
             if (hasPermission) {
-              // 나이, BMI, 권한 모두 있으면 설정 완료
+              // 나이, BMI, 성별, 권한 모두 있으면 설정 완료
+              localStorage.setItem('healthSetupComplete', 'true');
               setIsSetupComplete(true);
               setSetupStep('complete');
             } else {
@@ -240,6 +259,7 @@ const Health_ios: React.FC = () => {
           oxygenSaturation: normalizedOxygen?.value || null,
           bmi: bmi ? parseFloat(bmi) : null,
           age: age ? parseFloat(age) : null,
+          gender: gender && gender !== '' ? parseFloat(gender) : 0.0,
         }).catch((err) => {
           console.error('서버 전송 실패 (백그라운드):', err);
         });
@@ -298,6 +318,7 @@ const Health_ios: React.FC = () => {
           oxygenSaturation: normalizedOxygen?.value || null,
           bmi: bmi ? parseFloat(bmi) : null,
           age: age ? parseFloat(age) : null,
+          gender: gender && gender !== '' ? parseFloat(gender) : 0.0,
         }).catch((err) => {
           console.error('🔄 백그라운드 서버 전송 실패:', err);
         });
@@ -313,6 +334,7 @@ const Health_ios: React.FC = () => {
     oxygenSaturation: number | null;
     bmi: number | null;
     age: number | null;
+    gender: number | null;
   }) => {
     // 서버 URL 설정 (환경 변수나 설정에서 가져올 수 있음)
     const serverURL = 'http://192.168.68.74:3000/healthdata'; // 현재 컴퓨터 IP 주소
@@ -452,12 +474,12 @@ const Health_ios: React.FC = () => {
     }
   };
 
-  // 나이/BMI 입력 완료 후 다음 단계로
+  // 나이/BMI/성별 입력 완료 후 다음 단계로
   const handleInfoStepComplete = () => {
-    if (age && bmi) {
+    if (age && bmi && gender) {
       setSetupStep('permission');
     } else {
-      alert('나이와 BMI를 모두 입력해주세요.');
+      alert('나이, BMI, 성별을 모두 입력해주세요.');
     }
   };
 
@@ -509,7 +531,6 @@ const Health_ios: React.FC = () => {
     try {
       const date = new Date(dateString);
       return date.toLocaleString('ko-KR', {
-        year: 'numeric',
         month: '2-digit',
         day: '2-digit',
         hour: '2-digit',
@@ -521,16 +542,16 @@ const Health_ios: React.FC = () => {
   };
 
   return (
-    <IonPage>
+    <IonPage className="health-ios-page">
       <IonHeader>
         <IonToolbar>
-          <IonTitle>포슬💤</IonTitle>
+          <IonTitle>포슬💭</IonTitle>
         </IonToolbar>
       </IonHeader>
-      <IonContent>
+      <IonContent fullscreen>
         <IonHeader collapse="condense">
           <IonToolbar>
-            <IonTitle size="large">포슬💤</IonTitle>
+            <IonTitle size="large">포슬💭</IonTitle>
           </IonToolbar>
         </IonHeader>
 
@@ -580,7 +601,7 @@ const Health_ios: React.FC = () => {
         {/* 초기 설정 화면 */}
         {!isSetupComplete && platform === 'ios' && (
           <>
-            <IonText color="primary">
+            <IonText className="setup-title">
               <h2>초기 설정</h2>
             </IonText>
 
@@ -592,7 +613,7 @@ const Health_ios: React.FC = () => {
                 </IonCardHeader>
                 <IonCardContent>
                   <IonText color="medium">
-                    <p>나이와 BMI를 입력해주세요.</p>
+                    <p>나이, BMI, 성별을 입력해주세요.</p>
                   </IonText>
                   <IonItem>
                     <IonLabel position="stacked">나이</IonLabel>
@@ -609,7 +630,8 @@ const Health_ios: React.FC = () => {
                             try {
                               await healthDataPlugin.saveUserInfo({
                                 age: value || '',
-                                bmi: bmi || ''
+                                bmi: bmi || '',
+                                gender: gender || '0'
                               });
                             } catch (err) {
                               console.log('나이 UserDefaults 저장 실패:', err);
@@ -636,7 +658,8 @@ const Health_ios: React.FC = () => {
                             try {
                               await healthDataPlugin.saveUserInfo({
                                 age: age || '',
-                                bmi: value || ''
+                                bmi: value || '',
+                                gender: gender || '0'
                               });
                             } catch (err) {
                               console.log('BMI UserDefaults 저장 실패:', err);
@@ -647,6 +670,36 @@ const Health_ios: React.FC = () => {
                         }
                       }}
                     />
+                  </IonItem>
+                  <IonItem>
+                    <IonLabel position="stacked">성별</IonLabel>
+                    <IonSelect
+                      value={gender}
+                      placeholder="성별을 선택하세요"
+                      onIonChange={async (e) => {
+                        const value = e.detail.value;
+                        setGender(value);
+                        try {
+                          localStorage.setItem('userGender', value || '0');
+                          if (platform === 'ios' && healthDataPlugin) {
+                            try {
+                              await healthDataPlugin.saveUserInfo({
+                                age: age || '',
+                                bmi: bmi || '',
+                                gender: value || '0'
+                              });
+                            } catch (err) {
+                              console.log('성별 UserDefaults 저장 실패:', err);
+                            }
+                          }
+                        } catch (err) {
+                          console.log('성별 저장 실패:', err);
+                        }
+                      }}
+                    >
+                      <IonSelectOption value="0">여성</IonSelectOption>
+                      <IonSelectOption value="1">남성</IonSelectOption>
+                    </IonSelect>
                   </IonItem>
                   <IonButton
                     expand="block"
