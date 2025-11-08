@@ -66,40 +66,73 @@ class IotService {
    */
   async getStatus(): Promise<AirConditionerStatusResponse> {
     try {
+      console.log(`IoT 상태 조회 요청: ${this.baseUrl}/air_conditioner/state`);
+      
+      // 타임아웃 설정 (5초)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      
       const response = await fetch(`${this.baseUrl}/air_conditioner/state`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
         },
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
       }
 
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+        console.log('IoT 상태 조회 응답:', JSON.stringify(data, null, 2));
+      } catch (parseError) {
+        console.error('응답 파싱 실패:', parseError);
+        throw new Error('서버 응답을 파싱할 수 없습니다.');
+      }
+      
+      if (!data || typeof data !== 'object') {
+        throw new Error('서버 응답이 유효하지 않습니다.');
+      }
       
       if (!data.success) {
         throw new Error(data.error || '상태 조회 실패');
       }
 
+      // 서버 응답이 유효한지 확인
+      if (!data.state || typeof data.state !== 'object') {
+        throw new Error('서버 응답에 상태 정보가 없습니다.');
+      }
+
       // 서버 응답을 앱 형식으로 변환
       const state = data.state;
-      return {
-        currentTemperature: state.current_temperature || 0,
+      const result = {
+        currentTemperature: state.current_temperature ?? 0,
         airQuality: state.air_quality?.pm2 || state.air_quality?.pm10 || 0,
         state: {
           power: state.power_on || false,
-          targetTemperature: state.target_temperature || 0,
+          targetTemperature: state.target_temperature ?? 0,
           mode: (state.job_mode as AirConditionerMode) || 'AUTO',
           fanSpeed: (state.wind_strength as FanSpeed) || 'AUTO',
           currentTemperature: state.current_temperature,
           airQuality: state.air_quality?.pm2 || state.air_quality?.pm10,
         },
       };
+      console.log('IoT 상태 변환 결과:', JSON.stringify(result, null, 2));
+      return result;
     } catch (error: any) {
       console.error('Failed to get IoT status:', error);
+      // 네트워크 에러인지 확인
+      if (error.name === 'AbortError') {
+        throw new Error('서버 응답 시간 초과. 서버가 실행 중인지 확인해주세요.');
+      } else if (error.message?.includes('Failed to fetch') || error.message?.includes('Mixed Content')) {
+        throw new Error('서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요.');
+      }
       throw error;
     }
   }
@@ -131,6 +164,7 @@ class IotService {
         serverRequest.strength = control.fanSpeed;
       }
 
+      console.log(`IoT 제어 요청: ${this.baseUrl}/air_conditioner/control`, serverRequest);
       const response = await fetch(`${this.baseUrl}/air_conditioner/control`, {
         method: 'POST',
         headers: {
@@ -145,6 +179,7 @@ class IotService {
       }
 
       const data = await response.json();
+      console.log('IoT 제어 응답:', data);
       
       if (!data.success) {
         throw new Error(data.error || '제어 실패');
@@ -166,7 +201,7 @@ class IotService {
   /**
    * 전원 ON/OFF
    */
-  async setPower(power: boolean): Promise<{ success: boolean }> {
+  async setPower(power: boolean): Promise<{ success: boolean; message?: string }> {
     return this.controlAirConditioner({ power });
   }
 

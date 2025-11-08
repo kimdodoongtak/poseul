@@ -18,3 +18,9 @@ export type {
   FanSpeed,
 } from './IotService';
 
+export { default as HealthDataService } from './HealthDataService';
+export type {
+  HealthData,
+  HealthDataResponse,
+} from './HealthDataService';
+
