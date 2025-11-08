@@ -29,8 +29,8 @@ class ModelService {
   constructor(baseUrl?: string) {
     if (baseUrl) {
       this.baseUrl = baseUrl;
-    } else if (process.env.VITE_API_BASE_URL) {
-      this.baseUrl = process.env.VITE_API_BASE_URL;
+    } else if (import.meta.env.VITE_API_BASE_URL) {
+      this.baseUrl = import.meta.env.VITE_API_BASE_URL;
     } else {
       // 플랫폼별 기본 URL 설정
       if (Capacitor.isNativePlatform()) {

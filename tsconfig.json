@@ -17,5 +17,10 @@
     "jsx": "react-jsx"
   },
   "include": ["src"],
+  "exclude": [
+    "src/templates/course-rive/**/*.spec.ts",
+    "src/templates/course-rive/**/*.ts",
+    "src/templates/course-rive/**/*.pipe.ts"
+  ],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

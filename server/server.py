@@ -30,9 +30,11 @@ DB_URL = "mysql+pymysql://jiwooyoon:dbswldnwldn0121@aiservice.ctcekecusqi9.ap-no
 engine = sqlalchemy.create_engine(DB_URL)
 
 # 모델 로드
+
 # 프로젝트 루트 기준으로 모델 파일 경로 설정
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODEL_FILE = os.path.join(BASE_DIR, 'android', 'plus', 'model', 'pycode', 'ai_thermal_model_final.pkl')
+
 model = None
 
 def load_model():

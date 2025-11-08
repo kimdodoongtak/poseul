@@ -21,5 +21,9 @@ export class HealthDataWeb extends WebPlugin implements HealthDataPlugin {
   async startBackgroundMonitoring(options: { enabled: boolean }): Promise<{ success: boolean }> {
     throw this.unimplemented('HealthData is not available on web');
   }
+
+  async saveUserInfo(options: { age: string; bmi: string }): Promise<{ success: boolean }> {
+    throw this.unimplemented('HealthData is not available on web');
+  }
 }
 

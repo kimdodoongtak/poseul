@@ -1,4 +1,154 @@
+/* User 페이지 스타일 */
+
+/* 컨테이너 */
 .container {
   padding: 16px;
+  max-width: 600px;
+  margin: 0 auto;
 }
 
+/* 카드 스타일 */
+ion-card {
+  margin: 20px 0;
+  border-radius: 20px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  overflow: hidden;
+  background: white;
+}
+
+ion-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+}
+
+ion-card-header {
+  background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+  color: white;
+  padding: 24px;
+}
+
+ion-card-title {
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: white;
+  margin: 0;
+}
+
+ion-card-content {
+  padding: 24px;
+}
+
+/* 입력 필드 스타일 */
+ion-item {
+  --border-radius: 12px;
+  --padding-start: 16px;
+  --padding-end: 16px;
+  margin: 16px 0;
+  border-radius: 12px;
+  background: #f8f9fa;
+  transition: all 0.2s ease;
+  border: 2px solid transparent;
+}
+
+ion-item:focus-within {
+  background: white;
+  border-color: #fa709a;
+  box-shadow: 0 0 0 3px rgba(250, 112, 154, 0.1);
+}
+
+ion-item ion-label {
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 8px;
+}
+
+ion-item ion-input {
+  --padding-start: 0;
+  --padding-end: 0;
+  color: #333;
+  font-size: 1rem;
+}
+
+/* 버튼 스타일 */
+ion-button {
+  --background: linear-gradient(135deg, #80a0df 0%, #9080df 100%);
+  --background-hover: linear-gradient(135deg, #7090cf 0%, #8070cf 100%);
+  --background-activated: linear-gradient(135deg, #7090cf 0%, #8070cf 100%);
+  --color: white;
+  --border-radius: 12px;
+  --box-shadow: 0 4px 12px rgba(128, 160, 223, 0.3);
+  margin: 16px 0;
+  font-weight: 600;
+  font-size: 1rem;
+  text-transform: none;
+  height: 50px;
+  transition: all 0.3s ease;
+}
+
+ion-button:hover {
+  transform: translateY(-2px);
+  --box-shadow: 0 6px 16px rgba(128, 160, 223, 0.4);
+}
+
+ion-button:active {
+  transform: translateY(0);
+}
+
+/* 사용자 정보 카드 특별 스타일 */
+.user-info-card {
+  background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+}
+
+.user-info-card ion-card-content {
+  background: white;
+}
+
+/* 설정 카드 스타일 */
+.settings-card {
+  background: linear-gradient(135deg, #30cfd0 0%, #330867 100%);
+}
+
+.settings-card ion-card-content {
+  background: white;
+}
+
+/* 플레이스홀더 스타일 */
+ion-input::placeholder {
+  color: #999;
+  opacity: 0.7;
+}
+
+/* 다크모드 지원 */
+@media (prefers-color-scheme: dark) {
+  ion-card {
+    background: #1e1e1e;
+  }
+
+  ion-card-content {
+    background: #1e1e1e;
+    color: white;
+  }
+
+  ion-item {
+    background: #2a2a2a;
+    color: white;
+  }
+
+  ion-item:focus-within {
+    background: #333;
+    border-color: #fa709a;
+  }
+
+  ion-item ion-label {
+    color: #e0e0e0;
+  }
+
+  ion-item ion-input {
+    color: white;
+  }
+
+  ion-input::placeholder {
+    color: #999;
+  }
+}
