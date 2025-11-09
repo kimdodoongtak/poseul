@@ -124,7 +124,7 @@ const User: React.FC = () => {
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen>
-        <IonHeader collapse="condense">
+        <IonHeader>
           <IonToolbar>
             <IonTitle size="large">사용자</IonTitle>
           </IonToolbar>

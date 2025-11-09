@@ -177,6 +177,36 @@ ion-button:hover {
   --box-shadow: 0 6px 16px rgba(79, 172, 254, 0.4);
 }
 
+/* 전원 켜기 버튼 스타일 (success 색상 커스터마이징) */
+ion-button[color="success"],
+.container ion-button[color="success"] {
+  --background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%) !important;
+  --background-hover: linear-gradient(135deg, #3d9ce8 0%, #00d9e8 100%) !important;
+  --background-activated: linear-gradient(135deg, #3d9ce8 0%, #00d9e8 100%) !important;
+  --background-focused: linear-gradient(135deg, #3d9ce8 0%, #00d9e8 100%) !important;
+  --color: white !important;
+}
+
+ion-button[color="success"]::part(native),
+.container ion-button[color="success"]::part(native) {
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%) !important;
+}
+
+/* 전원 끄기 버튼 스타일 (danger 색상 커스터마이징) */
+ion-button[color="danger"],
+.container ion-button[color="danger"] {
+  --background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%) !important;
+  --background-hover: linear-gradient(135deg, #e4465a 0%, #e083e8 100%) !important;
+  --background-activated: linear-gradient(135deg, #e4465a 0%, #e083e8 100%) !important;
+  --background-focused: linear-gradient(135deg, #e4465a 0%, #e083e8 100%) !important;
+  --color: white !important;
+}
+
+ion-button[color="danger"]::part(native),
+.container ion-button[color="danger"]::part(native) {
+  background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%) !important;
+}
+
 /* 다크모드 지원 */
 @media (prefers-color-scheme: dark) {
   ion-card {

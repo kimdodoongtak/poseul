@@ -2,11 +2,9 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
-import sqlalchemy
 from sqlalchemy import text
 from datetime import datetime
 import logging
-import pickle
 import os
 import sys
 import numpy as np
@@ -39,6 +37,7 @@ DB_URL = "mysql+pymysql://iriskimhs:dyvVyn-kihxe0-parxes@aiservice.cd0you2cyo60.
 # 연결 옵션 추가 (SSL, 타임아웃 등)
 # pymysql의 SSL 설정: ssl_disabled=True로 비활성화하거나, ssl_ca 인증서 경로 지정
 # DBeaver에서 연결이 되면 SSL 없이도 연결 가능할 수 있음
+import sqlalchemy
 engine = sqlalchemy.create_engine(
     DB_URL,
     connect_args={
@@ -79,6 +78,7 @@ def load_model():
     except Exception as e1:
         logger.error(f"❌ joblib 로드 실패: {e1}")
         try:
+            import pickle
             with open(MODEL_FILE, 'rb') as f:
                 model = pickle.load(f)
             model_loaded = True
@@ -230,12 +230,16 @@ async def receive_health_data(data: HealthData):
             raise HTTPException(status_code=400, detail="heartRate, HRV, oxygenSaturation은 필수입니다.")
         
         # 기본값 설정
-        gender = data.gender if data.gender is not None else 0.0  # 기본값: 여성
+        # gender: 0.0 또는 1.0을 'F' 또는 'M'으로 변환
+        gender_value = data.gender if data.gender is not None else 0.0  # 기본값: 여성
+        gender = 'F' if gender_value == 0.0 else 'M'  # 0.0: 여성(F), 1.0: 남성(M)
         bmi = data.bmi if data.bmi is not None else 0.0
         age = data.age if data.age is not None else 0.0
         
+        logger.info(f"📊 처리된 데이터 - gender: {gender} (원본: {gender_value}), bmi: {bmi}, age: {age}")
+        
         # 모델로 예측
-        predicted_skin_temp = None
+        predicted_skin_temp = 0.0  # 기본값 설정 (데이터베이스 NOT NULL 제약 조건 대응)
         if model is not None:
             try:
                 predicted_skin_temp = predict_temperature_with_model(
@@ -249,16 +253,17 @@ async def receive_health_data(data: HealthData):
                 logger.info(f"🔮 예측 결과: {predicted_skin_temp}")
             except Exception as e:
                 logger.error(f"❌ 예측 실패: {str(e)}")
-                # 예측 실패해도 데이터는 저장
+                logger.error(f"❌ 예측 실패 상세 - 입력 피처 수: 9, 모델 기대: 9")
+                # 예측 실패 시 기본값 유지 (0.0)
         
         # DB에 데이터 저장
         with engine.connect() as conn:
             # predicted_results 테이블에 데이터 삽입
             insert_query = text("""
                 INSERT INTO predicted_results 
-                (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp, created_at)
+                (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp)
                 VALUES 
-                (:heart_rate, :hrv, :oxygen_sat, :bmi, :age, :gender, :predicted_temp, :created_at)
+                (:heart_rate, :hrv, :oxygen_sat, :bmi, :age, :gender, :predicted_temp)
             """)
             
             conn.execute(insert_query, {
@@ -268,12 +273,11 @@ async def receive_health_data(data: HealthData):
                 'bmi': bmi,
                 'age': age,
                 'gender': gender,
-                'predicted_temp': predicted_skin_temp,
-                'created_at': datetime.now()
+                'predicted_temp': predicted_skin_temp
             })
             conn.commit()
         
-        logger.info("✅ 데이터가 DB에 저장되었습니다.")
+        logger.info(f"✅ 데이터가 DB에 저장되었습니다. (gender: {gender}, bmi: {bmi}, age: {age}, predicted_skin_temp: {predicted_skin_temp})")
         return {
             "status": "ok", 
             "message": "Data saved successfully",

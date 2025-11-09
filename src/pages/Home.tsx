@@ -9,16 +9,11 @@ import {
   IonCardHeader,
   IonCardTitle,
   IonCardContent,
-  IonItem,
-  IonLabel,
-  IonInput,
-  IonSelect,
-  IonSelectOption,
   IonButton,
   IonText,
   IonSpinner,
 } from '@ionic/react';
-import { ModelService, TemperaturePredictionRequest } from '../services';
+import { ModelService } from '../services';
 import './Home.css';
 
 const Home: React.FC = () => {
@@ -27,42 +22,6 @@ const Home: React.FC = () => {
     temperature: number;
     status: 'COMFORTABLE' | 'COLD' | 'HOT';
   } | null>(null);
-
-  const [formData, setFormData] = useState<TemperaturePredictionRequest>({
-    heartRate: 0,
-    hrv: 0,
-    bmi: 0,
-    oxygenSaturation: 0,
-    gender: 'MALE',
-    age: 0,
-  });
-
-  const handlePredict = async () => {
-    setLoading(true);
-    try {
-      const result = await ModelService.predictTemperature(formData);
-      if (result.success) {
-        // 서버 응답 형식 변환
-        const statusMap: { [key: string]: 'COMFORTABLE' | 'COLD' | 'HOT' } = {
-          '적정': 'COMFORTABLE',
-          '추움': 'COLD',
-          '더움': 'HOT',
-        };
-        
-        setPrediction({
-          temperature: result.predictedTemperature,
-          status: statusMap[result.temperatureCategory] || 'COMFORTABLE',
-        });
-      } else {
-        alert(result.error || '예측 실패');
-      }
-    } catch (error: any) {
-      console.error('Prediction failed:', error);
-      alert(error.message || '예측 실패');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleTestModel = async () => {
     setLoading(true);
@@ -111,96 +70,13 @@ const Home: React.FC = () => {
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen>
-        <IonHeader collapse="condense">
+        <IonHeader>
           <IonToolbar>
             <IonTitle size="large">온도 예측</IonTitle>
           </IonToolbar>
         </IonHeader>
 
         <div className="container">
-          {/* 입력 폼 */}
-          <IonCard>
-            <IonCardHeader>
-              <IonCardTitle>체온 예측 입력</IonCardTitle>
-            </IonCardHeader>
-            <IonCardContent>
-              <IonItem>
-                <IonLabel position="stacked">심박수 (bpm)</IonLabel>
-                <IonInput
-                  type="number"
-                  value={formData.heartRate}
-                  onIonInput={(e) =>
-                    setFormData({ ...formData, heartRate: Number(e.detail.value) })
-                  }
-                />
-              </IonItem>
-
-              <IonItem>
-                <IonLabel position="stacked">HRV</IonLabel>
-                <IonInput
-                  type="number"
-                  value={formData.hrv}
-                  onIonInput={(e) =>
-                    setFormData({ ...formData, hrv: Number(e.detail.value) })
-                  }
-                />
-              </IonItem>
-
-              <IonItem>
-                <IonLabel position="stacked">BMI</IonLabel>
-                <IonInput
-                  type="number"
-                  value={formData.bmi}
-                  onIonInput={(e) =>
-                    setFormData({ ...formData, bmi: Number(e.detail.value) })
-                  }
-                />
-              </IonItem>
-
-              <IonItem>
-                <IonLabel position="stacked">산소포화도 (%)</IonLabel>
-                <IonInput
-                  type="number"
-                  value={formData.oxygenSaturation}
-                  onIonInput={(e) =>
-                    setFormData({
-                      ...formData,
-                      oxygenSaturation: Number(e.detail.value),
-                    })
-                  }
-                />
-              </IonItem>
-
-              <IonItem>
-                <IonLabel position="stacked">성별</IonLabel>
-                <IonSelect
-                  value={formData.gender}
-                  onIonChange={(e) =>
-                    setFormData({ ...formData, gender: e.detail.value as 'MALE' | 'FEMALE' })
-                  }
-                >
-                  <IonSelectOption value="MALE">남성</IonSelectOption>
-                  <IonSelectOption value="FEMALE">여성</IonSelectOption>
-                </IonSelect>
-              </IonItem>
-
-              <IonItem>
-                <IonLabel position="stacked">나이</IonLabel>
-                <IonInput
-                  type="number"
-                  value={formData.age}
-                  onIonInput={(e) =>
-                    setFormData({ ...formData, age: Number(e.detail.value) })
-                  }
-                />
-              </IonItem>
-
-              <IonButton expand="block" onClick={handlePredict} disabled={loading}>
-                {loading ? <IonSpinner name="crescent" /> : '예측하기'}
-              </IonButton>
-            </IonCardContent>
-          </IonCard>
-
           {/* 예측 결과 */}
           {prediction && (
             <IonCard>

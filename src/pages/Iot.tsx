@@ -20,6 +20,8 @@ import './Iot.css';
 
 const Iot: React.FC = () => {
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  // 기본 상태 설정 - 서버 연결 실패 시에도 UI가 보이도록
   const [status, setStatus] = useState<{
     currentTemperature: number;
     airQuality: number;
@@ -27,9 +29,17 @@ const Iot: React.FC = () => {
     targetTemperature: number;
     mode: AirConditionerMode;
     fanSpeed: FanSpeed;
-  } | null>(null);
+  }>({
+    currentTemperature: 0,
+    airQuality: 0,
+    power: false,
+    targetTemperature: 24,
+    mode: 'AUTO',
+    fanSpeed: 'AUTO',
+  });
 
   const loadStatus = useCallback(async () => {
+    setError(null);
     try {
       const result = await IotService.getStatus();
       setStatus({
@@ -40,9 +50,9 @@ const Iot: React.FC = () => {
         mode: result.state.mode,
         fanSpeed: result.state.fanSpeed,
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load status:', error);
-      // 에러 발생 시 조용히 실패 (이전 동작 유지)
+      setError(error.message || '서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요.');
     }
   }, []);
 
@@ -59,12 +69,14 @@ const Iot: React.FC = () => {
 
   const handlePowerToggle = async (power: boolean) => {
     setLoading(true);
+    setError(null);
     try {
       await IotService.setPower(power);
-      setStatus(status ? { ...status, power } : null);
+      setStatus({ ...status, power });
       await loadStatus();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to toggle power:', error);
+      setError(error.message || '전원 제어에 실패했습니다.');
     } finally {
       setLoading(false);
     }
@@ -72,11 +84,13 @@ const Iot: React.FC = () => {
 
   const handleTemperatureChange = async (temperature: number) => {
     setLoading(true);
+    setError(null);
     try {
       await IotService.setTargetTemperature(temperature);
-      setStatus(status ? { ...status, targetTemperature: temperature } : null);
-    } catch (error) {
+      setStatus({ ...status, targetTemperature: temperature });
+    } catch (error: any) {
       console.error('Failed to set temperature:', error);
+      setError(error.message || '온도 설정에 실패했습니다.');
     } finally {
       setLoading(false);
     }
@@ -84,11 +98,13 @@ const Iot: React.FC = () => {
 
   const handleModeChange = async (mode: AirConditionerMode) => {
     setLoading(true);
+    setError(null);
     try {
       await IotService.setMode(mode);
-      setStatus(status ? { ...status, mode } : null);
-    } catch (error) {
+      setStatus({ ...status, mode });
+    } catch (error: any) {
       console.error('Failed to set mode:', error);
+      setError(error.message || '모드 설정에 실패했습니다.');
     } finally {
       setLoading(false);
     }
@@ -96,11 +112,13 @@ const Iot: React.FC = () => {
 
   const handleFanSpeedChange = async (fanSpeed: FanSpeed) => {
     setLoading(true);
+    setError(null);
     try {
       await IotService.setFanSpeed(fanSpeed);
-      setStatus(status ? { ...status, fanSpeed } : null);
-    } catch (error) {
+      setStatus({ ...status, fanSpeed });
+    } catch (error: any) {
       console.error('Failed to set fan speed:', error);
+      setError(error.message || '풍량 설정에 실패했습니다.');
     } finally {
       setLoading(false);
     }
@@ -134,35 +152,44 @@ const Iot: React.FC = () => {
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen>
-        <IonHeader collapse="condense">
+        <IonHeader>
           <IonToolbar>
             <IonTitle size="large">에어컨 제어</IonTitle>
           </IonToolbar>
         </IonHeader>
 
         <div className="container">
-          {/* 현재 상태 */}
-          {status && (
+          {/* 에러 메시지 */}
+          {error && (
             <IonCard>
-              <IonCardHeader>
-                <IonCardTitle>현재 상태</IonCardTitle>
-              </IonCardHeader>
               <IonCardContent>
-                <IonItem>
-                  <IonLabel>
-                    <h2>현재 온도</h2>
-                    <p>{status.currentTemperature}°C</p>
-                  </IonLabel>
-                </IonItem>
-                <IonItem>
-                  <IonLabel>
-                    <h2>공기질</h2>
-                    <p>{status.airQuality}</p>
-                  </IonLabel>
-                </IonItem>
+                <IonText color="danger">
+                  <p>{error}</p>
+                </IonText>
               </IonCardContent>
             </IonCard>
           )}
+
+          {/* 현재 상태 */}
+          <IonCard>
+            <IonCardHeader>
+              <IonCardTitle>현재 상태</IonCardTitle>
+            </IonCardHeader>
+            <IonCardContent>
+              <IonItem>
+                <IonLabel>
+                  <h2>현재 온도</h2>
+                  <p>{status.currentTemperature}°C</p>
+                </IonLabel>
+              </IonItem>
+              <IonItem>
+                <IonLabel>
+                  <h2>공기질</h2>
+                  <p>{status.airQuality}</p>
+                </IonLabel>
+              </IonItem>
+            </IonCardContent>
+          </IonCard>
 
           {/* 전원 제어 */}
           <IonCard>
@@ -172,11 +199,11 @@ const Iot: React.FC = () => {
             <IonCardContent>
               <IonButton
                 expand="block"
-                color={status?.power ? 'danger' : 'success'}
-                onClick={() => handlePowerToggle(!status?.power)}
+                color={status.power ? 'danger' : 'success'}
+                onClick={() => handlePowerToggle(!status.power)}
                 disabled={loading}
               >
-                {status?.power ? '전원 끄기' : '전원 켜기'}
+                {status.power ? '전원 끄기' : '전원 켜기'}
               </IonButton>
               <IonButton
                 expand="block"
@@ -191,11 +218,11 @@ const Iot: React.FC = () => {
           </IonCard>
 
           {/* 목표 온도 */}
-          {status && status.power && (
-            <IonCard>
-              <IonCardHeader>
-                <IonCardTitle>목표 온도</IonCardTitle>
-              </IonCardHeader>
+          {status.power && (
+          <IonCard>
+            <IonCardHeader>
+              <IonCardTitle>목표 온도</IonCardTitle>
+            </IonCardHeader>
               <IonCardContent>
                 <IonItem>
                   <IonLabel>
@@ -259,11 +286,11 @@ const Iot: React.FC = () => {
           )}
 
           {/* 작동 모드 */}
-          {status && status.power && (
-            <IonCard>
-              <IonCardHeader>
-                <IonCardTitle>작동 모드</IonCardTitle>
-              </IonCardHeader>
+          {status.power && (
+          <IonCard>
+            <IonCardHeader>
+              <IonCardTitle>작동 모드</IonCardTitle>
+            </IonCardHeader>
               <IonCardContent>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   <IonButton
@@ -304,11 +331,11 @@ const Iot: React.FC = () => {
           )}
 
           {/* 풍량 조절 */}
-          {status && status.power && (
-            <IonCard>
-              <IonCardHeader>
-                <IonCardTitle>풍량</IonCardTitle>
-              </IonCardHeader>
+          {status.power && (
+          <IonCard>
+            <IonCardHeader>
+              <IonCardTitle>풍량</IonCardTitle>
+            </IonCardHeader>
               <IonCardContent>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   <IonButton

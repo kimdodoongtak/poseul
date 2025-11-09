@@ -168,3 +168,36 @@ ion-card-content {
   font-weight: normal;
   line-height: 1.4;
 }
+
+/* 타이틀 텍스트 상자 그라데이션 설정 */
+ion-title {
+  position: relative !important;
+}
+
+ion-title::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: calc(100% + 80px);
+  height: calc(100% + 40px);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  background-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  border-radius: 12px !important;
+  z-index: -1;
+  padding-top: 20px !important;
+  padding-bottom: 20px !important;
+  padding-left: 28px !important;
+  padding-right: 28px !important;
+  box-sizing: border-box;
+  margin: 0 !important;
+  border: none !important;
+}
+
+/* IonContent 안의 헤더 항상 표시 (모든 페이지) */
+ion-content ion-header {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 10 !important;
+}

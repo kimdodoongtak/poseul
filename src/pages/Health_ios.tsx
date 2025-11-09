@@ -639,7 +639,7 @@ const Health_ios: React.FC = () => {
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen>
-        <IonHeader collapse="condense">
+        <IonHeader>
           <IonToolbar>
             <IonTitle size="large">포슬💭</IonTitle>
           </IonToolbar>
