@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- AI Service Poseul Icon -->
+    <!-- Brain/AI symbol -->
+    <path
+        android:fillColor="@color/ic_launcher_foreground"
+        android:pathData="M54,20C40,20 30,30 30,44C30,50 32,55 35,58C38,61 42,63 46,63C50,63 54,61 58,58C61,55 63,50 63,44C63,30 53,20 54,20Z"/>
+    
+    <!-- Circuit pattern -->
+    <path
+        android:fillColor="@color/ic_launcher_foreground"
+        android:pathData="M25,35L35,35L35,40L25,40Z"/>
+    <path
+        android:fillColor="@color/ic_launcher_foreground"
+        android:pathData="M73,35L83,35L83,40L73,40Z"/>
+    <path
+        android:fillColor="@color/ic_launcher_foreground"
+        android:pathData="M40,25L45,25L45,35L40,35Z"/>
+    <path
+        android:fillColor="@color/ic_launcher_foreground"
+        android:pathData="M63,25L68,25L68,35L63,35Z"/>
+    
+    <!-- Data flow lines -->
+    <path
+        android:fillColor="@color/ic_launcher_foreground"
+        android:pathData="M35,45L40,50L45,45L50,50L55,45L60,50L65,45L70,50L73,45"/>
+    
+    <!-- Temperature sensor symbol -->
+    <path
+        android:fillColor="@color/ic_launcher_foreground"
+        android:pathData="M45,55C45,52 47,50 50,50C53,50 55,52 55,55C55,58 53,60 50,60C47,60 45,58 45,55Z"/>
+    <path
+        android:fillColor="@color/ic_launcher_foreground"
+        android:pathData="M50,60L50,70L48,70L48,68L50,68Z"/>
+    
+    <!-- Heart rate symbol -->
+    <path
+        android:fillColor="@color/ic_launcher_foreground"
+        android:pathData="M60,55C60,52 62,50 65,50C68,50 70,52 70,55C70,58 68,60 65,60C62,60 60,58 60,55Z"/>
+    <path
+        android:fillColor="@color/ic_launcher_foreground"
+        android:pathData="M65,60L65,70L63,70L63,68L65,68Z"/>
+</vector>

@@ -47,8 +47,14 @@ const Iot: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    // 페이지 로드 시에만 상태 조회
-    loadStatus();
+    // UI가 먼저 렌더링되도록 지연 후 상태 조회
+    const timeoutId = setTimeout(() => {
+      loadStatus();
+    }, 500); // 500ms 지연
+    
+    return () => {
+      clearTimeout(timeoutId);
+    };
   }, [loadStatus]);
 
   const handlePowerToggle = async (power: boolean) => {

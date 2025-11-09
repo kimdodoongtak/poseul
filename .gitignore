@@ -14,7 +14,11 @@
 
 # Capacitor build folders (각자 로컬에서만 생성됨)
 /ios
-/android
+
+# Large model files (GitHub 100MB 제한)
+*.pkl
+android/plus/model/pycode/*.pkl
+**/ai_thermal_model*.pkl
 
 # misc
 .DS_Store

@@ -33,14 +33,14 @@ class HealthDataService {
       // 플랫폼별 기본 URL 설정
       if (Capacitor.isNativePlatform()) {
         if (Capacitor.getPlatform() === 'android') {
-          this.baseUrl = 'http://10.0.2.2:5000';
+          this.baseUrl = 'http://10.0.2.2:3000';
         } else if (Capacitor.getPlatform() === 'ios') {
-          this.baseUrl = 'http://localhost:5000';
+          this.baseUrl = 'http://localhost:3000';
         } else {
-          this.baseUrl = 'http://localhost:5000';
+          this.baseUrl = 'http://localhost:3000';
         }
       } else {
-        this.baseUrl = 'http://localhost:5000';
+        this.baseUrl = 'http://localhost:3000';
       }
     }
   }

@@ -46,16 +46,16 @@ class IotService {
         if (Capacitor.getPlatform() === 'android') {
           // 에뮬레이터: 10.0.2.2, 실제 기기: 컴퓨터 IP 주소 필요
           // 기본값으로 에뮬레이터 사용 (실제 기기는 환경 변수로 설정)
-          this.baseUrl = 'http://10.0.2.2:5000';
+          this.baseUrl = 'http://10.0.2.2:3000';
         } else if (Capacitor.getPlatform() === 'ios') {
           // iOS 시뮬레이터: localhost, 실제 기기: 컴퓨터 IP 주소 필요
-          this.baseUrl = 'http://localhost:5000';
+          this.baseUrl = 'http://localhost:3000';
         } else {
-          this.baseUrl = 'http://localhost:5000';
+          this.baseUrl = 'http://localhost:3000';
         }
       } else {
         // 웹 개발 환경
-        this.baseUrl = 'http://localhost:5000';
+        this.baseUrl = 'http://localhost:3000';
       }
     }
   }
@@ -68,9 +68,9 @@ class IotService {
     try {
       console.log(`IoT 상태 조회 요청: ${this.baseUrl}/air_conditioner/state`);
       
-      // 타임아웃 설정 (5초)
+      // 타임아웃 설정 (3초로 단축하여 ANR 방지)
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
       
       const response = await fetch(`${this.baseUrl}/air_conditioner/state`, {
         method: 'GET',
@@ -165,13 +165,21 @@ class IotService {
       }
 
       console.log(`IoT 제어 요청: ${this.baseUrl}/air_conditioner/control`, serverRequest);
+      
+      // 타임아웃 설정 (3초로 단축하여 ANR 방지)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
+      
       const response = await fetch(`${this.baseUrl}/air_conditioner/control`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(serverRequest),
+        signal: controller.signal,
       });
+      
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -191,6 +199,15 @@ class IotService {
       };
     } catch (error: any) {
       console.error('Failed to control air conditioner:', error);
+      
+      // 타임아웃 에러 처리
+      if (error.name === 'AbortError') {
+        return {
+          success: false,
+          message: '서버 응답 시간 초과. 서버가 실행 중인지 확인해주세요.',
+        };
+      }
+      
       return {
         success: false,
         message: error.message || '제어 실패',

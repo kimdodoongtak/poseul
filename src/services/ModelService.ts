@@ -38,16 +38,16 @@ class ModelService {
         if (Capacitor.getPlatform() === 'android') {
           // 에뮬레이터: 10.0.2.2, 실제 기기: 컴퓨터 IP 주소 필요
           // 기본값으로 에뮬레이터 사용 (실제 기기는 환경 변수로 설정)
-          this.baseUrl = 'http://10.0.2.2:5000';
+          this.baseUrl = 'http://10.0.2.2:3000';
         } else if (Capacitor.getPlatform() === 'ios') {
           // iOS 시뮬레이터: localhost, 실제 기기: 컴퓨터 IP 주소 필요
-          this.baseUrl = 'http://localhost:5000';
+          this.baseUrl = 'http://localhost:3000';
         } else {
-          this.baseUrl = 'http://localhost:5000';
+          this.baseUrl = 'http://localhost:3000';
         }
       } else {
         // 웹 개발 환경
-        this.baseUrl = 'http://localhost:5000';
+        this.baseUrl = 'http://localhost:3000';
       }
     }
   }

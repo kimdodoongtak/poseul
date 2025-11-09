@@ -2,8 +2,8 @@ import Foundation
 import Capacitor
 import HealthKit
 
-@objc(HealthKitPlugin)
-public class HealthKitPlugin: CAPPlugin {
+@objc(HealthData)
+public class HealthData: CAPPlugin {
     private let healthStore = HKHealthStore()
     private var backgroundQuery: HKObserverQuery?
     
@@ -195,6 +195,26 @@ public class HealthKitPlugin: CAPPlugin {
             healthStore.stop(query)
             backgroundQuery = nil
         }
+    }
+    
+    @objc func saveUserInfo(_ call: CAPPluginCall) {
+        guard let age = call.getString("age"),
+              let bmi = call.getString("bmi") else {
+            call.reject("age and bmi parameters are required")
+            return
+        }
+        
+        // UserDefaults에 저장
+        let defaults = UserDefaults.standard
+        defaults.set(age, forKey: "userAge")
+        defaults.set(bmi, forKey: "userBmi")
+        
+        // 성별도 저장 (있는 경우)
+        if let gender = call.getString("gender") {
+            defaults.set(gender, forKey: "userGender")
+        }
+        
+        call.resolve(["success": true])
     }
 }
 

@@ -137,24 +137,43 @@ const Health_ios: React.FC = () => {
     }, 500);
   }, []);
 
-  // 10분마다 자동으로 최신 데이터 가져오기 (iOS만)
+  // 10분마다 자동으로 최신 데이터 가져오기 (iOS는 HealthKit, 안드로이드는 서버에서)
   useEffect(() => {
-    if (!healthDataPlugin || platform !== 'ios') return;
-    
-    // 초기 로드 후 첫 데이터 가져오기
-    const initialTimeout = setTimeout(() => {
-      fetchHealthData(healthDataPlugin);
-    }, 1000); // 1초 후 첫 데이터 가져오기
-    
-    // 10분마다 자동으로 데이터 가져오기
-    const interval = setInterval(() => {
-      fetchHealthData(healthDataPlugin);
-    }, 10 * 60 * 1000); // 10분 = 600000ms
+    // iOS는 HealthKit 플러그인 사용
+    if (platform === 'ios' && healthDataPlugin) {
+      // 초기 로드 후 첫 데이터 가져오기
+      const initialTimeout = setTimeout(() => {
+        fetchHealthData(healthDataPlugin);
+      }, 1000); // 1초 후 첫 데이터 가져오기
+      
+      // 10분마다 자동으로 데이터 가져오기
+      const interval = setInterval(() => {
+        fetchHealthData(healthDataPlugin);
+      }, 10 * 60 * 1000); // 10분 = 600000ms
 
-    return () => {
-      clearTimeout(initialTimeout);
-      clearInterval(interval);
-    };
+      return () => {
+        clearTimeout(initialTimeout);
+        clearInterval(interval);
+      };
+    }
+    
+    // 안드로이드는 서버에서 데이터 가져오기
+    if (platform === 'android') {
+      // UI가 먼저 렌더링되도록 지연 후 데이터 가져오기 (ANR 방지)
+      const initialTimeout = setTimeout(() => {
+        fetchHealthDataFromServer();
+      }, 500); // 500ms 지연으로 UI 먼저 렌더링
+      
+      // 10분마다 자동으로 데이터 가져오기
+      const interval = setInterval(() => {
+        fetchHealthDataFromServer();
+      }, 10 * 60 * 1000); // 10분 = 600000ms
+
+      return () => {
+        clearTimeout(initialTimeout);
+        clearInterval(interval);
+      };
+    }
   }, [healthDataPlugin, platform]);
 
 
@@ -328,6 +347,77 @@ const Health_ios: React.FC = () => {
     }
   };
 
+  // 안드로이드에서 서버에서 건강 데이터 가져오기
+  const fetchHealthDataFromServer = async () => {
+    try {
+      // 서버 URL 설정 (플랫폼별로 자동 설정)
+      const { Capacitor } = await import('@capacitor/core');
+      const currentPlatform = Capacitor.getPlatform();
+      let serverURL = 'http://localhost:3000/healthdata/latest';
+      
+      if (currentPlatform === 'android') {
+        // 안드로이드 에뮬레이터: 10.0.2.2, 실제 기기: 컴퓨터 IP 주소 필요
+        serverURL = 'http://10.0.2.2:3000/healthdata/latest';
+      } else if (currentPlatform === 'ios') {
+        serverURL = 'http://localhost:3000/healthdata/latest';
+      }
+      
+      console.log('📱 서버에서 건강 데이터 가져오기 시작:', serverURL);
+      
+      // 타임아웃 설정 (3초로 단축하여 ANR 방지)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
+      
+      const response = await fetch(serverURL, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        signal: controller.signal,
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+      
+      const result = await response.json();
+      
+      if (result.success && result.data) {
+        // 서버에서 받은 데이터를 UI 형식으로 변환
+        setHealthData({
+          heartRate: result.data.heartRate || null,
+          hrv: result.data.hrv || null,
+          oxygenSaturation: result.data.oxygenSaturation || null,
+        });
+        
+        console.log('✅ 서버에서 건강 데이터 가져오기 성공:', result.data);
+      } else {
+        console.log('📊 서버에 저장된 건강 데이터가 없습니다.');
+        setHealthData({
+          heartRate: null,
+          hrv: null,
+          oxygenSaturation: null,
+        });
+      }
+    } catch (error: any) {
+      // 타임아웃 에러는 조용히 처리
+      if (error.name === 'AbortError') {
+        console.log('⏱️ 서버 응답 시간 초과 (3초)');
+      } else {
+        console.error('서버에서 건강 데이터 가져오기 실패:', error);
+      }
+      // 에러 발생 시 조용히 실패 (이전 동작 유지)
+      setHealthData({
+        heartRate: null,
+        hrv: null,
+        oxygenSaturation: null,
+      });
+    }
+  };
+
   const sendToServer = async (data: {
     heartRate: number | null;
     HRV: number | null;
@@ -337,7 +427,7 @@ const Health_ios: React.FC = () => {
     gender: number | null;
   }) => {
     // 서버 URL 설정 (환경 변수나 설정에서 가져올 수 있음)
-    const serverURL = 'http://192.168.68.74:3000/healthdata'; // 현재 컴퓨터 IP 주소
+    const serverURL = 'http://192.168.0.143:3000/healthdata'; // 현재 컴퓨터 IP 주소
     // 또는 UserDefaults에서 가져오기 (iOS)
     // const serverURL = localStorage.getItem('serverURL') || 'http://192.168.68.74:3000/healthdata';
 
@@ -770,8 +860,8 @@ const Health_ios: React.FC = () => {
                   />
                 </IonItem>
                 {platform === 'android' && (
-                  <IonText color="warning">
-                    <p>Android에서는 아직 HealthData가 구현되지 않았습니다.</p>
+                  <IonText color="medium">
+                    <p>Android에서는 서버에서 저장된 건강 데이터를 표시합니다. (iOS에서 수집한 데이터)</p>
                   </IonText>
                 )}
                 {platform === 'web' && (
@@ -786,7 +876,7 @@ const Health_ios: React.FC = () => {
             <IonCard>
               <IonCardHeader>
                 <IonCardTitle>
-                  {platform === 'ios' ? 'HealthKit 데이터' : platform === 'android' ? 'HealthData (Android - 구현 예정)' : 'HealthData (웹 미지원)'}
+                  {platform === 'ios' ? 'HealthKit 데이터' : platform === 'android' ? 'HealthData (서버에서 가져오기)' : 'HealthData (웹 미지원)'}
                 </IonCardTitle>
               </IonCardHeader>
               <IonCardContent>
