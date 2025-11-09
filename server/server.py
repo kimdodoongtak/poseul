@@ -3,13 +3,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
 from sqlalchemy import text
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 import os
 import sys
 import numpy as np
 import pandas as pd
 import joblib
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.interval import IntervalTrigger
+import air_conditioner_auto_control
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -438,6 +441,14 @@ async def receive_health_data(data: HealthData):
             })
             
             conn.commit()
+            
+            # predicted_skin_temp가 들어올 때마다 분류하여 temp_change 테이블에 저장
+            air_conditioner_auto_control.classify_and_save_feedback(
+                engine=engine,
+                predicted_skin_temp=predicted_skin_temp,
+                air_conditioner_available=AIR_CONDITIONER_AVAILABLE,
+                get_air_conditioner_state_func=get_air_conditioner_state
+            )
         
         logger.info(f"✅ 데이터가 DB에 저장되었습니다. (gender: {gender}, bmi: {bmi}, age: {age}, predicted_skin_temp: {predicted_skin_temp})")
         return {
@@ -1071,6 +1082,49 @@ async def test_db_connection():
             "error": error_msg,
             "message": "DB 연결 실패"
         }
+
+# ==================== 에어컨 자동 온도 조절 시스템 ====================
+
+# 스케줄러 초기화
+scheduler = BackgroundScheduler()
+
+def adjust_air_conditioner_wrapper():
+    """스케줄러에서 호출할 래퍼 함수"""
+    air_conditioner_auto_control.adjust_air_conditioner(
+        engine=engine,
+        air_conditioner_available=AIR_CONDITIONER_AVAILABLE,
+        get_air_conditioner_state_func=get_air_conditioner_state,
+        set_temperature_func=set_temperature
+    )
+
+scheduler.add_job(
+    adjust_air_conditioner_wrapper,
+    trigger=IntervalTrigger(minutes=30),
+    id='air_conditioner_adjustment',
+    name='에어컨 자동 온도 조절',
+    replace_existing=True
+)
+
+# 서버 시작 시 초기 세팅 및 스케줄러 시작
+@app.on_event("startup")
+async def startup_event():
+    """서버 시작 시 초기 세팅 및 스케줄러 시작"""
+    logger.info("🚀 서버 시작 중...")
+    air_conditioner_auto_control.initialize_air_conditioner_settings(
+        engine=engine,
+        air_conditioner_available=AIR_CONDITIONER_AVAILABLE,
+        get_air_conditioner_state_func=get_air_conditioner_state,
+        set_temperature_func=set_temperature
+    )
+    scheduler.start()
+    logger.info("✅ 스케줄러 시작 완료 (30분마다 자동 조절)")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """서버 종료 시 스케줄러 종료"""
+    logger.info("🛑 서버 종료 중...")
+    scheduler.shutdown()
+    logger.info("✅ 스케줄러 종료 완료")
 
 if __name__ == "__main__":
     import uvicorn
