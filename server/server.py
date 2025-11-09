@@ -94,6 +94,11 @@ def load_model():
 # 서버 시작 시 모델 로드
 model = load_model()
 
+# ==================== 피부온도 분류 기준 설정 ====================
+# 나중에 경로로 설정 가능하도록 변수로 관리
+COLD_THRESHOLD = 34.5  # 추움 분류 기준 (나중에 경로로 설정 가능)
+HOT_THRESHOLD = 35.6    # 더움 분류 기준 (나중에 경로로 설정 가능)
+
 # 에어컨 제어 모듈 import
 # IoT 폴더의 모듈 import를 위한 경로 추가
 PROJECT_ROOT = os.path.dirname(BASE_DIR)  # server 디렉토리의 상위 디렉토리 (프로젝트 루트)
@@ -447,7 +452,9 @@ async def receive_health_data(data: HealthData):
                 engine=engine,
                 predicted_skin_temp=predicted_skin_temp,
                 air_conditioner_available=AIR_CONDITIONER_AVAILABLE,
-                get_air_conditioner_state_func=get_air_conditioner_state
+                get_air_conditioner_state_func=get_air_conditioner_state,
+                cold_threshold=COLD_THRESHOLD,
+                hot_threshold=HOT_THRESHOLD
             )
         
         logger.info(f"✅ 데이터가 DB에 저장되었습니다. (gender: {gender}, bmi: {bmi}, age: {age}, predicted_skin_temp: {predicted_skin_temp})")

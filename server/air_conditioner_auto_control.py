@@ -74,7 +74,9 @@ def classify_and_save_feedback(
     engine,
     predicted_skin_temp: float,
     air_conditioner_available: bool,
-    get_air_conditioner_state_func
+    get_air_conditioner_state_func,
+    cold_threshold: float = 34.5,
+    hot_threshold: float = 35.6
 ):
     """
     predicted_skin_temp 예측값이 들어올 때마다 분류값에 따라 H/C/G로 분류하여 temp_change 테이블에 저장
@@ -84,12 +86,14 @@ def classify_and_save_feedback(
         predicted_skin_temp: 예측된 피부 온도
         air_conditioner_available: 에어컨 모듈 사용 가능 여부
         get_air_conditioner_state_func: 에어컨 상태 조회 함수
+        cold_threshold: 추움 분류 기준 (기본값: 34.5)
+        hot_threshold: 더움 분류 기준 (기본값: 35.6)
     """
     try:
-        # 피부온도 분류 (34.5 미만: 추움(C), 35.6 초과: 더움(H), 그 외: 쾌적(G))
-        if predicted_skin_temp < 34.5:
+        # 피부온도 분류 (cold_threshold 미만: 추움(C), hot_threshold 초과: 더움(H), 그 외: 쾌적(G))
+        if predicted_skin_temp < cold_threshold:
             classification = 'C'  # 추움
-        elif predicted_skin_temp > 35.6:
+        elif predicted_skin_temp > hot_threshold:
             classification = 'H'  # 더움
         else:
             classification = 'G'  # 쾌적
