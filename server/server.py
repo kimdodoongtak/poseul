@@ -52,9 +52,9 @@ engine = sqlalchemy.create_engine(
 )
 
 # 모델 로드
-# 프로젝트 루트 기준으로 모델 파일 경로 설정
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MODEL_FILE = os.path.join(BASE_DIR, 'android', 'plus', 'model', 'pycode', 'ai_thermal_model_final.pkl')
+# 서버 디렉토리 기준으로 모델 파일 경로 설정
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_FILE = os.path.join(BASE_DIR, 'ai_thermal_model_final.pkl')
 
 model = None
 model_loaded = False
@@ -93,7 +93,8 @@ model = load_model()
 
 # 에어컨 제어 모듈 import
 # IoT 폴더의 모듈 import를 위한 경로 추가
-IOT_MODULE_PATH = os.path.join(BASE_DIR, 'android', 'plus', 'IoT')
+PROJECT_ROOT = os.path.dirname(BASE_DIR)  # server 디렉토리의 상위 디렉토리 (프로젝트 루트)
+IOT_MODULE_PATH = os.path.join(PROJECT_ROOT, 'android', 'plus', 'IoT')
 sys.path.insert(0, IOT_MODULE_PATH)
 
 AIR_CONDITIONER_AVAILABLE = False
@@ -112,6 +113,53 @@ try:
 except ImportError as e:
     logger.warning(f"⚠️  에어컨 모듈을 불러올 수 없습니다: {e}")
     AIR_CONDITIONER_AVAILABLE = False
+
+# ==================== 쾌적 온도 계산 함수 ====================
+
+def calculate_comfort_temperature(gender: str, age: int, bmi: float) -> tuple[float, float]:
+    """
+    성별, 나이, BMI 기반 실내 쾌적 온도 범위 계산
+    
+    Args:
+        gender: 성별 ('F': 여성, 'M': 남성)
+        age: 나이
+        bmi: 체질량지수
+    
+    Returns:
+        (min_temp, max_temp): 쾌적 온도 범위 (최소 온도, 최대 온도)
+    """
+    # 기본 온도 범위
+    base_min, base_max = 19.0, 21.0
+    
+    # 1️⃣ 성별 조정
+    if gender.upper() == 'F':  # 여성
+        delta_gender = 1.0
+    else:  # 남성 ('M')
+        delta_gender = 0.0
+    
+    # 2️⃣ 나이 조정
+    if 60 <= age < 70:
+        delta_age = 0.5
+    elif 70 <= age <= 80:
+        delta_age = 1.0
+    else:
+        delta_age = 0.0
+    
+    # 3️⃣ BMI 조정
+    if bmi < 18.5:
+        delta_bmi = 1.0
+    elif 18.5 <= bmi < 25:
+        delta_bmi = 0.0
+    elif 25 <= bmi < 30:
+        delta_bmi = -0.5
+    else:  # bmi >= 30
+        delta_bmi = -1.0
+    
+    # 최종 온도 계산
+    min_temp = base_min + delta_gender + delta_age + delta_bmi
+    max_temp = base_max + delta_gender + delta_age + delta_bmi
+    
+    return round(min_temp, 1), round(max_temp, 1)
 
 # ==================== 모델 예측 함수 ====================
 
@@ -215,6 +263,10 @@ class AirConditionerControlRequest(BaseModel):
     strength: Optional[str] = None
     power_on: Optional[bool] = True
 
+class TemperatureFeedbackRequest(BaseModel):
+    feedback: str  # 'hot', 'cold', 'comfortable'
+    date: Optional[str] = None  # ISO format date string
+
 # ==================== Health Data API ====================
 
 @app.post("/healthdata")
@@ -257,15 +309,124 @@ async def receive_health_data(data: HealthData):
                 # 예측 실패 시 기본값 유지 (0.0)
         
         # DB에 데이터 저장
+        comfort_min = None
+        comfort_max = None
+        
         with engine.connect() as conn:
-            # predicted_results 테이블에 데이터 삽입
+            # 기존 사용자 정보 확인 (나이, BMI, 성별이 있는지)
+            # 먼저 테이블 구조 확인
+            try:
+                columns_query = text("""
+                    SELECT COLUMN_NAME 
+                    FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_SCHEMA = 'main' 
+                    AND TABLE_NAME = 'predicted_results'
+                """)
+                columns_result = conn.execute(columns_query)
+                columns = [row.COLUMN_NAME for row in columns_result]
+                
+                # 날짜 컬럼 찾기
+                date_column = None
+                for col in ['created_at', 'timestamp', 'date', 'datetime', 'createdAt']:
+                    if col in columns or col.lower() in [c.lower() for c in columns]:
+                        date_column = col
+                        break
+                
+                # ORDER BY 절 생성
+                if date_column:
+                    order_by = f"ORDER BY {date_column} DESC"
+                else:
+                    order_by = "ORDER BY 1 DESC"
+            except Exception as e:
+                logger.warning(f"테이블 구조 확인 실패, 기본 쿼리 사용: {e}")
+                order_by = "ORDER BY 1 DESC"
+            
+            # predicted_results에서 기존 사용자 정보 확인 (나이, BMI, 성별만)
+            check_query = text(f"""
+                SELECT age, bmi, gender
+                FROM predicted_results
+                WHERE age IS NOT NULL 
+                  AND bmi IS NOT NULL 
+                  AND gender IS NOT NULL
+                {order_by}
+                LIMIT 1
+            """)
+            
+            existing_user = conn.execute(check_query).fetchone()
+            
+            # room_threshold 테이블에서 기존 쾌적 온도 범위 확인
+            try:
+                table_check = text("""
+                    SELECT COUNT(*) as count
+                    FROM information_schema.tables 
+                    WHERE table_schema = 'main' 
+                    AND table_name = 'room_threshold'
+                """)
+                table_exists = conn.execute(table_check).fetchone().count > 0
+                
+                if table_exists:
+                    # room_threshold에서 기존 임계값 확인
+                    threshold_query = text("SELECT min_temp, max_temp FROM room_threshold LIMIT 1")
+                    threshold_result = conn.execute(threshold_query).fetchone()
+                    
+                    # 기존 사용자 정보가 있고, 나이/BMI/성별이 동일하고, room_threshold에 값이 있으면 사용
+                    if existing_user and existing_user.age == age and existing_user.bmi == bmi and existing_user.gender == gender:
+                        if threshold_result and threshold_result.min_temp is not None and threshold_result.max_temp is not None:
+                            comfort_min = float(threshold_result.min_temp)
+                            comfort_max = float(threshold_result.max_temp)
+                            logger.info(f"📋 기존 쾌적 온도 범위 사용 (room_threshold): {comfort_min}~{comfort_max}°C")
+            except Exception as e:
+                logger.warning(f"room_threshold 확인 실패: {e}")
+            
+            # 쾌적 온도 범위가 없으면 계산 (처음 입력이거나 정보가 변경된 경우)
+            if comfort_min is None or comfort_max is None:
+                comfort_min, comfort_max = calculate_comfort_temperature(gender, int(age), bmi)
+                logger.info(f"🌡️ 쾌적 온도 범위 계산 (새로 계산): {comfort_min}~{comfort_max}°C (gender: {gender}, age: {int(age)}, bmi: {bmi})")
+            
+            # room_threshold 테이블에 임계값 저장 (처음 한 번만)
+            try:
+                # room_threshold 테이블 존재 여부 확인
+                table_check = text("""
+                    SELECT COUNT(*) as count
+                    FROM information_schema.tables 
+                    WHERE table_schema = 'main' 
+                    AND table_name = 'room_threshold'
+                """)
+                table_exists = conn.execute(table_check).fetchone().count > 0
+                
+                if table_exists:
+                    # 테이블이 있으면 레코드가 있는지 확인
+                    check_threshold = text("SELECT COUNT(*) as count FROM room_threshold")
+                    threshold_count = conn.execute(check_threshold).fetchone().count
+                    
+                    # 레코드가 없을 때만 삽입 (처음 한 번만)
+                    if threshold_count == 0:
+                        try:
+                            insert_threshold = text("""
+                                INSERT INTO room_threshold (min_temp, max_temp)
+                                VALUES (:min_temp, :max_temp)
+                            """)
+                            conn.execute(insert_threshold, {
+                                'min_temp': comfort_min,
+                                'max_temp': comfort_max
+                            })
+                            logger.info(f"✅ room_threshold 테이블에 임계값 저장 (처음 저장): {comfort_min}~{comfort_max}°C")
+                        except Exception as e:
+                            logger.warning(f"room_threshold 저장 실패: {e}")
+                    else:
+                        logger.info(f"📋 room_threshold 테이블에 이미 임계값이 저장되어 있습니다. (건너뜀)")
+                else:
+                    logger.warning("⚠️ room_threshold 테이블이 존재하지 않습니다.")
+            except Exception as e:
+                logger.warning(f"room_threshold 테이블 처리 중 오류: {e}")
+            
+            # predicted_results 테이블에 데이터 삽입 (쾌적 온도 범위는 저장하지 않음)
             insert_query = text("""
                 INSERT INTO predicted_results 
                 (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp)
                 VALUES 
                 (:heart_rate, :hrv, :oxygen_sat, :bmi, :age, :gender, :predicted_temp)
             """)
-            
             conn.execute(insert_query, {
                 'heart_rate': data.heartRate,
                 'hrv': data.HRV,
@@ -275,13 +436,18 @@ async def receive_health_data(data: HealthData):
                 'gender': gender,
                 'predicted_temp': predicted_skin_temp
             })
+            
             conn.commit()
         
         logger.info(f"✅ 데이터가 DB에 저장되었습니다. (gender: {gender}, bmi: {bmi}, age: {age}, predicted_skin_temp: {predicted_skin_temp})")
         return {
             "status": "ok", 
             "message": "Data saved successfully",
-            "predicted_skin_temp": predicted_skin_temp
+            "predicted_skin_temp": predicted_skin_temp,
+            "comfort_temperature_range": {
+                "min": comfort_min,
+                "max": comfort_max
+            }
         }
     
     except HTTPException:
@@ -488,6 +654,115 @@ async def model_info():
         'model_loaded': model_loaded
     }
 
+@app.get("/comfort_temperature")
+async def get_comfort_temperature():
+    """DB에서 저장된 쾌적 온도 범위 조회 (계산하지 않고 저장된 값 사용)"""
+    try:
+        logger.info("🌡️ 쾌적 온도 범위 조회 요청")
+        
+        with engine.connect() as conn:
+            # 먼저 테이블 구조 확인
+            try:
+                columns_query = text("""
+                    SELECT COLUMN_NAME 
+                    FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_SCHEMA = 'main' 
+                    AND TABLE_NAME = 'predicted_results'
+                """)
+                columns_result = conn.execute(columns_query)
+                columns = [row.COLUMN_NAME for row in columns_result]
+                
+                # 날짜 컬럼 찾기
+                date_column = None
+                for col in ['created_at', 'timestamp', 'date', 'datetime', 'createdAt']:
+                    if col in columns or col.lower() in [c.lower() for c in columns]:
+                        date_column = col
+                        break
+                
+                # ORDER BY 절 생성
+                if date_column:
+                    order_by = f"ORDER BY {date_column} DESC"
+                else:
+                    order_by = "ORDER BY 1 DESC"
+                
+                # 쾌적 온도 컬럼 존재 여부 확인
+                has_comfort_columns = 'comfort_min_temp' in columns or 'comfort_min_temp'.lower() in [c.lower() for c in columns]
+                
+            except Exception as e:
+                logger.warning(f"테이블 구조 확인 실패, 기본 쿼리 사용: {e}")
+                order_by = "ORDER BY 1 DESC"
+                has_comfort_columns = False
+            
+            # 저장된 쾌적 온도 범위가 있으면 사용
+            if has_comfort_columns:
+                query = text(f"""
+                    SELECT gender, age, bmi, comfort_min_temp, comfort_max_temp
+                    FROM predicted_results
+                    WHERE gender IS NOT NULL 
+                      AND age IS NOT NULL 
+                      AND bmi IS NOT NULL
+                      AND comfort_min_temp IS NOT NULL
+                      AND comfort_max_temp IS NOT NULL
+                    {order_by}
+                    LIMIT 1
+                """)
+            else:
+                # 쾌적 온도 컬럼이 없으면 사용자 정보만 조회
+                query = text(f"""
+                    SELECT gender, age, bmi
+                    FROM predicted_results
+                    WHERE gender IS NOT NULL 
+                      AND age IS NOT NULL 
+                      AND bmi IS NOT NULL
+                    {order_by}
+                    LIMIT 1
+                """)
+            
+            result = conn.execute(query)
+            row = result.fetchone()
+            
+            if row is None:
+                logger.warning("⚠️ 사용자 정보가 없습니다.")
+                return {
+                    "success": False,
+                    "message": "사용자 정보가 없습니다. 먼저 건강 데이터를 저장해주세요.",
+                    "comfort_temperature_range": None
+                }
+            
+            # 저장된 쾌적 온도 범위가 있으면 사용
+            if has_comfort_columns and row.comfort_min_temp is not None and row.comfort_max_temp is not None:
+                comfort_min = float(row.comfort_min_temp)
+                comfort_max = float(row.comfort_max_temp)
+                logger.info(f"📋 저장된 쾌적 온도 범위 사용: {comfort_min}~{comfort_max}°C")
+            else:
+                # 저장된 값이 없으면 계산 (하지만 이 경우는 거의 발생하지 않아야 함)
+                gender = row.gender
+                age = int(row.age) if row.age else 0
+                bmi = float(row.bmi) if row.bmi else 0.0
+                comfort_min, comfort_max = calculate_comfort_temperature(gender, age, bmi)
+                logger.info(f"🌡️ 쾌적 온도 범위 계산 (저장된 값 없음): {comfort_min}~{comfort_max}°C")
+            
+            return {
+                "success": True,
+                "comfort_temperature_range": {
+                    "min": comfort_min,
+                    "max": comfort_max
+                },
+                "user_info": {
+                    "gender": row.gender,
+                    "age": int(row.age) if row.age else 0,
+                    "bmi": float(row.bmi) if row.bmi else 0.0
+                }
+            }
+            
+    except Exception as e:
+        logger.error(f"❌ 쾌적 온도 범위 조회 실패: {str(e)}")
+        return {
+            "success": False,
+            "message": f"쾌적 온도 범위 조회 실패: {str(e)}",
+            "comfort_temperature_range": None
+        }
+
 # ==================== 에어컨 제어 API ====================
 
 @app.get("/air_conditioner/state")
@@ -602,6 +877,133 @@ async def control_air_conditioner_api(data: AirConditionerControlRequest):
 @app.get("/")
 async def root():
     return {"message": "Unified Server is running (Health Data + Model Prediction + IoT Control)"}
+
+@app.post("/temperature_feedback")
+async def save_temperature_feedback(data: TemperatureFeedbackRequest):
+    """온도 피드백 저장 API"""
+    try:
+        logger.info(f"📝 온도 피드백 저장 요청: {data.dict()}")
+        
+        # 피드백 값을 코드로 변환 (C: 추움, H: 더움, G: 쾌적)
+        feedback_code = None
+        if data.feedback == 'cold':
+            feedback_code = 'C'
+        elif data.feedback == 'hot':
+            feedback_code = 'H'
+        elif data.feedback == 'comfortable':
+            feedback_code = 'G'
+        else:
+            logger.warning(f"⚠️ 알 수 없는 피드백 값: {data.feedback}")
+            return {
+                "success": False,
+                "message": f"알 수 없는 피드백 값: {data.feedback}"
+            }
+        
+        # 날짜 처리
+        feedback_date = data.date
+        if not feedback_date:
+            from datetime import datetime
+            feedback_date = datetime.now().isoformat()
+        
+        with engine.connect() as conn:
+            # room_threshold 테이블에 feedback 저장
+            try:
+                # room_threshold 테이블 존재 여부 확인
+                table_check = text("""
+                    SELECT COUNT(*) as count
+                    FROM information_schema.tables 
+                    WHERE table_schema = 'main' 
+                    AND table_name = 'room_threshold'
+                """)
+                table_exists = conn.execute(table_check).fetchone().count > 0
+                
+                if table_exists:
+                    # feedback 컬럼 존재 여부 확인
+                    columns_check = text("""
+                        SELECT COLUMN_NAME 
+                        FROM INFORMATION_SCHEMA.COLUMNS 
+                        WHERE TABLE_SCHEMA = 'main' 
+                        AND TABLE_NAME = 'room_threshold'
+                        AND COLUMN_NAME = 'feedback'
+                    """)
+                    has_feedback_column = conn.execute(columns_check).fetchone() is not None
+                    
+                    if has_feedback_column:
+                        # feedback 컬럼이 있으면 업데이트
+                        # id 컬럼이 있는지 확인
+                        id_check = text("""
+                            SELECT COLUMN_NAME 
+                            FROM INFORMATION_SCHEMA.COLUMNS 
+                            WHERE TABLE_SCHEMA = 'main' 
+                            AND TABLE_NAME = 'room_threshold'
+                            AND COLUMN_NAME = 'id'
+                        """)
+                        has_id = conn.execute(id_check).fetchone() is not None
+                        
+                        if has_id:
+                            # id가 있으면 첫 번째 레코드 업데이트
+                            update_query = text("""
+                                UPDATE room_threshold 
+                                SET feedback = :feedback
+                                WHERE id = (SELECT id FROM (SELECT id FROM room_threshold LIMIT 1) AS t)
+                            """)
+                        else:
+                            # id가 없으면 모든 레코드 업데이트 (단일 레코드 가정)
+                            update_query = text("""
+                                UPDATE room_threshold 
+                                SET feedback = :feedback
+                            """)
+                        
+                        conn.execute(update_query, {
+                            'feedback': feedback_code
+                        })
+                        conn.commit()
+                        logger.info(f"✅ room_threshold 테이블에 피드백 저장 완료: {feedback_code} ({data.feedback})")
+                    else:
+                        logger.warning("⚠️ room_threshold 테이블에 feedback 컬럼이 존재하지 않습니다.")
+                else:
+                    logger.warning("⚠️ room_threshold 테이블이 존재하지 않습니다.")
+            except Exception as e:
+                logger.error(f"❌ room_threshold 피드백 저장 실패: {str(e)}")
+            
+            # temperature_feedback 테이블에도 저장 (선택적)
+            try:
+                # temperature_feedback 테이블 존재 여부 확인
+                table_check = text("""
+                    SELECT COUNT(*) as count
+                    FROM information_schema.tables 
+                    WHERE table_schema = 'main' 
+                    AND table_name = 'temperature_feedback'
+                """)
+                table_exists = conn.execute(table_check).fetchone().count > 0
+                
+                if table_exists:
+                    # 테이블이 있으면 저장
+                    insert_query = text("""
+                        INSERT INTO temperature_feedback (feedback, feedback_date, created_at)
+                        VALUES (:feedback, :feedback_date, NOW())
+                    """)
+                    conn.execute(insert_query, {
+                        'feedback': data.feedback,
+                        'feedback_date': feedback_date
+                    })
+                    conn.commit()
+                    logger.info(f"✅ temperature_feedback 테이블에 피드백 저장 완료: {data.feedback}")
+            except Exception as e:
+                logger.warning(f"temperature_feedback 테이블 저장 실패 (선택적): {str(e)}")
+        
+        return {
+            "success": True,
+            "message": "피드백이 저장되었습니다.",
+            "feedback": data.feedback,
+            "feedback_code": feedback_code
+        }
+    except Exception as e:
+        logger.error(f"❌ 온도 피드백 저장 실패: {str(e)}")
+        return {
+            "success": False,
+            "message": f"피드백 저장 실패: {str(e)}"
+        }
 
 @app.get("/health")
 async def health_check():

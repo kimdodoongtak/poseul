@@ -41,7 +41,8 @@ class ModelService {
           this.baseUrl = 'http://10.0.2.2:3000';
         } else if (Capacitor.getPlatform() === 'ios') {
           // iOS 시뮬레이터: localhost, 실제 기기: 컴퓨터 IP 주소 필요
-          this.baseUrl = 'http://localhost:3000';
+          // 실제 기기에서는 환경 변수나 하드코딩된 IP 사용
+          this.baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://192.168.68.74:3000';
         } else {
           this.baseUrl = 'http://localhost:3000';
         }

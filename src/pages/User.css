@@ -152,3 +152,108 @@ ion-input::placeholder {
     color: #999;
   }
 }
+
+/* 피드백 모달 스타일 */
+.feedback-modal-toolbar {
+  --color: #333 !important;
+}
+
+.feedback-modal-toolbar::part(native) {
+  color: #333 !important;
+}
+
+.feedback-modal-title {
+  color: #333 !important;
+}
+
+ion-toolbar.feedback-modal-toolbar {
+  color: #333 !important;
+}
+
+ion-toolbar.feedback-modal-toolbar ion-title {
+  color: #333 !important;
+}
+
+.feedback-title {
+  color: #e8f4ff !important; /* 매우 밝은 연하늘색 */
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 0;
+  text-shadow: 0 1px 4px rgba(232, 244, 255, 0.3); /* 빛번짐 효과 (줄임) */
+}
+
+/* 쾌적했어요 버튼 스타일 (연두 그라데이션 - 채도 약간 낮춤) */
+.comfortable-feedback-button {
+  --background: linear-gradient(135deg, #A0E8A0 0%, #90E890 50%, #88E800 100%) !important;
+  --background-hover: linear-gradient(135deg, #90E890 0%, #88E800 100%) !important;
+  --background-activated: linear-gradient(135deg, #90E890 0%, #7AD800 100%) !important;
+  --color: white !important;
+  --box-shadow: 0 4px 16px rgba(136, 232, 0, 0.4) !important;
+  --border-radius: 12px !important;
+  font-weight: 600 !important;
+  text-transform: none !important;
+  transition: all 0.3s ease !important;
+}
+
+.comfortable-feedback-button:hover {
+  --box-shadow: 0 6px 20px rgba(136, 232, 0, 0.5) !important;
+  transform: translateY(-2px) !important;
+}
+
+.comfortable-feedback-button::part(native) {
+  background: linear-gradient(135deg, #A0E8A0 0%, #90E890 50%, #88E800 100%) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 16px rgba(136, 232, 0, 0.4) !important;
+  color: white !important;
+  font-weight: 600 !important;
+}
+
+ion-button.comfortable-feedback-button {
+  background: linear-gradient(135deg, #A0E8A0 0%, #90E890 50%, #88E800 100%) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 16px rgba(136, 232, 0, 0.4) !important;
+  color: white !important;
+}
+
+ion-button.comfortable-feedback-button::part(native) {
+  background: linear-gradient(135deg, #A0E8A0 0%, #90E890 50%, #88E800 100%) !important;
+  color: white !important;
+}
+
+/* 추웠어요 버튼 스타일 (하늘색 그라데이션) */
+.cold-feedback-button {
+  --background: linear-gradient(135deg, #E0F6FF 0%, #87CEEB 50%, #B0E0E6 100%) !important;
+  --background-hover: linear-gradient(135deg, #D0E6FF 0%, #7BC4E4 100%) !important;
+  --background-activated: linear-gradient(135deg, #87CEEB 0%, #9FD3E3 100%) !important;
+  --color: white !important;
+  --box-shadow: 0 4px 16px rgba(135, 206, 235, 0.4) !important;
+  --border-radius: 12px !important;
+  font-weight: 600 !important;
+  text-transform: none !important;
+  transition: all 0.3s ease !important;
+}
+
+.cold-feedback-button:hover {
+  --box-shadow: 0 6px 20px rgba(135, 206, 235, 0.5) !important;
+  transform: translateY(-2px) !important;
+}
+
+.cold-feedback-button::part(native) {
+  background: linear-gradient(135deg, #E0F6FF 0%, #87CEEB 50%, #B0E0E6 100%) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 16px rgba(135, 206, 235, 0.4) !important;
+  color: white !important;
+  font-weight: 600 !important;
+}
+
+ion-button.cold-feedback-button {
+  background: linear-gradient(135deg, #E0F6FF 0%, #87CEEB 50%, #B0E0E6 100%) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 16px rgba(135, 206, 235, 0.4) !important;
+  color: white !important;
+}
+
+ion-button.cold-feedback-button::part(native) {
+  background: linear-gradient(135deg, #E0F6FF 0%, #87CEEB 50%, #B0E0E6 100%) !important;
+  color: white !important;
+}

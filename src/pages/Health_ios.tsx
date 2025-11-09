@@ -427,7 +427,7 @@ const Health_ios: React.FC = () => {
     gender: number | null;
   }) => {
     // 서버 URL 설정 (환경 변수나 설정에서 가져올 수 있음)
-    const serverURL = 'http://192.168.0.143:3000/healthdata'; // 현재 컴퓨터 IP 주소
+    const serverURL = 'http://192.168.68.74:3000/healthdata'; // 현재 컴퓨터 IP 주소
     // 또는 UserDefaults에서 가져오기 (iOS)
     // const serverURL = localStorage.getItem('serverURL') || 'http://192.168.68.74:3000/healthdata';
 

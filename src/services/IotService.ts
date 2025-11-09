@@ -49,7 +49,9 @@ class IotService {
           this.baseUrl = 'http://10.0.2.2:3000';
         } else if (Capacitor.getPlatform() === 'ios') {
           // iOS 시뮬레이터: localhost, 실제 기기: 컴퓨터 IP 주소 필요
-          this.baseUrl = 'http://localhost:3000';
+          // 실제 기기에서는 환경 변수나 하드코딩된 IP 사용
+          // TODO: 환경 변수로 설정 가능하도록 개선 필요
+          this.baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://192.168.68.74:3000';
         } else {
           this.baseUrl = 'http://localhost:3000';
         }
@@ -112,15 +114,15 @@ class IotService {
       // 서버 응답을 앱 형식으로 변환
       const state = data.state;
       const result = {
-        currentTemperature: state.current_temperature ?? 0,
-        airQuality: state.air_quality?.pm2 || state.air_quality?.pm10 || 0,
+        currentTemperature: state.currentTemperature ?? 0,
+        airQuality: state.airQuality ?? 0,
         state: {
-          power: state.power_on || false,
-          targetTemperature: state.target_temperature ?? 0,
-          mode: (state.job_mode as AirConditionerMode) || 'AUTO',
-          fanSpeed: (state.wind_strength as FanSpeed) || 'AUTO',
-          currentTemperature: state.current_temperature,
-          airQuality: state.air_quality?.pm2 || state.air_quality?.pm10,
+          power: state.power ?? false,
+          targetTemperature: state.targetTemperature ?? 0,
+          mode: (state.mode as AirConditionerMode) || 'AUTO',
+          fanSpeed: (state.fanSpeed as FanSpeed) || 'AUTO',
+          currentTemperature: state.currentTemperature,
+          airQuality: state.airQuality,
         },
       };
       console.log('IoT 상태 변환 결과:', JSON.stringify(result, null, 2));
