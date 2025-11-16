@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional
 from sqlalchemy import text
@@ -10,18 +11,18 @@ import sys
 import numpy as np
 import pandas as pd
 import joblib
+import time
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 import air_conditioner_auto_control
-import temperature_control_logic
 
-# 로깅 ?�정
+# 로깅 설정
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
-# CORS ?�정 (모든 origin ?�용)
+# CORS 설정 (모든 origin 허용)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -30,20 +31,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-<<<<<<< HEAD
-# ?�결 ?�류 추적
+# 연결 오류 추적
 connectivity_error_count = 0
 last_connectivity_error = None
 
-# Android ??건강 로그 ?�?�소 (미들?�어?�서 ?�용?�기 ?�해 ?�기??초기??
+# Android 앱 건강 로그 저장소 (미들웨어에서 사용하기 위해 여기서 초기화)
 android_app_health_logs = []
 
-# ?�도 ?�계�?캐시 모듈 import
-from temperature_threshold_cache import save_temperature_threshold as save_threshold, get_temperature_threshold as get_threshold
+# 온도 임계값 캐시 모듈 import
+from temperature_threshold_cache import (
+    save_temperature_threshold as save_threshold, 
+    get_temperature_threshold as get_threshold,
+    check_and_cleanup_expired_cache
+)
 
 @app.middleware("http")
 async def track_connectivity_errors(request: Request, call_next):
-    """?�결 ?�류 추적 미들?�어"""
+    """연결 오류 추적 미들웨어"""
     global connectivity_error_count, last_connectivity_error, android_app_health_logs
     start_time = time.time()
     
@@ -51,9 +55,9 @@ async def track_connectivity_errors(request: Request, call_next):
         response = await call_next(request)
         process_time = time.time() - start_time
         
-        # ?�답 ?�간???�무 길면 경고
+        # 응답 시간이 너무 길면 경고
         if process_time > 5.0:
-            logger.warning(f"?�️ ?�린 ?�답 ?�간: {request.url.path} - {process_time:.2f}�?)
+            logger.warning(f"⚠️ 느린 응답 시간: {request.url.path} - {process_time:.2f}초")
         
         return response
     except Exception as e:
@@ -66,9 +70,9 @@ async def track_connectivity_errors(request: Request, call_next):
             "error": error_msg
         }
         
-        logger.error(f"???�결 ?�류 발생: {request.url.path} - {error_msg}")
+        logger.error(f"❌ 연결 오류 발생: {request.url.path} - {error_msg}")
         
-        # Android ??건강 로그???�결 ?�류 기록
+        # Android 앱 건강 로그에 연결 오류 기록
         android_app_health_logs.append({
             "timestamp": datetime.now().isoformat(),
             "type": "connectivity_error",
@@ -76,40 +80,42 @@ async def track_connectivity_errors(request: Request, call_next):
             "method": request.method,
             "error": error_msg
         })
-        # 최근 1000개만 ?��?
+        # 최근 1000개만 유지
         if len(android_app_health_logs) > 1000:
             android_app_health_logs.pop(0)
         
         raise
-# DB ?�결 ?�정
-# DBeaver ?�결 ?�보??맞게 ?�정:
+
+# DB 연결 설정
+# DBeaver 연결 정보에 맞게 수정:
 # Host: aiservice.cd0you2cyo60.ap-northeast-2.rds.amazonaws.com
 # Username: iriskimhs
 # Port: 3306
-# Database: main (URL?�서 ?�인)
+# Database: main (URL에서 확인)
 # Password: dyvVyn-kihxe0-parxes
 DB_URL = "mysql+pymysql://iriskimhs:dyvVyn-kihxe0-parxes@aiservice.cd0you2cyo60.ap-northeast-2.rds.amazonaws.com:3306/main"
-# ?�결 ?�션 추�? (SSL, ?�?�아????
-# pymysql??SSL ?�정: ssl_disabled=True�?비활?�화?�거?? ssl_ca ?�증??경로 지??
-# DBeaver?�서 ?�결???�면 SSL ?�이???�결 가?�할 ???�음
+# 연결 옵션 추가 (SSL, 타임아웃 등)
+# pymysql의 SSL 설정: ssl_disabled=True로 비활성화하거나, ssl_ca 인증서 경로 지정
+# DBeaver에서 연결이 되면 SSL 없이도 연결 가능할 수 있음
 import sqlalchemy
 engine = sqlalchemy.create_engine(
     DB_URL,
     connect_args={
-        "ssl_disabled": True,  # SSL 비활?�화 (DBeaver?� ?�일???�정)
-        "connect_timeout": 10,  # ?�결 ?�?�아??10�?
-        "read_timeout": 10,  # ?�기 ?�?�아??10�?
-        "write_timeout": 10,  # ?�기 ?�?�아??10�?
+        "ssl_disabled": True,  # SSL 비활성화 (DBeaver와 동일한 설정)
+        "connect_timeout": 10,  # 연결 타임아웃 10초
+        "read_timeout": 10,  # 읽기 타임아웃 10초
+        "write_timeout": 10,  # 쓰기 타임아웃 10초
     },
-    pool_pre_ping=True,  # ?�결 ?�효???�전 ?�인
-    pool_recycle=3600,  # 1?�간마다 ?�결 ?�사??
-    echo=False  # SQL 쿼리 로깅 (?�버�???True�?변�?
+    pool_pre_ping=True,  # 연결 유효성 사전 확인
+    pool_recycle=3600,  # 1시간마다 연결 재사용
+    echo=False  # SQL 쿼리 로깅 (디버깅 시 True로 변경)
 )
 
 # 모델 로드
-# ?�버 ?�렉?�리 기�??�로 모델 ?�일 경로 ?�정
+# 서버 디렉토리 기준으로 모델 파일 경로 설정
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_FILE = os.path.join(BASE_DIR, 'ai_thermal_model_final.pkl')
+PROJECT_ROOT = os.path.dirname(BASE_DIR)  # server 디렉토리의 상위 디렉토리 (프로젝트 루트)
+MODEL_FILE = os.path.join(PROJECT_ROOT, 'android', 'plus', 'model', 'pycode', 'ai_thermal_model_final.pkl')
 
 model = None
 model_loaded = False
@@ -122,38 +128,37 @@ def load_model():
         return model
     
     if not os.path.exists(MODEL_FILE):
-        logger.warning(f"?�️ 모델 ?�일??찾을 ???�습?�다: {MODEL_FILE}")
+        logger.warning(f"⚠️ 모델 파일을 찾을 수 없습니다: {MODEL_FILE}")
         return None
     
     try:
         model = joblib.load(MODEL_FILE)
         model_loaded = True
-        logger.info("??모델 로드 ?�공! (joblib)")
+        logger.info("✅ 모델 로드 성공! (joblib)")
         return model
     except Exception as e1:
-        logger.error(f"??joblib 로드 ?�패: {e1}")
+        logger.error(f"❌ joblib 로드 실패: {e1}")
         try:
             import pickle
             with open(MODEL_FILE, 'rb') as f:
                 model = pickle.load(f)
             model_loaded = True
-            logger.info("??모델 로드 ?�공! (pickle)")
+            logger.info("✅ 모델 로드 성공! (pickle)")
             return model
         except Exception as e2:
-            logger.error(f"??pickle 로드 ?�패: {e2}")
+            logger.error(f"❌ pickle 로드 실패: {e2}")
             return None
 
-# ?�버 ?�작 ??모델 로드
+# 서버 시작 시 모델 로드
 model = load_model()
 
-# ==================== ?��??�도 분류 기�? ?�정 ====================
-# 갱신 가?�하?�록 ?�역 변?�로 관�?
-COLD_THRESHOLD = 34.5  # 추�? 분류 기�? (갱신 가??
-HOT_THRESHOLD = 35.6    # ?��? 분류 기�? (갱신 가??
+# ==================== 피부온도 분류 기준 설정 ====================
+# 나중에 경로로 설정 가능하도록 변수로 관리
+COLD_THRESHOLD = 34.5  # 추움 분류 기준 (나중에 경로로 설정 가능)
+HOT_THRESHOLD = 35.6    # 더움 분류 기준 (나중에 경로로 설정 가능)
 
-# ?�어�??�어 모듈 import
-# IoT ?�더??모듈 import�??�한 경로 추�?
-PROJECT_ROOT = os.path.dirname(BASE_DIR)  # server ?�렉?�리???�위 ?�렉?�리 (?�로?�트 루트)
+# 에어컨 제어 모듈 import
+# IoT 폴더의 모듈 import를 위한 경로 추가
 IOT_MODULE_PATH = os.path.join(PROJECT_ROOT, 'android', 'plus', 'IoT')
 sys.path.insert(0, IOT_MODULE_PATH)
 
@@ -169,35 +174,35 @@ try:
         AIR_CONDITIONER_DEVICE_ID
     )
     AIR_CONDITIONER_AVAILABLE = True
-    logger.info("???�어�?모듈 로드 ?�공")
+    logger.info("✅ 에어컨 모듈 로드 성공")
 except ImportError as e:
-    logger.warning(f"?�️  ?�어�?모듈??불러?????�습?�다: {e}")
+    logger.warning(f"⚠️  에어컨 모듈을 불러올 수 없습니다: {e}")
     AIR_CONDITIONER_AVAILABLE = False
 
-# ==================== 쾌적 ?�도 계산 ?�수 ====================
+# ==================== 쾌적 온도 계산 함수 ====================
 
 def calculate_comfort_temperature(gender: str, age: int, bmi: float) -> tuple[float, float]:
     """
-    ?�별, ?�이, BMI 기반 ?�내 쾌적 ?�도 범위 계산
+    성별, 나이, BMI 기반 실내 쾌적 온도 범위 계산
     
     Args:
-        gender: ?�별 ('F': ?�성, 'M': ?�성)
-        age: ?�이
-        bmi: 체질?��???
+        gender: 성별 ('F': 여성, 'M': 남성)
+        age: 나이
+        bmi: 체질량지수
     
     Returns:
-        (min_temp, max_temp): 쾌적 ?�도 범위 (최소 ?�도, 최�? ?�도)
+        (min_temp, max_temp): 쾌적 온도 범위 (최소 온도, 최대 온도)
     """
-    # 기본 ?�도 범위
+    # 기본 온도 범위
     base_min, base_max = 19.0, 21.0
     
-    # 1️⃣ ?�별 조정
-    if gender.upper() == 'F':  # ?�성
+    # 1️⃣ 성별 조정
+    if gender.upper() == 'F':  # 여성
         delta_gender = 1.0
-    else:  # ?�성 ('M')
+    else:  # 남성 ('M')
         delta_gender = 0.0
     
-    # 2️⃣ ?�이 조정
+    # 2️⃣ 나이 조정
     if 60 <= age < 70:
         delta_age = 0.5
     elif 70 <= age <= 80:
@@ -215,45 +220,45 @@ def calculate_comfort_temperature(gender: str, age: int, bmi: float) -> tuple[fl
     else:  # bmi >= 30
         delta_bmi = -1.0
     
-    # 최종 ?�도 계산
+    # 최종 온도 계산
     min_temp = base_min + delta_gender + delta_age + delta_bmi
     max_temp = base_max + delta_gender + delta_age + delta_bmi
     
     return round(min_temp, 1), round(max_temp, 1)
 
-# ==================== 모델 ?�측 ?�수 ====================
+# ==================== 모델 예측 함수 ====================
 
 def predict_temperature_with_model(hr_mean, hrv_sdnn, bmi, mean_sa02, gender, age):
     """
-    체온 ?�측 ?�수 (pandas DataFrame 기반)
+    체온 예측 함수 (pandas DataFrame 기반)
     
     Parameters:
-    - hr_mean: ?�균 ?�박??
-    - hrv_sdnn: ?�박변?�도 (SDNN)
-    - bmi: 체질?��???
-    - mean_sa02: ?�균 ?�소?�화??
-    - gender: ?�별 (0: ?�성, 1: ?�성 ?�는 'F': ?�성, 'M': ?�성)
-    - age: ?�이
+    - hr_mean: 평균 심박수
+    - hrv_sdnn: 심박변이도 (SDNN)
+    - bmi: 체질량지수
+    - mean_sa02: 평균 산소포화도
+    - gender: 성별 (0: 여성, 1: 남성 또는 'F': 여성, 'M': 남성)
+    - age: 나이
     
     Returns:
-    - ?�측??체온 (°C)
+    - 예측된 체온 (°C)
     """
     if not model_loaded or model is None:
-        raise ValueError("모델??로드?��? ?�았?�니??")
+        raise ValueError("모델이 로드되지 않았습니다.")
     
-    # ?�별 변??(0/1 -> F/M ?�는 그�?�?
+    # 성별 변환 (0/1 -> F/M 또는 그대로)
     if isinstance(gender, (int, float)):
         gender_str = 'F' if gender == 0 else 'M'
     else:
         gender_str = str(gender)
     
-    # ?�생 ?�처 계산
+    # 파생 피처 계산
     hrv_hr_ratio = hrv_sdnn / hr_mean if hr_mean > 0 else 0
     bmi_hr_interaction = bmi * hr_mean
     age_bmi_interaction = age * bmi
-    age_hrv_ratio = age / (hrv_sdnn + 1) if hrv_sdnn > 0 else 0  # 0?�로 ?�누�?방�?
+    age_hrv_ratio = age / (hrv_sdnn + 1) if hrv_sdnn > 0 else 0  # 0으로 나누기 방지
     
-    # pandas DataFrame?�로 ?�이??준�?(Flask ?�버?� ?�일???�식)
+    # pandas DataFrame으로 데이터 준비 (Flask 서버와 동일한 형식)
     try:
         data = pd.DataFrame({
             'bmi': [bmi],
@@ -267,18 +272,18 @@ def predict_temperature_with_model(hr_mean, hrv_sdnn, bmi, mean_sa02, gender, ag
             'gender': [gender_str]
         })
         
-        # ?�측
+        # 예측
         temp_pred = model.predict(data)[0]
         return float(temp_pred)
     except Exception as e:
-        logger.error(f"pandas DataFrame ?�측 ?�패, numpy 배열�??�시?? {e}")
-        # pandas ?�패 ??numpy 배열�??�시??(기존 server.py 방식)
+        logger.error(f"pandas DataFrame 예측 실패, numpy 배열로 재시도: {e}")
+        # pandas 실패 시 numpy 배열로 재시도 (기존 server.py 방식)
         age_hrv_ratio = age / (hrv_sdnn + 1e-8) if hrv_sdnn > 0 else 0
         age_bmi_interaction = age * bmi
         bmi_hr_interaction = bmi * hr_mean
         hrv_hr_ratio = hrv_sdnn / (hr_mean + 1e-8) if hr_mean > 0 else 0
         
-        # ?�별???�자�?변??(0: ?�성, 1: ?�성)
+        # 성별을 숫자로 변환 (0: 여성, 1: 남성)
         gender_num = 0 if gender_str == 'F' else 1
         
         X = np.array([[
@@ -305,14 +310,14 @@ class HealthData(BaseModel):
     oxygenSaturation: Optional[float] = None
     bmi: Optional[float] = None
     age: Optional[float] = None
-    gender: Optional[float] = None  # 0: ?�성, 1: ?�성
+    gender: Optional[float] = None  # 0: 여성, 1: 남성
 
 class PredictRequest(BaseModel):
     hr_mean: float
     hrv_sdnn: float
     bmi: float
     mean_sa02: float
-    gender: str  # 'M' ?�는 'F'
+    gender: str  # 'M' 또는 'F'
     age: int
 
 class AirConditionerControlRequest(BaseModel):
@@ -327,41 +332,51 @@ class TemperatureFeedbackRequest(BaseModel):
     feedback: str  # 'hot', 'cold', 'comfortable'
     date: Optional[str] = None  # ISO format date string
 
-class TemperatureRangeRequest(BaseModel):
-    age: int
-    bmi: float
-    gender: str  # 'M' ?�는 'F', ?�는 'MALE'/'FEMALE', ?�는 0/1
-    force_update: Optional[bool] = False  # 강제 ?�데?�트 ?��?
-
-class ThresholdUpdateRequest(BaseModel):
-    cold_threshold: Optional[float] = None
-    hot_threshold: Optional[float] = None
+class AndroidAppHealthMetrics(BaseModel):
+    """Android 앱 건강 지표 모델"""
+    timestamp: Optional[str] = None
+    package_name: Optional[str] = None
+    cpu_usage_percent: Optional[float] = None
+    cpu_user_percent: Optional[float] = None
+    cpu_kernel_percent: Optional[float] = None
+    memory_pressure_some: Optional[float] = None
+    memory_pressure_full: Optional[float] = None
+    io_pressure_some: Optional[float] = None
+    io_pressure_full: Optional[float] = None
+    cpu_pressure_some: Optional[float] = None
+    cpu_pressure_full: Optional[float] = None
+    anr_count: Optional[int] = None
+    connectivity_errors: Optional[int] = None
+    load_avg_1min: Optional[float] = None
+    load_avg_5min: Optional[float] = None
+    load_avg_15min: Optional[float] = None
+    error_log: Optional[str] = None
 
 # ==================== Health Data API ====================
 
 @app.post("/healthdata")
 async def receive_health_data(data: HealthData):
     """
-    HealthKit ?�이?��? 받아??DB???�?�하�?모델�??�측
+    HealthKit 데이터를 받아서 DB에 저장하고 모델로 예측
     """
     try:
-        logger.info(f"?�� 받�? ?�이?? {data.dict()}")
+        logger.info(f"💌 받은 데이터: {data.dict()}")
         
-        # ?�수 ?�이???�인
+        # 필수 데이터 확인
         if data.heartRate is None or data.HRV is None or data.oxygenSaturation is None:
-            raise HTTPException(status_code=400, detail="heartRate, HRV, oxygenSaturation?� ?�수?�니??")
+            raise HTTPException(status_code=400, detail="heartRate, HRV, oxygenSaturation은 필수입니다.")
         
-        # 기본�??�정
-        # gender: 0.0 ?�는 1.0??'F' ?�는 'M'?�로 변??
-        gender_value = data.gender if data.gender is not None else 0.0  # 기본�? ?�성
-        gender = 'F' if gender_value == 0.0 else 'M'  # 0.0: ?�성(F), 1.0: ?�성(M)
+        # 기본값 설정
+        # gender: 0.0 또는 1.0을 'F' 또는 'M'으로 변환
+        gender_value = data.gender if data.gender is not None else 0.0  # 기본값: 여성
+        gender = 'F' if gender_value == 0.0 else 'M'  # 0.0: 여성(F), 1.0: 남성(M)
         bmi = data.bmi if data.bmi is not None else 0.0
         age = data.age if data.age is not None else 0.0
         
-        logger.info(f"?�� 처리???�이??- gender: {gender} (?�본: {gender_value}), bmi: {bmi}, age: {age}")
+        logger.info(f"📊 처리된 데이터 - gender: {gender} (원본: {gender_value}), bmi: {bmi}, age: {age}")
         
-        # 모델�??�측
-        predicted_skin_temp = 0.0  # 기본�??�정 (?�이?�베?�스 NOT NULL ?�약 조건 ?�??
+        # 모델로 예측
+        predicted_skin_temp = 0.0  # 기본값 설정 (데이터베이스 NOT NULL 제약 조건 대응)
         if model is not None:
             try:
                 predicted_skin_temp = predict_temperature_with_model(
@@ -372,19 +387,19 @@ async def receive_health_data(data: HealthData):
                     gender=gender,
                     age=age
                 )
-                logger.info(f"?�� ?�측 결과: {predicted_skin_temp}")
+                logger.info(f"🔮 예측 결과: {predicted_skin_temp}")
             except Exception as e:
-                logger.error(f"???�측 ?�패: {str(e)}")
-                logger.error(f"???�측 ?�패 ?�세 - ?�력 ?�처 ?? 9, 모델 기�?: 9")
-                # ?�측 ?�패 ??기본�??��? (0.0)
+                logger.error(f"❌ 예측 실패: {str(e)}")
+                logger.error(f"❌ 예측 실패 상세 - 입력 피처 수: 9, 모델 기대: 9")
+                # 예측 실패 시 기본값 유지 (0.0)
         
-        # DB???�이???�??
+        # DB에 데이터 저장
         comfort_min = None
         comfort_max = None
         
         with engine.connect() as conn:
-            # 기존 ?�용???�보 ?�인 (?�이, BMI, ?�별???�는지)
-            # 먼�? ?�이�?구조 ?�인
+            # 기존 사용자 정보 확인 (나이, BMI, 성별이 있는지)
+            # 먼저 테이블 구조 확인
             try:
                 columns_query = text("""
                     SELECT COLUMN_NAME 
@@ -395,23 +410,23 @@ async def receive_health_data(data: HealthData):
                 columns_result = conn.execute(columns_query)
                 columns = [row.COLUMN_NAME for row in columns_result]
                 
-                # ?�짜 컬럼 찾기
+                # 날짜 컬럼 찾기
                 date_column = None
                 for col in ['created_at', 'timestamp', 'date', 'datetime', 'createdAt']:
                     if col in columns or col.lower() in [c.lower() for c in columns]:
                         date_column = col
                         break
                 
-                # ORDER BY ???�성
+                # ORDER BY 절 생성
                 if date_column:
                     order_by = f"ORDER BY {date_column} DESC"
                 else:
                     order_by = "ORDER BY 1 DESC"
             except Exception as e:
-                logger.warning(f"?�이�?구조 ?�인 ?�패, 기본 쿼리 ?�용: {e}")
+                logger.warning(f"테이블 구조 확인 실패, 기본 쿼리 사용: {e}")
                 order_by = "ORDER BY 1 DESC"
             
-            # predicted_results?�서 기존 ?�용???�보 ?�인 (?�이, BMI, ?�별�?
+            # predicted_results에서 기존 사용자 정보 확인 (나이, BMI, 성별만)
             check_query = text(f"""
                 SELECT age, bmi, gender
                 FROM predicted_results
@@ -424,7 +439,7 @@ async def receive_health_data(data: HealthData):
             
             existing_user = conn.execute(check_query).fetchone()
             
-            # room_threshold ?�이블에??기존 쾌적 ?�도 범위 ?�인
+            # room_threshold 테이블에서 기존 쾌적 온도 범위 확인
             try:
                 table_check = text("""
                     SELECT COUNT(*) as count
@@ -435,27 +450,27 @@ async def receive_health_data(data: HealthData):
                 table_exists = conn.execute(table_check).fetchone().count > 0
                 
                 if table_exists:
-                    # room_threshold?�서 기존 ?�계�??�인
+                    # room_threshold에서 기존 임계값 확인
                     threshold_query = text("SELECT min_temp, max_temp FROM room_threshold LIMIT 1")
                     threshold_result = conn.execute(threshold_query).fetchone()
                     
-                    # 기존 ?�용???�보가 ?�고, ?�이/BMI/?�별???�일?�고, room_threshold??값이 ?�으�??�용
+                    # 기존 사용자 정보가 있고, 나이/BMI/성별이 동일하고, room_threshold에 값이 있으면 사용
                     if existing_user and existing_user.age == age and existing_user.bmi == bmi and existing_user.gender == gender:
                         if threshold_result and threshold_result.min_temp is not None and threshold_result.max_temp is not None:
                             comfort_min = float(threshold_result.min_temp)
                             comfort_max = float(threshold_result.max_temp)
-                            logger.info(f"?�� 기존 쾌적 ?�도 범위 ?�용 (room_threshold): {comfort_min}~{comfort_max}°C")
+                            logger.info(f"📋 기존 쾌적 온도 범위 사용 (room_threshold): {comfort_min}~{comfort_max}°C")
             except Exception as e:
-                logger.warning(f"room_threshold ?�인 ?�패: {e}")
+                logger.warning(f"room_threshold 확인 실패: {e}")
             
-            # 쾌적 ?�도 범위가 ?�으�?계산 (처음 ?�력?�거???�보가 변경된 경우)
+            # 쾌적 온도 범위가 없으면 계산 (처음 입력이거나 정보가 변경된 경우)
             if comfort_min is None or comfort_max is None:
                 comfort_min, comfort_max = calculate_comfort_temperature(gender, int(age), bmi)
-                logger.info(f"?���?쾌적 ?�도 범위 계산 (?�로 계산): {comfort_min}~{comfort_max}°C (gender: {gender}, age: {int(age)}, bmi: {bmi})")
+                logger.info(f"🌡️ 쾌적 온도 범위 계산 (새로 계산): {comfort_min}~{comfort_max}°C (gender: {gender}, age: {int(age)}, bmi: {bmi})")
             
-            # room_threshold ?�이블에 ?�계�??�??(처음 ??번만)
+            # room_threshold 테이블에 임계값 저장 (처음 한 번만)
             try:
-                # room_threshold ?�이�?존재 ?��? ?�인
+                # room_threshold 테이블 존재 여부 확인
                 table_check = text("""
                     SELECT COUNT(*) as count
                     FROM information_schema.tables 
@@ -465,11 +480,11 @@ async def receive_health_data(data: HealthData):
                 table_exists = conn.execute(table_check).fetchone().count > 0
                 
                 if table_exists:
-                    # ?�이블이 ?�으�??�코?��? ?�는지 ?�인
+                    # 테이블이 있으면 레코드가 있는지 확인
                     check_threshold = text("SELECT COUNT(*) as count FROM room_threshold")
                     threshold_count = conn.execute(check_threshold).fetchone().count
                     
-                    # ?�코?��? ?�을 ?�만 ?�입 (처음 ??번만)
+                    # 레코드가 없을 때만 삽입 (처음 한 번만)
                     if threshold_count == 0:
                         try:
                             insert_threshold = text("""
@@ -480,17 +495,104 @@ async def receive_health_data(data: HealthData):
                                 'min_temp': comfort_min,
                                 'max_temp': comfort_max
                             })
-                            logger.info(f"??room_threshold ?�이블에 ?�계�??�??(처음 ?�??: {comfort_min}~{comfort_max}°C")
+                            logger.info(f"✅ room_threshold 테이블에 임계값 저장 (처음 저장): {comfort_min}~{comfort_max}°C")
                         except Exception as e:
-                            logger.warning(f"room_threshold ?�???�패: {e}")
+                            logger.warning(f"room_threshold 저장 실패: {e}")
                     else:
-                        logger.info(f"?�� room_threshold ?�이블에 ?��? ?�계값이 ?�?�되???�습?�다. (건너?�)")
+                        logger.info(f"📋 room_threshold 테이블에 이미 임계값이 저장되어 있습니다. (건너뜀)")
                 else:
-                    logger.warning("?�️ room_threshold ?�이블이 존재?��? ?�습?�다.")
+                    logger.warning("⚠️ room_threshold 테이블이 존재하지 않습니다.")
             except Exception as e:
-                logger.warning(f"room_threshold ?�이�?처리 �??�류: {e}")
+                logger.warning(f"room_threshold 테이블 처리 중 오류: {e}")
             
-            # predicted_results ?�이블에 ?�이???�입 (쾌적 ?�도 범위???�?�하지 ?�음)
+            # predicted_results 테이블에 데이터 삽입 (쾌적 온도 범위는 저장하지 않음)
+            # predicted_skin 컬럼이 있는지 확인
+            predicted_skin_code = None
+            try:
+                # predicted_skin 컬럼 존재 여부 확인
+                columns_check = text("""
+                    SELECT COLUMN_NAME 
+                    FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_SCHEMA = 'main' 
+                    AND TABLE_NAME = 'predicted_results'
+                    AND COLUMN_NAME = 'predicted_skin'
+                """)
+                has_predicted_skin_column = conn.execute(columns_check).fetchone() is not None
+                
+                # 예측값을 코드로 변환 (임계값 사용)
+                if predicted_skin_temp > 0 and has_predicted_skin_column:
+                    # 임계값 가져오기 (new_skinthreshold 테이블에서 최신 값 또는 기본값)
+                    temp_min_threshold = 32.5
+                    temp_max_threshold = 34.5
+                    
+                    try:
+                        # new_skinthreshold 테이블 존재 여부 확인
+                        new_table_check = text("""
+                            SELECT COUNT(*) as count
+                            FROM information_schema.tables 
+                            WHERE table_schema = 'main' 
+                            AND table_name = 'new_skinthreshold'
+                        """)
+                        new_table_exists = conn.execute(new_table_check).fetchone().count > 0
+                        
+                        if new_table_exists:
+                            # 최신 임계값 가져오기
+                            latest_threshold_query = text("""
+                                SELECT min_skinthreshold, max_skinthreshold
+                                FROM new_skinthreshold
+                                ORDER BY id DESC
+                                LIMIT 1
+                            """)
+                            latest_threshold = conn.execute(latest_threshold_query).fetchone()
+                            
+                            if latest_threshold and latest_threshold.min_skinthreshold is not None:
+                                temp_min_threshold = float(latest_threshold.min_skinthreshold)
+                                temp_max_threshold = float(latest_threshold.max_skinthreshold)
+                    except Exception as e:
+                        logger.warning(f"⚠️ 임계값 조회 실패, 기본값 사용: {str(e)}")
+                    
+                    # 예측값을 코드로 변환
+                    predicted_skin_code = convert_predicted_temp_to_code(predicted_skin_temp, temp_min_threshold, temp_max_threshold)
+                    logger.info(f"🔮 예측값 코드 변환: {predicted_skin_temp}°C → {predicted_skin_code} (임계값: {temp_min_threshold}~{temp_max_threshold}°C)")
+                
+                if has_predicted_skin_column and predicted_skin_code is not None:
+                    # predicted_skin 컬럼이 있으면 함께 저장
+                    insert_query = text("""
+                        INSERT INTO predicted_results 
+                        (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp, predicted_skin)
+                        VALUES 
+                        (:heart_rate, :hrv, :oxygen_sat, :bmi, :age, :gender, :predicted_temp, :predicted_skin)
+                    """)
+                    conn.execute(insert_query, {
+                        'heart_rate': data.heartRate,
+                        'hrv': data.HRV,
+                        'oxygen_sat': data.oxygenSaturation,
+                        'bmi': bmi,
+                        'age': age,
+                        'gender': gender,
+                        'predicted_temp': predicted_skin_temp,
+                        'predicted_skin': predicted_skin_code
+                    })
+                else:
+                    # predicted_skin 컬럼이 없으면 기존 방식으로 저장
+                    insert_query = text("""
+                        INSERT INTO predicted_results 
+                        (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp)
+                        VALUES 
+                        (:heart_rate, :hrv, :oxygen_sat, :bmi, :age, :gender, :predicted_temp)
+                    """)
+                    conn.execute(insert_query, {
+                        'heart_rate': data.heartRate,
+                        'hrv': data.HRV,
+                        'oxygen_sat': data.oxygenSaturation,
+                        'bmi': bmi,
+                        'age': age,
+                        'gender': gender,
+                        'predicted_temp': predicted_skin_temp
+                    })
+            except Exception as e:
+                logger.warning(f"⚠️ predicted_skin 컬럼 확인 실패, 기존 방식으로 저장: {str(e)}")
+                # 예외 발생 시 기존 방식으로 저장
             insert_query = text("""
                 INSERT INTO predicted_results 
                 (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp)
@@ -508,8 +610,18 @@ async def receive_health_data(data: HealthData):
             })
             
             conn.commit()
+            
+            # predicted_skin_temp가 들어올 때마다 분류하여 temp_change 테이블에 저장
+            air_conditioner_auto_control.classify_and_save_feedback(
+                engine=engine,
+                predicted_skin_temp=predicted_skin_temp,
+                air_conditioner_available=AIR_CONDITIONER_AVAILABLE,
+                get_air_conditioner_state_func=get_air_conditioner_state,
+                cold_threshold=COLD_THRESHOLD,
+                hot_threshold=HOT_THRESHOLD
+            )
         
-        logger.info(f"???�이?��? DB???�?�되?�습?�다. (gender: {gender}, bmi: {bmi}, age: {age}, predicted_skin_temp: {predicted_skin_temp})")
+        logger.info(f"✅ 데이터가 DB에 저장되었습니다. (gender: {gender}, bmi: {bmi}, age: {age}, predicted_skin_temp: {predicted_skin_temp})")
         return {
             "status": "ok", 
             "message": "Data saved successfully",
@@ -523,20 +635,20 @@ async def receive_health_data(data: HealthData):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"???�이???�???�패: {str(e)}")
+        logger.error(f"❌ 데이터 저장 실패: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 @app.get("/healthdata/latest")
 async def get_latest_health_data():
-    """?�버???�?�된 최신 건강 ?�이??조회 (?�드로이?�에???�출)"""
+    """서버에 저장된 최신 건강 데이터 조회 (안드로이드에서 호출)"""
     try:
-        logger.info("?�� 최신 건강 ?�이??조회 ?�청")
+        logger.info("📱 최신 건강 데이터 조회 요청")
         
         try:
             with engine.connect() as conn:
-                # 먼�? ?�이�?구조 ?�인 (created_at 컬럼 존재 ?��?)
+                # 먼저 테이블 구조 확인 (created_at 컬럼 존재 여부)
                 try:
-                    # ?�이�?컬럼 ?�보 조회
+                    # 테이블 컬럼 정보 조회
                     columns_query = text("""
                         SELECT COLUMN_NAME 
                         FROM INFORMATION_SCHEMA.COLUMNS 
@@ -546,17 +658,17 @@ async def get_latest_health_data():
                     columns_result = conn.execute(columns_query)
                     columns = [row.COLUMN_NAME for row in columns_result]
                     
-                    # ?�짜 컬럼 찾기 (created_at, timestamp, date ??
+                    # 날짜 컬럼 찾기 (created_at, timestamp, date 등)
                     date_column = None
                     for col in ['created_at', 'timestamp', 'date', 'datetime', 'createdAt']:
                         if col in columns or col.lower() in [c.lower() for c in columns]:
                             date_column = col
                             break
                     
-                    # ORDER BY ???�성 (?�짜 컬럼???�으�??�용, ?�으�?ID ?�용)
-                    order_by = f"ORDER BY {date_column} DESC" if date_column else "ORDER BY 1 DESC"  # 1?� �?번째 컬럼
+                    # ORDER BY 절 생성 (날짜 컬럼이 있으면 사용, 없으면 ID 사용)
+                    order_by = f"ORDER BY {date_column} DESC" if date_column else "ORDER BY 1 DESC"  # 1은 첫 번째 컬럼
                     
-                    # SELECT ???�성 (created_at???�으�??�함, ?�으�??�외)
+                    # SELECT 절 생성 (created_at이 있으면 포함, 없으면 제외)
                     select_columns = """
                         HR_mean as heartRate,
                         HRV_SDNN as hrv,
@@ -568,7 +680,7 @@ async def get_latest_health_data():
                     if date_column:
                         select_columns += f", {date_column} as created_at"
                     
-                    # predicted_results ?�이블에??최신 ?�이??조회
+                    # predicted_results 테이블에서 최신 데이터 조회
                     query = text(f"""
                         SELECT 
                             {select_columns}
@@ -577,8 +689,8 @@ async def get_latest_health_data():
                         LIMIT 1
                     """)
                 except Exception as e:
-                    logger.warning(f"?�이�?구조 ?�인 ?�패, 기본 쿼리 ?�용: {e}")
-                    # 기본 쿼리 (created_at ?�이)
+                    logger.warning(f"테이블 구조 확인 실패, 기본 쿼리 사용: {e}")
+                    # 기본 쿼리 (created_at 없이)
                     query = text("""
                         SELECT 
                             HR_mean as heartRate,
@@ -595,25 +707,25 @@ async def get_latest_health_data():
                 row = result.fetchone()
                 
                 if row is None:
-                    logger.info("?�� ?�?�된 건강 ?�이?��? ?�습?�다.")
+                    logger.info("📊 저장된 건강 데이터가 없습니다.")
                     return {
                         "success": True,
                         "data": {},
-                        "message": "?�?�된 건강 ?�이?��? ?�습?�다."
+                        "message": "저장된 건강 데이터가 없습니다."
                     }
                 
-                # ?�이??변??
+                # 데이터 변환
                 health_data = {
                     "heartRate": float(row.heartRate) if row.heartRate else None,
                     "hrv": float(row.hrv) if row.hrv else None,
                     "oxygenSaturation": float(row.oxygenSaturation) if row.oxygenSaturation else None,
                 }
                 
-                # ?�짜 ?�맷??(created_at 컬럼???�으�??�용, ?�으�??�재 ?�간 ?�용)
+                # 날짜 포맷팅 (created_at 컬럼이 있으면 사용, 없으면 현재 시간 사용)
                 try:
                     created_at = getattr(row, 'created_at', None)
                     if created_at is None:
-                        # created_at 컬럼???�으�??�재 ?�간 ?�용
+                        # created_at 컬럼이 없으면 현재 시간 사용
                         created_at = datetime.now()
                         date_str = created_at.isoformat()
                     elif isinstance(created_at, datetime):
@@ -621,11 +733,11 @@ async def get_latest_health_data():
                     else:
                         date_str = str(created_at)
                 except AttributeError:
-                    # created_at ?�성???�으�??�재 ?�간 ?�용
+                    # created_at 속성이 없으면 현재 시간 사용
                     created_at = datetime.now()
                     date_str = created_at.isoformat()
                 
-                logger.info(f"??최신 건강 ?�이??조회 ?�공: {health_data}")
+                logger.info(f"✅ 최신 건강 데이터 조회 성공: {health_data}")
                 
                 return {
                     "success": True,
@@ -646,35 +758,35 @@ async def get_latest_health_data():
                     "lastUpdated": date_str
                 }
         except Exception as db_error:
-            logger.error(f"??DB 조회 ?�패: {str(db_error)}")
-            # DB ?�류 ??�??�이??반환 (?�버???�상 ?�답)
+            logger.error(f"❌ DB 조회 실패: {str(db_error)}")
+            # DB 오류 시 빈 데이터 반환 (서버는 정상 응답)
             return {
                 "success": True,
                 "data": {},
-                "message": f"?�이??조회 ?�패: {str(db_error)}"
+                "message": f"데이터 조회 실패: {str(db_error)}"
             }
     
     except Exception as e:
-        logger.error(f"??최신 건강 ?�이??조회 ?�패: {str(e)}")
-        # ?�러 발생 ?�에??�??�이??반환 (500 ?�러 방�?)
+        logger.error(f"❌ 최신 건강 데이터 조회 실패: {str(e)}")
+        # 에러 발생 시에도 빈 데이터 반환 (500 에러 방지)
         return {
             "success": True,
             "data": {},
-            "message": f"?�이??조회 ?�패: {str(e)}"
+            "message": f"데이터 조회 실패: {str(e)}"
         }
 
-# ==================== 모델 ?�측 API ====================
+# ==================== 모델 예측 API ====================
 
 @app.post("/predict")
 async def predict(data: PredictRequest):
-    """체온 ?�측 API"""
+    """체온 예측 API"""
     try:
         if not model_loaded:
-            raise HTTPException(status_code=500, detail="모델??로드?��? ?�았?�니??")
+            raise HTTPException(status_code=500, detail="모델이 로드되지 않았습니다.")
         
-        logger.info(f"?�� ?�에???�측 ?�청 받음: {data.dict()}")
+        logger.info(f"📱 앱에서 예측 요청 받음: {data.dict()}")
         
-        # ?�측 ?�행
+        # 예측 수행
         predicted_temp = predict_temperature_with_model(
             hr_mean=data.hr_mean,
             hrv_sdnn=data.hrv_sdnn,
@@ -684,15 +796,15 @@ async def predict(data: PredictRequest):
             age=data.age
         )
         
-        # ?�도 분류 (?�과 ?�일??기�?: 34.5?��???35.6?�까지 쾌적 범위???�함)
+        # 온도 분류 (앱과 동일한 기준: 34.5도부터 35.6도까지 쾌적 범위에 포함)
         def classify_temperature(temp, cold_threshold=34.5, hot_threshold=35.6):
             if temp < 34.5:
-                return "추�?"
+                return "추움"
             elif temp > 35.6:
-                return "?��?"
+                return "더움"
             else:
-                # 34.5 <= temp <= 35.6: 쾌적??(경계�??�함)
-                return "?�정"
+                # 34.5 <= temp <= 35.6: 쾌적함 (경계값 포함)
+                return "적정"
         
         temperature_category = classify_temperature(predicted_temp)
         
@@ -702,23 +814,23 @@ async def predict(data: PredictRequest):
             'temperature_category': temperature_category,
             'input_data': data.dict()
         }
-        logger.info(f"???�측 ?�료: {predicted_temp:.2f}°C ({temperature_category})")
+        logger.info(f"✅ 예측 완료: {predicted_temp:.2f}°C ({temperature_category})")
         return result
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"?�측 ?�패: {str(e)}")
-        raise HTTPException(status_code=500, detail=f'?�측 ?�패: {str(e)}')
+        logger.error(f"예측 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f'예측 실패: {str(e)}')
 
 @app.get("/model_info")
 async def model_info():
-    """모델 ?�보 반환"""
+    """모델 정보 반환"""
     if not model_loaded:
-        raise HTTPException(status_code=500, detail="모델??로드?��? ?�았?�니??")
+        raise HTTPException(status_code=500, detail="모델이 로드되지 않았습니다.")
     
     return {
-        'model_type': '?�상�?모델 (RandomForest + ExtraTrees + GradientBoosting) - ?�이 ?�함',
+        'model_type': '앙상블 모델 (RandomForest + ExtraTrees + GradientBoosting) - 나이 포함',
         'features': ['bmi', 'mean_sa02', 'HRV_SDNN', 'hrv_hr_ratio', 'bmi_hr_interaction', 'age', 'age_bmi_interaction', 'age_hrv_ratio', 'gender'],
         'target': 'TEMP_median (체온)',
         'model_loaded': model_loaded
@@ -726,12 +838,12 @@ async def model_info():
 
 @app.get("/comfort_temperature")
 async def get_comfort_temperature():
-    """DB?�서 ?�?�된 쾌적 ?�도 범위 조회 (계산?��? ?�고 ?�?�된 �??�용)"""
+    """DB에서 저장된 쾌적 온도 범위 조회 (계산하지 않고 저장된 값 사용)"""
     try:
-        logger.info("?���?쾌적 ?�도 범위 조회 ?�청")
+        logger.info("🌡️ 쾌적 온도 범위 조회 요청")
         
         with engine.connect() as conn:
-            # 먼�? ?�이�?구조 ?�인
+            # 먼저 테이블 구조 확인
             try:
                 columns_query = text("""
                     SELECT COLUMN_NAME 
@@ -742,28 +854,28 @@ async def get_comfort_temperature():
                 columns_result = conn.execute(columns_query)
                 columns = [row.COLUMN_NAME for row in columns_result]
                 
-                # ?�짜 컬럼 찾기
+                # 날짜 컬럼 찾기
                 date_column = None
                 for col in ['created_at', 'timestamp', 'date', 'datetime', 'createdAt']:
                     if col in columns or col.lower() in [c.lower() for c in columns]:
                         date_column = col
                         break
                 
-                # ORDER BY ???�성
+                # ORDER BY 절 생성
                 if date_column:
                     order_by = f"ORDER BY {date_column} DESC"
                 else:
                     order_by = "ORDER BY 1 DESC"
                 
-                # 쾌적 ?�도 컬럼 존재 ?��? ?�인
+                # 쾌적 온도 컬럼 존재 여부 확인
                 has_comfort_columns = 'comfort_min_temp' in columns or 'comfort_min_temp'.lower() in [c.lower() for c in columns]
                 
             except Exception as e:
-                logger.warning(f"?�이�?구조 ?�인 ?�패, 기본 쿼리 ?�용: {e}")
+                logger.warning(f"테이블 구조 확인 실패, 기본 쿼리 사용: {e}")
                 order_by = "ORDER BY 1 DESC"
                 has_comfort_columns = False
             
-            # ?�?�된 쾌적 ?�도 범위가 ?�으�??�용
+            # 저장된 쾌적 온도 범위가 있으면 사용
             if has_comfort_columns:
                 query = text(f"""
                     SELECT gender, age, bmi, comfort_min_temp, comfort_max_temp
@@ -777,7 +889,7 @@ async def get_comfort_temperature():
                     LIMIT 1
                 """)
             else:
-                # 쾌적 ?�도 컬럼???�으�??�용???�보�?조회
+                # 쾌적 온도 컬럼이 없으면 사용자 정보만 조회
                 query = text(f"""
                     SELECT gender, age, bmi
                     FROM predicted_results
@@ -792,25 +904,25 @@ async def get_comfort_temperature():
             row = result.fetchone()
             
             if row is None:
-                logger.warning("?�️ ?�용???�보가 ?�습?�다.")
+                logger.warning("⚠️ 사용자 정보가 없습니다.")
                 return {
                     "success": False,
-                    "message": "?�용???�보가 ?�습?�다. 먼�? 건강 ?�이?��? ?�?�해주세??",
+                    "message": "사용자 정보가 없습니다. 먼저 건강 데이터를 저장해주세요.",
                     "comfort_temperature_range": None
                 }
             
-            # ?�?�된 쾌적 ?�도 범위가 ?�으�??�용
+            # 저장된 쾌적 온도 범위가 있으면 사용
             if has_comfort_columns and row.comfort_min_temp is not None and row.comfort_max_temp is not None:
                 comfort_min = float(row.comfort_min_temp)
                 comfort_max = float(row.comfort_max_temp)
-                logger.info(f"?�� ?�?�된 쾌적 ?�도 범위 ?�용: {comfort_min}~{comfort_max}°C")
+                logger.info(f"📋 저장된 쾌적 온도 범위 사용: {comfort_min}~{comfort_max}°C")
             else:
-                # ?�?�된 값이 ?�으�?계산 (?��?�???경우??거의 발생?��? ?�아????
+                # 저장된 값이 없으면 계산 (하지만 이 경우는 거의 발생하지 않아야 함)
                 gender = row.gender
                 age = int(row.age) if row.age else 0
                 bmi = float(row.bmi) if row.bmi else 0.0
                 comfort_min, comfort_max = calculate_comfort_temperature(gender, age, bmi)
-                logger.info(f"?���?쾌적 ?�도 범위 계산 (?�?�된 �??�음): {comfort_min}~{comfort_max}°C")
+                logger.info(f"🌡️ 쾌적 온도 범위 계산 (저장된 값 없음): {comfort_min}~{comfort_max}°C")
             
             return {
                 "success": True,
@@ -826,26 +938,26 @@ async def get_comfort_temperature():
             }
             
     except Exception as e:
-        logger.error(f"??쾌적 ?�도 범위 조회 ?�패: {str(e)}")
+        logger.error(f"❌ 쾌적 온도 범위 조회 실패: {str(e)}")
         return {
             "success": False,
-            "message": f"쾌적 ?�도 범위 조회 ?�패: {str(e)}",
+            "message": f"쾌적 온도 범위 조회 실패: {str(e)}",
             "comfort_temperature_range": None
         }
 
-# ==================== ?�어�??�어 API ====================
+# ==================== 에어컨 제어 API ====================
 
 @app.get("/air_conditioner/state")
 async def get_air_conditioner_state_api():
-    """?�어�??�태 조회 API"""
+    """에어컨 상태 조회 API"""
     if not AIR_CONDITIONER_AVAILABLE:
-        raise HTTPException(status_code=500, detail="?�어�?모듈???�용?????�습?�다.")
+        raise HTTPException(status_code=500, detail="에어컨 모듈을 사용할 수 없습니다.")
     
     try:
-        logger.info("?�� ?�에???�어�??�태 조회 ?�청")
+        logger.info("📱 앱에서 에어컨 상태 조회 요청")
         state_response = get_air_conditioner_state()
         
-        # ?�답 구조 분석 �??�태 ?�보 추출
+        # 응답 구조 분석 및 상태 정보 추출
         state = None
         if 'result' in state_response and 'value' in state_response['result']:
             state = state_response['result']['value']
@@ -858,7 +970,7 @@ async def get_air_conditioner_state_api():
                     state = response
         
         if state:
-            # ?�태 ?�보�??�에???�용?�기 ?�운 ?�태�?변??
+            # 상태 정보를 앱에서 사용하기 쉬운 형태로 변환
             result = {
                 'success': True,
                 'device_id': AIR_CONDITIONER_DEVICE_ID,
@@ -870,101 +982,100 @@ async def get_air_conditioner_state_api():
                     'mode': state.get('airConJobMode', {}).get('currentJobMode'),
                     'fanSpeed': state.get('airFlow', {}).get('windStrength'),
                     'airQuality': state.get('airQualitySensor', {}).get('PM2') or state.get('airQualitySensor', {}).get('PM10') or 0,
-                    'raw_state': state  # ?�체 ?�태 ?�보???�함
+                    'raw_state': state  # 전체 상태 정보도 포함
                 }
             }
-            logger.info(f"???�어�??�태 조회 ?�공")
+            logger.info(f"✅ 에어컨 상태 조회 성공")
             return result
         else:
-            raise HTTPException(status_code=500, detail="?�태 ?�보�?찾을 ???�습?�다.")
+            raise HTTPException(status_code=500, detail="상태 정보를 찾을 수 없습니다.")
             
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"?�어�??�태 조회 ?�패: {str(e)}")
-        raise HTTPException(status_code=500, detail=f'?�어�??�태 조회 ?�패: {str(e)}')
+        logger.error(f"에어컨 상태 조회 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f'에어컨 상태 조회 실패: {str(e)}')
 
 @app.post("/air_conditioner/control")
 async def control_air_conditioner_api(data: AirConditionerControlRequest):
-    """?�어�??�어 API"""
+    """에어컨 제어 API"""
     if not AIR_CONDITIONER_AVAILABLE:
-        raise HTTPException(status_code=500, detail="?�어�?모듈???�용?????�습?�다.")
+        raise HTTPException(status_code=500, detail="에어컨 모듈을 사용할 수 없습니다.")
     
     try:
-        logger.info(f"?�� ?�에???�어�??�어 ?�청: {data.dict()}")
+        logger.info(f"📱 앱에서 에어컨 제어 요청: {data.dict()}")
         
         if not data.action:
-            raise HTTPException(status_code=400, detail="action ?�라미터가 ?�요?�니??")
+            raise HTTPException(status_code=400, detail="action 파라미터가 필요합니다.")
         
         result = None
         
         if data.action == 'set_temperature':
             if data.target_temperature is None:
-                raise HTTPException(status_code=400, detail="target_temperature ?�라미터가 ?�요?�니??")
+                raise HTTPException(status_code=400, detail="target_temperature 파라미터가 필요합니다.")
             result = set_temperature(target_temp=float(data.target_temperature), unit=data.unit or 'C')
             
         elif data.action == 'set_mode':
             if not data.mode:
-                raise HTTPException(status_code=400, detail="mode ?�라미터가 ?�요?�니??")
+                raise HTTPException(status_code=400, detail="mode 파라미터가 필요합니다.")
             result = set_job_mode(mode=data.mode)
             
         elif data.action == 'set_wind_strength':
             if not data.strength:
-                raise HTTPException(status_code=400, detail="strength ?�라미터가 ?�요?�니??")
+                raise HTTPException(status_code=400, detail="strength 파라미터가 필요합니다.")
             result = set_wind_strength(strength=data.strength)
             
         elif data.action == 'set_power':
             result = set_power(power_on=bool(data.power_on))
             
         else:
-            raise HTTPException(status_code=400, detail=f'지?�하지 ?�는 action: {data.action}')
+            raise HTTPException(status_code=400, detail=f'지원하지 않는 action: {data.action}')
         
-        logger.info(f"???�어�??�어 ?�공: {data.action}")
+        logger.info(f"✅ 에어컨 제어 성공: {data.action}")
         
-        # ?�션�?메시지 ?�성
+        # 액션별 메시지 생성
         messages = {
-            'set_power': f"?�원 {'켜기' if data.power_on else '?�기'} ?�공",
-            'set_temperature': f"목표 ?�도 {data.target_temperature}°C ?�정 ?�공",
-            'set_mode': f"모드 {data.mode} ?�정 ?�공",
-            'set_wind_strength': f"?�량 {data.strength} ?�정 ?�공",
+            'set_power': f"전원 {'켜기' if data.power_on else '끄기'} 성공",
+            'set_temperature': f"목표 온도 {data.target_temperature}°C 설정 성공",
+            'set_mode': f"모드 {data.mode} 설정 성공",
+            'set_wind_strength': f"풍량 {data.strength} 설정 성공",
         }
         
         return {
             'success': True,
             'action': data.action,
-            'message': messages.get(data.action, '?�어 ?�공'),
+            'message': messages.get(data.action, '제어 성공'),
             'result': result
         }
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"?�어�??�어 ?�패: {str(e)}")
-        raise HTTPException(status_code=500, detail=f'?�어�??�어 ?�패: {str(e)}')
+        logger.error(f"에어컨 제어 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f'에어컨 제어 실패: {str(e)}')
 
-<<<<<<< HEAD
 class TemperatureThresholdRequest(BaseModel):
-    """?�도 ?�계�??�???�청"""
-    target_temperature: float  # ?�용?��? ?�정???�도 (?? 24??
+    """온도 임계값 저장 요청"""
+    target_temperature: float  # 사용자가 설정한 온도 (예: 24도)
 
 @app.post("/air_conditioner/temperature_threshold")
 async def save_temperature_threshold_api(data: TemperatureThresholdRequest):
-    """?�어�??�도 ?�계값을 캐시???�??(12?�간 ?�효)"""
+    """에어컨 온도 임계값을 캐시에 저장 (12시간 유효)"""
     try:
         threshold = save_threshold(data.target_temperature)
         
         return {
             "success": True,
-            "message": "?�도 ?�계값이 ?�?�되?�습?�다.",
+            "message": "온도 임계값이 저장되었습니다.",
             "threshold": threshold
         }
     except Exception as e:
-        logger.error(f"???�도 ?�계�??�???�패: {str(e)}")
-        raise HTTPException(status_code=500, detail=f'?�도 ?�계�??�???�패: {str(e)}')
+        logger.error(f"❌ 온도 임계값 저장 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f'온도 임계값 저장 실패: {str(e)}')
 
 @app.get("/air_conditioner/temperature_threshold")
 async def get_temperature_threshold_api():
-    """?�재 ?�?�된 ?�도 ?�계�?조회 (만료?��? ?��? 경우�?"""
+    """현재 저장된 온도 임계값 조회 (만료되지 않은 경우만)"""
     try:
         threshold = get_threshold()
         
@@ -972,7 +1083,7 @@ async def get_temperature_threshold_api():
             return {
                 "success": True,
                 "has_threshold": False,
-                "message": "?�?�된 ?�계값이 ?�습?�다."
+                "message": "저장된 임계값이 없습니다."
             }
         
         return {
@@ -981,95 +1092,8 @@ async def get_temperature_threshold_api():
             "threshold": threshold
         }
     except Exception as e:
-        logger.error(f"???�도 ?�계�?조회 ?�패: {str(e)}")
-        raise HTTPException(status_code=500, detail=f'?�도 ?�계�?조회 ?�패: {str(e)}')
-# ==================== ?�도 범위 ?�정 API ====================
-
-@app.post("/temperature-range")
-async def set_temperature_range(data: TemperatureRangeRequest):
-    """
-    ?�용???�성(?�이, BMI, ?�별)???�라 쾌적 ?�도 범위�?계산?�고 DB???�??
-    (처음 ?�번�??�용, ?��? ?�정?�어 ?�으�?기존 �??��?)
-    """
-    try:
-        logger.info(f"?���??�도 범위 ?�정 ?�청: ?�이={data.age}?? BMI={data.bmi}, ?�별={data.gender}, force_update={data.force_update}")
-        
-        # ?�도 범위 초기??
-        success, min_temp, max_temp = temperature_control_logic.initialize_user_temperature_range(
-            engine=engine,
-            age=data.age,
-            bmi=data.bmi,
-            gender=data.gender,
-            air_conditioner_available=AIR_CONDITIONER_AVAILABLE,
-            set_temperature_func=set_temperature,
-            force_update=data.force_update
-        )
-        
-        if not success:
-            raise HTTPException(status_code=500, detail="?�도 범위 ?�정 ?�패")
-        
-        return {
-            "success": True,
-            "message": "?�도 범위 ?�정 ?�료",
-            "min_temp": min_temp,
-            "max_temp": max_temp,
-            "target_temp": (min_temp + max_temp) / 2.0,
-            "age": data.age,
-            "bmi": data.bmi,
-            "gender": data.gender
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"?�도 범위 ?�정 ?�패: {str(e)}")
-        raise HTTPException(status_code=500, detail=f'?�도 범위 ?�정 ?�패: {str(e)}')
-
-@app.get("/temperature-range")
-async def get_temperature_range():
-    """
-    DB?�서 ?�?�된 쾌적 ?�도 범위 조회
-    """
-    try:
-        logger.info("?���??�도 범위 조회 ?�청")
-        
-        temperature_range = temperature_control_logic.get_temperature_range_from_db(engine)
-        
-        if temperature_range is None:
-            return {
-                "success": False,
-                "message": "?�도 범위가 ?�정?��? ?�았?�니??,
-                "min_temp": None,
-                "max_temp": None
-            }
-        
-        min_temp, max_temp = temperature_range
-        
-        # DB?�서 ?�용???�보???�께 조회
-        with engine.connect() as conn:
-            query = text("SELECT age, bmi, gender FROM room_threshold LIMIT 1")
-            result = conn.execute(query).fetchone()
-            
-            user_info = None
-            if result:
-                user_info = {
-                    "age": result.age,
-                    "bmi": float(result.bmi) if result.bmi else None,
-                    "gender": result.gender
-                }
-        
-        return {
-            "success": True,
-            "min_temp": min_temp,
-            "max_temp": max_temp,
-            "target_temp": (min_temp + max_temp) / 2.0,
-            "user_info": user_info
-        }
-        
-    except Exception as e:
-        logger.error(f"?�도 범위 조회 ?�패: {str(e)}")
-        raise HTTPException(status_code=500, detail=f'?�도 범위 조회 ?�패: {str(e)}')
->>>>>>> 849157b2f84eeecf85c280df228b6557b6ccf58b
+        logger.error(f"❌ 온도 임계값 조회 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f'온도 임계값 조회 실패: {str(e)}')
 
 # ==================== 기본 API ====================
 
@@ -1077,13 +1101,34 @@ async def get_temperature_range():
 async def root():
     return {"message": "Unified Server is running (Health Data + Model Prediction + IoT Control)"}
 
+def convert_predicted_temp_to_code(predicted_temp, min_threshold, max_threshold):
+    """
+    예측된 피부 온도를 코드로 변환 (C: 추움, H: 더움, G: 쾌적)
+    
+    Parameters:
+    - predicted_temp: 예측된 피부 온도
+    - min_threshold: 최소 임계값
+    - max_threshold: 최대 임계값
+    
+    Returns:
+    - 'C' (추움): predicted_temp < min_threshold
+    - 'H' (더움): predicted_temp > max_threshold
+    - 'G' (쾌적): min_threshold <= predicted_temp <= max_threshold
+    """
+    if predicted_temp < min_threshold:
+        return 'C'
+    elif predicted_temp > max_threshold:
+        return 'H'
+    else:
+        return 'G'
+
 @app.post("/temperature_feedback")
 async def save_temperature_feedback(data: TemperatureFeedbackRequest):
-    """?�도 ?�드�??�??API"""
+    """온도 피드백 저장 API - new_skinthreshold 테이블에 저장하고 예측값과 비교하여 임계값 조정"""
     try:
-        logger.info(f"?�� ?�도 ?�드�??�???�청: {data.dict()}")
+        logger.info(f"📝 온도 피드백 저장 요청: {data.dict()}")
         
-        # ?�드�?값을 코드�?변??(C: 추�?, H: ?��?, G: 쾌적)
+        # 피드백 값을 코드로 변환 (C: 추움, H: 더움, G: 쾌적)
         feedback_code = None
         if data.feedback == 'cold':
             feedback_code = 'C'
@@ -1092,22 +1137,22 @@ async def save_temperature_feedback(data: TemperatureFeedbackRequest):
         elif data.feedback == 'comfortable':
             feedback_code = 'G'
         else:
-            logger.warning(f"?�️ ?????�는 ?�드�?�? {data.feedback}")
+            logger.warning(f"⚠️ 알 수 없는 피드백 값: {data.feedback}")
             return {
                 "success": False,
-                "message": f"?????�는 ?�드�?�? {data.feedback}"
+                "message": f"알 수 없는 피드백 값: {data.feedback}"
             }
         
-        # ?�짜 처리
+        # 날짜 처리
         feedback_date = data.date
         if not feedback_date:
             from datetime import datetime
             feedback_date = datetime.now().isoformat()
         
         with engine.connect() as conn:
-            # room_threshold ?�이블에 feedback ?�??
+            # room_threshold 테이블에 feedback 저장
             try:
-                # room_threshold ?�이�?존재 ?��? ?�인
+                # room_threshold 테이블 존재 여부 확인
                 table_check = text("""
                     SELECT COUNT(*) as count
                     FROM information_schema.tables 
@@ -1117,7 +1162,7 @@ async def save_temperature_feedback(data: TemperatureFeedbackRequest):
                 table_exists = conn.execute(table_check).fetchone().count > 0
                 
                 if table_exists:
-                    # feedback 컬럼 존재 ?��? ?�인
+                    # feedback 컬럼 존재 여부 확인
                     columns_check = text("""
                         SELECT COLUMN_NAME 
                         FROM INFORMATION_SCHEMA.COLUMNS 
@@ -1128,8 +1173,8 @@ async def save_temperature_feedback(data: TemperatureFeedbackRequest):
                     has_feedback_column = conn.execute(columns_check).fetchone() is not None
                     
                     if has_feedback_column:
-                        # feedback 컬럼???�으�??�데?�트
-                        # id 컬럼???�는지 ?�인
+                        # feedback 컬럼이 있으면 업데이트
+                        # id 컬럼이 있는지 확인
                         id_check = text("""
                             SELECT COLUMN_NAME 
                             FROM INFORMATION_SCHEMA.COLUMNS 
@@ -1140,14 +1185,14 @@ async def save_temperature_feedback(data: TemperatureFeedbackRequest):
                         has_id = conn.execute(id_check).fetchone() is not None
                         
                         if has_id:
-                            # id가 ?�으�?�?번째 ?�코???�데?�트
+                            # id가 있으면 첫 번째 레코드 업데이트
                             update_query = text("""
                                 UPDATE room_threshold 
                                 SET feedback = :feedback
                                 WHERE id = (SELECT id FROM (SELECT id FROM room_threshold LIMIT 1) AS t)
                             """)
                         else:
-                            # id가 ?�으�?모든 ?�코???�데?�트 (?�일 ?�코??가??
+                            # id가 없으면 모든 레코드 업데이트 (단일 레코드 가정)
                             update_query = text("""
                                 UPDATE room_threshold 
                                 SET feedback = :feedback
@@ -1157,17 +1202,17 @@ async def save_temperature_feedback(data: TemperatureFeedbackRequest):
                             'feedback': feedback_code
                         })
                         conn.commit()
-                        logger.info(f"??room_threshold ?�이블에 ?�드�??�???�료: {feedback_code} ({data.feedback})")
+                        logger.info(f"✅ room_threshold 테이블에 피드백 저장 완료: {feedback_code} ({data.feedback})")
                     else:
-                        logger.warning("?�️ room_threshold ?�이블에 feedback 컬럼??존재?��? ?�습?�다.")
+                        logger.warning("⚠️ room_threshold 테이블에 feedback 컬럼이 존재하지 않습니다.")
                 else:
-                    logger.warning("?�️ room_threshold ?�이블이 존재?��? ?�습?�다.")
+                    logger.warning("⚠️ room_threshold 테이블이 존재하지 않습니다.")
             except Exception as e:
-                logger.error(f"??room_threshold ?�드�??�???�패: {str(e)}")
+                logger.error(f"❌ room_threshold 피드백 저장 실패: {str(e)}")
             
-            # temperature_feedback ?�이블에???�??(?�택??
+            # temperature_feedback 테이블에 저장 (테이블이 없으면 생성)
             try:
-                # temperature_feedback ?�이�?존재 ?��? ?�인
+                # temperature_feedback 테이블 존재 여부 확인
                 table_check = text("""
                     SELECT COUNT(*) as count
                     FROM information_schema.tables 
@@ -1176,121 +1221,271 @@ async def save_temperature_feedback(data: TemperatureFeedbackRequest):
                 """)
                 table_exists = conn.execute(table_check).fetchone().count > 0
                 
-                if table_exists:
-                    # ?�이블이 ?�으�??�??
+                if not table_exists:
+                    # 테이블이 없으면 생성
+                    create_table = text("""
+                        CREATE TABLE IF NOT EXISTS temperature_feedback (
+                            id INT AUTO_INCREMENT PRIMARY KEY,
+                            feedback VARCHAR(20) NOT NULL,
+                            feedback_date DATETIME
+                        )
+                    """)
+                    conn.execute(create_table)
+                    conn.commit()
+                    logger.info("✅ temperature_feedback 테이블 생성 완료")
+                
+                # 테이블이 있으면 저장 (코드로 변환하여 저장: C, H, G)
                     insert_query = text("""
-                        INSERT INTO temperature_feedback (feedback, feedback_date, created_at)
-                        VALUES (:feedback, :feedback_date, NOW())
+                        INSERT INTO temperature_feedback (feedback, feedback_date)
+                        VALUES (:feedback, :feedback_date)
                     """)
                     conn.execute(insert_query, {
-                        'feedback': data.feedback,
+                    'feedback': feedback_code,  # 코드로 변환된 값 저장 (C, H, G)
                         'feedback_date': feedback_date
                     })
                     conn.commit()
-                    logger.info(f"??temperature_feedback ?�이블에 ?�드�??�???�료: {data.feedback}")
+                logger.info(f"✅ temperature_feedback 테이블에 피드백 저장 완료: {feedback_code} ({data.feedback})")
             except Exception as e:
-                logger.warning(f"temperature_feedback ?�이�??�???�패 (?�택??: {str(e)}")
+                logger.error(f"❌ temperature_feedback 테이블 저장 실패: {str(e)}")
+            
+            # 피드백과 예측값 비교하여 임계값 조정
+            try:
+                # 최신 예측값 가져오기 (predicted_results 테이블에서)
+                predicted_skin_temp = None
+                predicted_skin_code = None
+                try:
+                    # predicted_results 테이블의 컬럼 구조 확인
+                    columns_check = text("""
+                        SELECT COLUMN_NAME 
+                        FROM INFORMATION_SCHEMA.COLUMNS 
+                        WHERE TABLE_SCHEMA = 'main' 
+                        AND TABLE_NAME = 'predicted_results'
+                    """)
+                    columns = [row.COLUMN_NAME for row in conn.execute(columns_check).fetchall()]
+                    
+                    # predicted_results 테이블에서 최신 예측값 가져오기 (ID로 정렬)
+                    if 'id' in columns:
+                        latest_prediction_query = text("""
+                            SELECT predicted_skin_temp
+                            FROM predicted_results
+                            WHERE predicted_skin_temp IS NOT NULL
+                            ORDER BY id DESC
+                            LIMIT 1
+                        """)
+                    else:
+                        # ID도 없으면 그냥 최신 하나 가져오기
+                        latest_prediction_query = text("""
+                            SELECT predicted_skin_temp
+                            FROM predicted_results
+                            WHERE predicted_skin_temp IS NOT NULL
+                            LIMIT 1
+                        """)
+                    
+                    latest_prediction = conn.execute(latest_prediction_query).fetchone()
+                    
+                    if latest_prediction:
+                        predicted_skin_temp = float(latest_prediction.predicted_skin_temp)
+                        logger.info(f"📊 최신 예측 피부 온도: {predicted_skin_temp}°C")
+                except Exception as e:
+                    logger.warning(f"⚠️ 예측값 조회 실패: {str(e)}")
+                
+                # 현재 임계값 가져오기 (new_skinthreshold 테이블에서 최신 값 또는 기본값)
+                min_threshold = 32.5
+                max_threshold = 34.5
+                
+                try:
+                    # new_skinthreshold 테이블 존재 여부 확인
+                    new_table_check = text("""
+                        SELECT COUNT(*) as count
+                        FROM information_schema.tables 
+                        WHERE table_schema = 'main' 
+                        AND table_name = 'new_skinthreshold'
+                    """)
+                    new_table_exists = conn.execute(new_table_check).fetchone().count > 0
+                    
+                    if new_table_exists:
+                        # 최신 임계값 가져오기 (ID로 정렬)
+                        latest_threshold_query = text("""
+                            SELECT min_skinthreshold, max_skinthreshold
+                            FROM new_skinthreshold
+                            ORDER BY id DESC
+                            LIMIT 1
+                        """)
+                        latest_threshold = conn.execute(latest_threshold_query).fetchone()
+                        
+                        if latest_threshold and latest_threshold.min_skinthreshold is not None:
+                            min_threshold = float(latest_threshold.min_skinthreshold)
+                            max_threshold = float(latest_threshold.max_skinthreshold)
+                            logger.info(f"📋 최신 임계값 사용: {min_threshold}~{max_threshold}°C")
+                        else:
+                            logger.info(f"📋 기본 임계값 사용: {min_threshold}~{max_threshold}°C")
+                    else:
+                        logger.info(f"📋 기본 임계값 사용 (new_skinthreshold 테이블 없음): {min_threshold}~{max_threshold}°C")
+                except Exception as e:
+                    logger.warning(f"⚠️ 임계값 조회 실패, 기본값 사용: {str(e)}")
+                
+                # 예측값을 코드로 변환
+                if predicted_skin_temp is not None:
+                    predicted_skin_code = convert_predicted_temp_to_code(predicted_skin_temp, min_threshold, max_threshold)
+                    logger.info(f"🔮 예측값 코드 변환: {predicted_skin_temp}°C → {predicted_skin_code}")
+                
+                # 피드백과 예측값 비교하여 임계값 조정
+                new_min_threshold = min_threshold
+                new_max_threshold = max_threshold
+                
+                if predicted_skin_code is not None:
+                    if feedback_code == predicted_skin_code:
+                        # 같으면 기존 값 유지
+                        logger.info(f"✅ 피드백과 예측값이 일치: {feedback_code} = {predicted_skin_code}, 임계값 유지")
+                    else:
+                        # 다르면 피드백에 따라 임계값 조정
+                        if feedback_code == 'C':
+                            # 추움: 각각 0.5도씩 올림
+                            new_min_threshold = min_threshold + 0.5
+                            new_max_threshold = max_threshold + 0.5
+                            logger.info(f"❄️ 피드백: 추움(C), 임계값 조정: {min_threshold}~{max_threshold}°C → {new_min_threshold}~{new_max_threshold}°C")
+                        elif feedback_code == 'H':
+                            # 더움: 각각 0.5도씩 내림
+                            new_min_threshold = min_threshold - 0.5
+                            new_max_threshold = max_threshold - 0.5
+                            logger.info(f"🔥 피드백: 더움(H), 임계값 조정: {min_threshold}~{max_threshold}°C → {new_min_threshold}~{new_max_threshold}°C")
+                        elif feedback_code == 'G':
+                            # 쾌적: 변경 없음
+                            logger.info(f"✅ 피드백: 쾌적(G), 임계값 유지")
+                else:
+                    logger.warning("⚠️ 예측값이 없어 임계값 조정을 건너뜁니다.")
+                
+                # new_skinthreshold 테이블에 갱신된 임계값 저장
+                try:
+                    # new_skinthreshold 테이블 존재 여부 확인 및 생성
+                    new_table_check = text("""
+                        SELECT COUNT(*) as count
+                        FROM information_schema.tables 
+                        WHERE table_schema = 'main' 
+                        AND table_name = 'new_skinthreshold'
+                    """)
+                    new_table_exists = conn.execute(new_table_check).fetchone().count > 0
+                    
+                    if not new_table_exists:
+                        # 테이블이 없으면 생성
+                        create_new_table = text("""
+                            CREATE TABLE IF NOT EXISTS new_skinthreshold (
+                                id INT AUTO_INCREMENT PRIMARY KEY,
+                                min_skinthreshold DECIMAL(4,1) NOT NULL,
+                                max_skinthreshold DECIMAL(4,1) NOT NULL,
+                                feedback VARCHAR(1),
+                                predicted_skin VARCHAR(1)
+                            )
+                        """)
+                        conn.execute(create_new_table)
+                        conn.commit()
+                        logger.info("✅ new_skinthreshold 테이블 생성 완료")
+                    
+                    # 갱신된 임계값 저장
+                    insert_new_threshold = text("""
+                        INSERT INTO new_skinthreshold (min_skinthreshold, max_skinthreshold, feedback, predicted_skin)
+                        VALUES (:min_threshold, :max_threshold, :feedback, :predicted_skin)
+                    """)
+                    conn.execute(insert_new_threshold, {
+                        'min_threshold': new_min_threshold,
+                        'max_threshold': new_max_threshold,
+                        'feedback': feedback_code,
+                        'predicted_skin': predicted_skin_code
+                    })
+                    conn.commit()
+                    logger.info(f"✅ new_skinthreshold 테이블에 갱신된 임계값 저장 완료: {new_min_threshold}~{new_max_threshold}°C")
+                except Exception as e:
+                    logger.error(f"❌ new_skinthreshold 테이블 저장 실패: {str(e)}")
+                    
+            except Exception as e:
+                logger.error(f"❌ 피드백 처리 실패: {str(e)}")
         
         return {
             "success": True,
-            "message": "?�드백이 ?�?�되?�습?�다.",
+            "message": "피드백이 저장되었습니다.",
             "feedback": data.feedback,
-            "feedback_code": feedback_code
+            "feedback_code": feedback_code,
+            "predicted_skin_code": predicted_skin_code,
+            "threshold_adjusted": predicted_skin_code is not None and feedback_code != predicted_skin_code
         }
     except Exception as e:
-        logger.error(f"???�도 ?�드�??�???�패: {str(e)}")
+        logger.error(f"❌ 온도 피드백 저장 실패: {str(e)}")
         return {
             "success": False,
-            "message": f"?�드�??�???�패: {str(e)}"
+            "message": f"피드백 저장 실패: {str(e)}"
         }
-
-@app.post("/threshold/update")
-async def update_threshold(data: ThresholdUpdateRequest):
-    """
-    ?��??�도 분류 기�? 갱신 API
-    
-    Args:
-        cold_threshold: 추�? 분류 기�? (?�택)
-        hot_threshold: ?��? 분류 기�? (?�택)
-    """
-    global COLD_THRESHOLD, HOT_THRESHOLD
-    
-    try:
-        updated = []
-        
-        if data.cold_threshold is not None:
-            if data.cold_threshold < 0 or data.cold_threshold > 50:
-                raise HTTPException(status_code=400, detail="cold_threshold??0~50 ?�이??값이?�야 ?�니??")
-            COLD_THRESHOLD = data.cold_threshold
-            updated.append(f"cold_threshold={COLD_THRESHOLD}")
-            logger.info(f"??COLD_THRESHOLD 갱신: {COLD_THRESHOLD}°C")
-        
-        if data.hot_threshold is not None:
-            if data.hot_threshold < 0 or data.hot_threshold > 50:
-                raise HTTPException(status_code=400, detail="hot_threshold??0~50 ?�이??값이?�야 ?�니??")
-            HOT_THRESHOLD = data.hot_threshold
-            updated.append(f"hot_threshold={HOT_THRESHOLD}")
-            logger.info(f"??HOT_THRESHOLD 갱신: {HOT_THRESHOLD}°C")
-        
-        if not updated:
-            raise HTTPException(status_code=400, detail="cold_threshold ?�는 hot_threshold �??�나 ?�상???�공?�야 ?�니??")
-        
-        return {
-            "success": True,
-            "message": "분류 기�? 갱신 ?�료",
-            "cold_threshold": COLD_THRESHOLD,
-            "hot_threshold": HOT_THRESHOLD,
-            "updated": updated
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"??분류 기�? 갱신 ?�패: {str(e)}")
-        raise HTTPException(status_code=500, detail=f'분류 기�? 갱신 ?�패: {str(e)}')
-
-@app.get("/threshold")
-async def get_threshold():
-    """?�재 ?��??�도 분류 기�? 조회"""
-    return {
-        "success": True,
-        "cold_threshold": COLD_THRESHOLD,
-        "hot_threshold": HOT_THRESHOLD
-    }
 
 @app.get("/health")
 async def health_check():
-    """?�버 ?�태 ?�인 (모델, ?�어�? DB ?�결 ?�태 ?�함)"""
-    # DB ?�결 ?�스??
+    """서버 상태 확인 (모델, 에어컨, DB 연결 상태 포함)"""
+    # DB 연결 테스트
     db_connected = False
     db_error = None
     try:
         with engine.connect() as conn:
-            # 간단??쿼리�??�결 ?�스??
+            # 간단한 쿼리로 연결 테스트
             result = conn.execute(text("SELECT 1"))
             result.fetchone()
             db_connected = True
     except Exception as e:
         db_error = str(e)
-        logger.error(f"??DB ?�결 ?�스???�패: {db_error}")
+        logger.error(f"❌ DB 연결 테스트 실패: {db_error}")
+    
+    # Android 앱 건강 상태 확인
+    android_health_status = None
+    if android_app_health_logs:
+        recent_logs = android_app_health_logs[-10:]  # 최근 10개
+        anr_logs = [log for log in recent_logs if log.get("type") == "ANR"]
+        recent_metrics = [log for log in recent_logs if log.get("type") != "ANR"]
+        
+        if recent_metrics:
+            cpu_values = [log.get("cpu_usage_percent") for log in recent_metrics if log.get("cpu_usage_percent")]
+            memory_values = [log.get("memory_pressure_some") for log in recent_metrics if log.get("memory_pressure_some")]
+            
+            android_health_status = {
+                "has_recent_metrics": True,
+                "recent_anr_count": len(anr_logs),
+                "avg_cpu_usage": sum(cpu_values) / len(cpu_values) if cpu_values else None,
+                "avg_memory_pressure": sum(memory_values) / len(memory_values) if memory_values else None,
+                "status": "warning" if (anr_logs or (cpu_values and max(cpu_values) > 30) or (memory_values and max(memory_values) > 40)) else "healthy"
+            }
+        else:
+            android_health_status = {
+                "has_recent_metrics": False,
+                "status": "unknown"
+            }
+    else:
+        android_health_status = {
+            "has_recent_metrics": False,
+            "status": "no_data"
+        }
+    
+    # 전체 상태 결정
+    overall_status = "healthy"
+    if not db_connected or not model_loaded:
+        overall_status = "degraded"
+    if android_health_status and android_health_status.get("status") == "warning":
+        overall_status = "warning"
     
     return {
-        "status": "healthy",
+        "status": overall_status,
         "model_loaded": model_loaded,
         "air_conditioner_available": AIR_CONDITIONER_AVAILABLE,
         "database_connected": db_connected,
-        "database_error": db_error if not db_connected else None
+        "database_error": db_error if not db_connected else None,
+        "android_app_health": android_health_status
     }
 
 @app.get("/health/db")
 async def test_db_connection():
-    """DB ?�결 ?�스???�용 ?�드?�인??""
+    """DB 연결 테스트 전용 엔드포인트"""
     try:
         with engine.connect() as conn:
-            # 간단??쿼리�??�결 ?�스??
+            # 간단한 쿼리로 연결 테스트
             result = conn.execute(text("SELECT 1 as test"))
             row = result.fetchone()
             
-            # ?�이�?존재 ?��? ?�인
+            # 테이블 존재 여부 확인
             table_check = conn.execute(text("""
                 SELECT COUNT(*) as count 
                 FROM information_schema.tables 
@@ -1299,7 +1494,7 @@ async def test_db_connection():
             """))
             table_exists = table_check.fetchone().count > 0
             
-            # ?�이??개수 ?�인
+            # 데이터 개수 확인
             data_count = 0
             if table_exists:
                 count_result = conn.execute(text("SELECT COUNT(*) as count FROM predicted_results"))
@@ -1312,57 +1507,271 @@ async def test_db_connection():
                 "test_result": row.test if row else None,
                 "table_exists": table_exists,
                 "data_count": data_count,
-                "message": "DB ?�결 ?�공"
+                "message": "DB 연결 성공"
             }
     except Exception as e:
         error_msg = str(e)
-        logger.error(f"??DB ?�결 ?�스???�패: {error_msg}")
+        logger.error(f"❌ DB 연결 테스트 실패: {error_msg}")
         return {
             "success": False,
             "connected": False,
             "error": error_msg,
-            "message": "DB ?�결 ?�패"
+            "message": "DB 연결 실패"
         }
 
-# ==================== ?�어�??�동 ?�도 조절 ?�스??====================
+# ==================== Android App Health Monitoring ====================
 
-# ?��?줄러 초기??
+# android_app_health_logs는 이미 파일 상단에서 초기화됨
+
+@app.post("/android/health/metrics")
+async def receive_android_health_metrics(metrics: AndroidAppHealthMetrics):
+    """Android 앱 건강 지표 수신 및 로깅"""
+    try:
+        # 타임스탬프 추가
+        if not metrics.timestamp:
+            metrics.timestamp = datetime.now().isoformat()
+        
+        # 로그 저장
+        log_entry = {
+            "timestamp": metrics.timestamp,
+            "package_name": metrics.package_name or "io.ionic.starter",
+            "cpu_usage_percent": metrics.cpu_usage_percent,
+            "cpu_user_percent": metrics.cpu_user_percent,
+            "cpu_kernel_percent": metrics.cpu_kernel_percent,
+            "memory_pressure_some": metrics.memory_pressure_some,
+            "memory_pressure_full": metrics.memory_pressure_full,
+            "io_pressure_some": metrics.io_pressure_some,
+            "io_pressure_full": metrics.io_pressure_full,
+            "cpu_pressure_some": metrics.cpu_pressure_some,
+            "cpu_pressure_full": metrics.cpu_pressure_full,
+            "anr_count": metrics.anr_count,
+            "connectivity_errors": metrics.connectivity_errors,
+            "load_avg_1min": metrics.load_avg_1min,
+            "load_avg_5min": metrics.load_avg_5min,
+            "load_avg_15min": metrics.load_avg_15min,
+            "error_log": metrics.error_log
+        }
+        
+        android_app_health_logs.append(log_entry)
+        
+        # 최근 1000개만 유지
+        if len(android_app_health_logs) > 1000:
+            android_app_health_logs.pop(0)
+        
+        # 경고 조건 확인
+        warnings = []
+        if metrics.cpu_usage_percent and metrics.cpu_usage_percent > 30:
+            warnings.append(f"높은 CPU 사용률: {metrics.cpu_usage_percent:.1f}%")
+        if metrics.memory_pressure_some and metrics.memory_pressure_some > 40:
+            warnings.append(f"높은 메모리 압력: {metrics.memory_pressure_some:.2f}")
+        if metrics.io_pressure_some and metrics.io_pressure_some > 40:
+            warnings.append(f"높은 I/O 압력: {metrics.io_pressure_some:.2f}")
+        if metrics.cpu_pressure_some and metrics.cpu_pressure_some > 80:
+            warnings.append(f"높은 CPU 압력: {metrics.cpu_pressure_some:.2f}")
+        if metrics.anr_count and metrics.anr_count > 0:
+            warnings.append(f"ANR 발생: {metrics.anr_count}건")
+        if metrics.connectivity_errors and metrics.connectivity_errors > 0:
+            warnings.append(f"연결 오류: {metrics.connectivity_errors}건")
+        
+        if warnings:
+            logger.warning(f"⚠️ Android 앱 건강 지표 경고: {'; '.join(warnings)}")
+        else:
+            logger.info(f"✅ Android 앱 건강 지표 수신: CPU={metrics.cpu_usage_percent}%, 메모리 압력={metrics.memory_pressure_some}")
+        
+        return {
+            "success": True,
+            "message": "건강 지표 수신 완료",
+            "warnings": warnings if warnings else None,
+            "timestamp": metrics.timestamp
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Android 앱 건강 지표 수신 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f'건강 지표 수신 실패: {str(e)}')
+
+@app.post("/android/health/anr")
+async def receive_anr_log(anr_data: dict):
+    """ANR 로그 수신 및 분석"""
+    try:
+        timestamp = datetime.now().isoformat()
+        
+        # ANR 정보 추출
+        package_name = anr_data.get("package_name", "unknown")
+        pid = anr_data.get("pid", None)
+        reason = anr_data.get("reason", "Unknown")
+        error_id = anr_data.get("error_id", None)
+        load_avg = anr_data.get("load_avg", {})
+        cpu_usage = anr_data.get("cpu_usage", {})
+        pressure_stats = anr_data.get("pressure_stats", {})
+        full_log = anr_data.get("full_log", "")
+        
+        log_entry = {
+            "timestamp": timestamp,
+            "package_name": package_name,
+            "pid": pid,
+            "reason": reason,
+            "error_id": error_id,
+            "load_avg": load_avg,
+            "cpu_usage": cpu_usage,
+            "pressure_stats": pressure_stats,
+            "full_log": full_log
+        }
+        
+        android_app_health_logs.append({
+            "timestamp": timestamp,
+            "type": "ANR",
+            "data": log_entry
+        })
+        
+        # 최근 1000개만 유지
+        if len(android_app_health_logs) > 1000:
+            android_app_health_logs.pop(0)
+        
+        logger.error(f"🚨 ANR 감지: {package_name} (PID: {pid}) - {reason}")
+        logger.error(f"   로드 평균: {load_avg}")
+        logger.error(f"   CPU 사용률: {cpu_usage}")
+        
+        return {
+            "success": True,
+            "message": "ANR 로그 수신 완료",
+            "timestamp": timestamp,
+            "error_id": error_id
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ ANR 로그 수신 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f'ANR 로그 수신 실패: {str(e)}')
+
+@app.get("/android/health/metrics")
+async def get_android_health_metrics(limit: int = 100):
+    """Android 앱 건강 지표 조회"""
+    try:
+        # 최근 N개만 반환
+        recent_logs = android_app_health_logs[-limit:] if len(android_app_health_logs) > limit else android_app_health_logs
+        
+        # 통계 계산
+        if recent_logs:
+            cpu_values = [log.get("cpu_usage_percent") for log in recent_logs if log.get("cpu_usage_percent")]
+            memory_values = [log.get("memory_pressure_some") for log in recent_logs if log.get("memory_pressure_some")]
+            io_values = [log.get("io_pressure_some") for log in recent_logs if log.get("io_pressure_some")]
+            
+            stats = {
+                "total_logs": len(android_app_health_logs),
+                "recent_logs": len(recent_logs),
+                "avg_cpu_usage": sum(cpu_values) / len(cpu_values) if cpu_values else None,
+                "max_cpu_usage": max(cpu_values) if cpu_values else None,
+                "avg_memory_pressure": sum(memory_values) / len(memory_values) if memory_values else None,
+                "max_memory_pressure": max(memory_values) if memory_values else None,
+                "avg_io_pressure": sum(io_values) / len(io_values) if io_values else None,
+                "max_io_pressure": max(io_values) if io_values else None,
+            }
+        else:
+            stats = {
+                "total_logs": 0,
+                "recent_logs": 0
+            }
+        
+        return {
+            "success": True,
+            "stats": stats,
+            "logs": recent_logs
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Android 앱 건강 지표 조회 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f'건강 지표 조회 실패: {str(e)}')
+
+@app.get("/android/health/anr")
+async def get_anr_logs(limit: int = 50):
+    """ANR 로그 조회"""
+    try:
+        # ANR 로그만 필터링
+        anr_logs = [log for log in android_app_health_logs if log.get("type") == "ANR"]
+        
+        # 최근 N개만 반환
+        recent_anr_logs = anr_logs[-limit:] if len(anr_logs) > limit else anr_logs
+        
+        return {
+            "success": True,
+            "total_anr_count": len(anr_logs),
+            "recent_anr_count": len(recent_anr_logs),
+            "anr_logs": recent_anr_logs
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ ANR 로그 조회 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f'ANR 로그 조회 실패: {str(e)}')
+
+@app.get("/android/health/connectivity")
+async def get_connectivity_errors(limit: int = 50):
+    """연결 오류 로그 조회"""
+    try:
+        global connectivity_error_count, last_connectivity_error
+        
+        # 연결 오류 로그만 필터링
+        connectivity_logs = [log for log in android_app_health_logs if log.get("type") == "connectivity_error"]
+        
+        # 최근 N개만 반환
+        recent_connectivity_logs = connectivity_logs[-limit:] if len(connectivity_logs) > limit else connectivity_logs
+        
+        return {
+            "success": True,
+            "total_connectivity_error_count": connectivity_error_count,
+            "recent_connectivity_error_count": len(recent_connectivity_logs),
+            "last_connectivity_error": last_connectivity_error,
+            "connectivity_logs": recent_connectivity_logs
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ 연결 오류 로그 조회 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f'연결 오류 로그 조회 실패: {str(e)}')
+
+# ==================== 에어컨 자동 온도 조절 시스템 ====================
+
+# 스케줄러 초기화
 scheduler = BackgroundScheduler()
 
-def adjust_air_conditioner_wrapper():
-    """?��?줄러?�서 ?�출???�퍼 ?�수 (?�역 변???�용)"""
+def update_thresholds(new_cold: float, new_hot: float):
+    """전역 변수 갱신 콜백 함수"""
     global COLD_THRESHOLD, HOT_THRESHOLD
-    
-    def update_thresholds(new_cold: float, new_hot: float):
-        """?�역 변??갱신 콜백 ?�수"""
-        global COLD_THRESHOLD, HOT_THRESHOLD
-        COLD_THRESHOLD = new_cold
-        HOT_THRESHOLD = new_hot
-    
-    # ?�역 변?�에??최신 �?가?�오�?(?��??�에 갱신 가??
+    COLD_THRESHOLD = new_cold
+    HOT_THRESHOLD = new_hot
+    logger.info(f"🔄 전역 변수 갱신: COLD_THRESHOLD={COLD_THRESHOLD}°C, HOT_THRESHOLD={HOT_THRESHOLD}°C")
+
+def adjust_air_conditioner_wrapper():
+    """스케줄러에서 호출할 래퍼 함수"""
     air_conditioner_auto_control.adjust_air_conditioner(
         engine=engine,
         air_conditioner_available=AIR_CONDITIONER_AVAILABLE,
         get_air_conditioner_state_func=get_air_conditioner_state,
         set_temperature_func=set_temperature,
-        cold_threshold=COLD_THRESHOLD,  # ?�역 변?�에??가?�옴 (갱신 가??
-        hot_threshold=HOT_THRESHOLD,    # ?�역 변?�에??가?�옴 (갱신 가??
-        update_threshold_callback=update_thresholds  # DB �?변�????�역 변??갱신 콜백
+        cold_threshold=COLD_THRESHOLD,
+        hot_threshold=HOT_THRESHOLD,
+        update_threshold_callback=update_thresholds
     )
 
 scheduler.add_job(
     adjust_air_conditioner_wrapper,
     trigger=IntervalTrigger(minutes=30),
     id='air_conditioner_adjustment',
-    name='?�어�??�동 ?�도 조절',
+    name='에어컨 자동 온도 조절',
     replace_existing=True
 )
 
-# ?�버 ?�작 ??초기 ?�팅 �??��?줄러 ?�작
+# 온도 임계값 캐시 만료 체크 (1시간마다)
+scheduler.add_job(
+    check_and_cleanup_expired_cache,
+    trigger=IntervalTrigger(hours=1),
+    id='temperature_threshold_cache_cleanup',
+    name='온도 임계값 캐시 만료 체크',
+    replace_existing=True
+)
+
+# 서버 시작 시 초기 세팅 및 스케줄러 시작
 @app.on_event("startup")
 async def startup_event():
-    """?�버 ?�작 ??초기 ?�팅 �??��?줄러 ?�작"""
-    logger.info("?? ?�버 ?�작 �?..")
+    """서버 시작 시 초기 세팅 및 스케줄러 시작"""
+    logger.info("🚀 서버 시작 중...")
     air_conditioner_auto_control.initialize_air_conditioner_settings(
         engine=engine,
         air_conditioner_available=AIR_CONDITIONER_AVAILABLE,
@@ -1370,15 +1779,35 @@ async def startup_event():
         set_temperature_func=set_temperature
     )
     scheduler.start()
-    logger.info("???��?줄러 ?�작 ?�료 (30분마???�동 조절)")
+    logger.info("✅ 스케줄러 시작 완료 (30분마다 자동 조절)")
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """?�버 종료 ???��?줄러 종료"""
-    logger.info("?�� ?�버 종료 �?..")
+    """서버 종료 시 스케줄러 종료"""
+    logger.info("🛑 서버 종료 중...")
     scheduler.shutdown()
-    logger.info("???��?줄러 종료 ?�료")
+    logger.info("✅ 스케줄러 종료 완료")
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=3000)
+    import os
+    
+    # SSL 인증서 파일 경로
+    SSL_KEYFILE = os.path.join(os.path.dirname(__file__), "server.key")
+    SSL_CERTFILE = os.path.join(os.path.dirname(__file__), "server.crt")
+    
+    # SSL 인증서가 있으면 HTTPS로 실행, 없으면 HTTP로 실행
+    if os.path.exists(SSL_KEYFILE) and os.path.exists(SSL_CERTFILE):
+        # logger.info("🔒 HTTPS 모드로 서버 시작 (SSL 인증서 사용)")
+        uvicorn.run(
+            app, 
+            host="0.0.0.0", 
+            port=3000,
+            ssl_keyfile=SSL_KEYFILE,
+            ssl_certfile=SSL_CERTFILE,
+            access_log=False  # HTTP 요청 로그 비활성화
+        )
+    else:
+        # logger.info("🌐 HTTP 모드로 서버 시작 (SSL 인증서 없음)")
+        # logger.info("💡 HTTPS를 사용하려면 server/generate_ssl_cert.py를 실행하여 인증서를 생성하세요.")
+        uvicorn.run(app, host="0.0.0.0", port=3000, access_log=False)  # HTTP 요청 로그 비활성화

@@ -246,16 +246,36 @@ def adjust_air_conditioner(
                     
                     logger.info(f"🌡️ 현재 상태: 온도={current_temp}°C, 목표 온도={target_temp}°C")
                     
-                    # room_threshold에서 범위 가져오기
-                    threshold_query = text("SELECT min_temp, max_temp FROM room_threshold LIMIT 1")
-                    threshold_result = conn.execute(threshold_query).fetchone()
-                    
-                    if not threshold_result or threshold_result.min_temp is None or threshold_result.max_temp is None:
-                        logger.warning("⚠️ room_threshold 테이블에 min_temp, max_temp가 없습니다.")
+                    # 온도 범위 가져오기 (캐시 우선, DB 차선)
+                    # temperature_control_logic의 함수를 사용하여 캐시 우선 확인
+                    logger.info("=" * 60)
+                    logger.info("🔄 [자동 조절 시작] 온도 범위 확인 중...")
+                    logger.info("=" * 60)
+                    try:
+                        from temperature_control_logic import get_temperature_range_from_db
+                        temperature_range = get_temperature_range_from_db(engine)
+                        
+                        if temperature_range is None:
+                            logger.warning("⚠️ 온도 범위를 가져올 수 없습니다 (캐시 및 DB 모두 없음).")
+                            return
+                        
+                        min_temp, max_temp = temperature_range
+                        logger.info(f"✅ [자동 조절] 사용할 온도 범위: {min_temp}~{max_temp}°C")
+                    except ImportError:
+                        # temperature_control_logic를 사용할 수 없으면 직접 DB에서 가져오기
+                        logger.warning("⚠️ temperature_control_logic 모듈을 사용할 수 없어 DB에서 직접 가져옵니다.")
+                        threshold_query = text("SELECT min_temp, max_temp FROM room_threshold LIMIT 1")
+                        threshold_result = conn.execute(threshold_query).fetchone()
+                        
+                        if not threshold_result or threshold_result.min_temp is None or threshold_result.max_temp is None:
+                            logger.warning("⚠️ room_threshold 테이블에 min_temp, max_temp가 없습니다.")
+                            return
+                        
+                        min_temp = float(threshold_result.min_temp)
+                        max_temp = float(threshold_result.max_temp)
+                    except Exception as e:
+                        logger.error(f"❌ 온도 범위 가져오기 실패: {e}")
                         return
-                    
-                    min_temp = float(threshold_result.min_temp)
-                    max_temp = float(threshold_result.max_temp)
                     
                     actions_taken = []
                     
