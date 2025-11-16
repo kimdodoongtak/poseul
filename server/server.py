@@ -38,6 +38,9 @@ last_connectivity_error = None
 # Android 앱 건강 로그 저장소 (미들웨어에서 사용하기 위해 여기서 초기화)
 android_app_health_logs = []
 
+# 온도 임계값 캐시 모듈 import
+from temperature_threshold_cache import save_temperature_threshold as save_threshold, get_temperature_threshold as get_threshold
+
 @app.middleware("http")
 async def track_connectivity_errors(request: Request, call_next):
     """연결 오류 추적 미들웨어"""
@@ -1046,6 +1049,47 @@ async def control_air_conditioner_api(data: AirConditionerControlRequest):
     except Exception as e:
         logger.error(f"에어컨 제어 실패: {str(e)}")
         raise HTTPException(status_code=500, detail=f'에어컨 제어 실패: {str(e)}')
+
+class TemperatureThresholdRequest(BaseModel):
+    """온도 임계값 저장 요청"""
+    target_temperature: float  # 사용자가 설정한 온도 (예: 24도)
+
+@app.post("/air_conditioner/temperature_threshold")
+async def save_temperature_threshold_api(data: TemperatureThresholdRequest):
+    """에어컨 온도 임계값을 캐시에 저장 (12시간 유효)"""
+    try:
+        threshold = save_threshold(data.target_temperature)
+        
+        return {
+            "success": True,
+            "message": "온도 임계값이 저장되었습니다.",
+            "threshold": threshold
+        }
+    except Exception as e:
+        logger.error(f"❌ 온도 임계값 저장 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f'온도 임계값 저장 실패: {str(e)}')
+
+@app.get("/air_conditioner/temperature_threshold")
+async def get_temperature_threshold_api():
+    """현재 저장된 온도 임계값 조회 (만료되지 않은 경우만)"""
+    try:
+        threshold = get_threshold()
+        
+        if threshold is None:
+            return {
+                "success": True,
+                "has_threshold": False,
+                "message": "저장된 임계값이 없습니다."
+            }
+        
+        return {
+            "success": True,
+            "has_threshold": True,
+            "threshold": threshold
+        }
+    except Exception as e:
+        logger.error(f"❌ 온도 임계값 조회 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f'온도 임계값 조회 실패: {str(e)}')
 
 # ==================== 기본 API ====================
 

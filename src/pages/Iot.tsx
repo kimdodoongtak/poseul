@@ -14,6 +14,7 @@ import {
   IonButton,
   IonSpinner,
   IonText,
+  IonAlert,
 } from '@ionic/react';
 import { IotService, AirConditionerMode, FanSpeed } from '../services';
 import './Iot.css';
@@ -37,6 +38,10 @@ const Iot: React.FC = () => {
     mode: 'AUTO',
     fanSpeed: 'AUTO',
   });
+  
+  // 온도 임계값 설정 팝업 관련 상태
+  const [showThresholdAlert, setShowThresholdAlert] = useState(false);
+  const [pendingTemperature, setPendingTemperature] = useState<number | null>(null);
 
   const loadStatus = useCallback(async () => {
     setError(null);
@@ -82,7 +87,29 @@ const Iot: React.FC = () => {
     }
   };
 
-  const handleTemperatureChange = async (temperature: number) => {
+  const handleTemperatureChange = (temperature: number) => {
+    // 전원이 켜져있으면 임시로 온도만 선택 (확인 버튼을 눌러야 적용)
+    if (status.power) {
+      console.log('온도 선택:', temperature, '현재 온도:', status.targetTemperature);
+      setPendingTemperature(temperature);
+    } else {
+      // 전원이 꺼져있으면 바로 설정
+      applyTemperatureChange(temperature);
+    }
+  };
+
+  const handleConfirmTemperature = () => {
+    // 확인 버튼을 누르면 팝업 표시
+    // pendingTemperature가 null이면 현재 온도를 사용
+    const targetTemp = pendingTemperature !== null ? pendingTemperature : status.targetTemperature;
+    if (status.power) {
+      // pendingTemperature를 설정하고 팝업 표시
+      setPendingTemperature(targetTemp);
+      setShowThresholdAlert(true);
+    }
+  };
+
+  const applyTemperatureChange = async (temperature: number) => {
     setLoading(true);
     setError(null);
     try {
@@ -94,6 +121,41 @@ const Iot: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleThresholdConfirm = async () => {
+    // pendingTemperature가 null이면 현재 온도를 사용
+    const targetTemp = pendingTemperature !== null ? pendingTemperature : status.targetTemperature;
+    
+    setLoading(true);
+    setError(null);
+    try {
+      // 먼저 온도 설정
+      await IotService.setTargetTemperature(targetTemp);
+      setStatus({ ...status, targetTemperature: targetTemp });
+      
+      // 임계값 저장
+      const result = await IotService.saveTemperatureThreshold(targetTemp);
+      if (result.success) {
+        console.log('✅ 온도 임계값 저장 성공');
+      } else {
+        console.warn('⚠️ 온도 임계값 저장 실패:', result.message);
+        // 임계값 저장 실패해도 온도는 설정되었으므로 에러는 표시하지 않음
+      }
+    } catch (error: any) {
+      console.error('Failed to set temperature and save threshold:', error);
+      setError(error.message || '온도 설정에 실패했습니다.');
+    } finally {
+      setLoading(false);
+      setShowThresholdAlert(false);
+      setPendingTemperature(null);
+    }
+  };
+
+  const handleThresholdCancel = () => {
+    // 팝업 취소 시 온도는 설정하지 않음
+    setShowThresholdAlert(false);
+    setPendingTemperature(null);
   };
 
   const handleModeChange = async (mode: AirConditionerMode) => {
@@ -221,7 +283,10 @@ const Iot: React.FC = () => {
               <IonCardContent>
                 <IonItem>
                   <IonLabel>
-                    <h2>{status.targetTemperature}°C</h2>
+                    <h2>{pendingTemperature !== null ? pendingTemperature : status.targetTemperature}°C</h2>
+                    {pendingTemperature !== null && pendingTemperature !== status.targetTemperature && (
+                      <p style={{ color: '#666', fontSize: '14px' }}>선택된 온도: {pendingTemperature}°C</p>
+                    )}
                   </IonLabel>
                 </IonItem>
                 <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
@@ -229,11 +294,12 @@ const Iot: React.FC = () => {
                     expand="block"
                     fill="outline"
                     onClick={() => {
-                      if (status.targetTemperature > 16) {
-                        handleTemperatureChange(status.targetTemperature - 1);
+                      const currentTemp = pendingTemperature !== null ? pendingTemperature : status.targetTemperature;
+                      if (currentTemp > 16) {
+                        handleTemperatureChange(currentTemp - 1);
                       }
                     }}
-                    disabled={loading || status.targetTemperature <= 16}
+                    disabled={loading || (pendingTemperature !== null ? pendingTemperature : status.targetTemperature) <= 16}
                   >
                     -1°C
                   </IonButton>
@@ -241,11 +307,12 @@ const Iot: React.FC = () => {
                     expand="block"
                     fill="outline"
                     onClick={() => {
-                      if (status.targetTemperature < 30) {
-                        handleTemperatureChange(status.targetTemperature + 1);
+                      const currentTemp = pendingTemperature !== null ? pendingTemperature : status.targetTemperature;
+                      if (currentTemp < 30) {
+                        handleTemperatureChange(currentTemp + 1);
                       }
                     }}
-                    disabled={loading || status.targetTemperature >= 30}
+                    disabled={loading || (pendingTemperature !== null ? pendingTemperature : status.targetTemperature) >= 30}
                   >
                     +1°C
                   </IonButton>
@@ -276,6 +343,23 @@ const Iot: React.FC = () => {
                     26°C
                   </IonButton>
                 </div>
+                
+                {/* 확인 버튼 - 온도 조절 버튼들 바로 아래 */}
+                <IonButton
+                  expand="block"
+                  color="primary"
+                  onClick={handleConfirmTemperature}
+                  disabled={loading}
+                  style={{ 
+                    marginTop: '20px', 
+                    width: '100%',
+                    height: '48px',
+                    fontSize: '16px',
+                    fontWeight: 'bold'
+                  }}
+                >
+                  확인 ({(pendingTemperature !== null ? pendingTemperature : status.targetTemperature)}°C)
+                </IonButton>
               </IonCardContent>
             </IonCard>
           )}
@@ -377,6 +461,29 @@ const Iot: React.FC = () => {
             </div>
           )}
         </div>
+
+        {/* 온도 임계값 설정 팝업 */}
+        <IonAlert
+          isOpen={showThresholdAlert}
+          onDidDismiss={handleThresholdCancel}
+          header="온도 범위 설정"
+          message={
+            pendingTemperature !== null
+              ? `오늘 하루는 현재 설정하신 온도로 진행할까요?\n\n오늘 임계값: ${pendingTemperature - 1}도 ~ ${pendingTemperature + 1}도`
+              : `오늘 하루는 현재 설정하신 온도로 진행할까요?\n\n오늘 임계값: ${status.targetTemperature - 1}도 ~ ${status.targetTemperature + 1}도`
+          }
+          buttons={[
+            {
+              text: '취소',
+              role: 'cancel',
+              handler: handleThresholdCancel,
+            },
+            {
+              text: '예',
+              handler: handleThresholdConfirm,
+            },
+          ]}
+        />
       </IonContent>
     </IonPage>
   );

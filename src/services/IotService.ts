@@ -44,14 +44,14 @@ class IotService {
       if (Capacitor.isNativePlatform()) {
         // 안드로이드 에뮬레이터 또는 실제 기기
         if (Capacitor.getPlatform() === 'android') {
-          // 실제 기기 사용 시: 컴퓨터 IP 주소 필요 (예: 192.168.0.143)
+          // 실제 기기 사용 시: 컴퓨터 IP 주소 필요 (예: 192.168.68.72)
           // 에뮬레이터 사용 시: 10.0.2.2
           // 환경 변수로 설정 가능하도록 개선
-          this.baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://192.168.0.143:3000';
+          this.baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://192.168.68.72:3000';
         } else if (Capacitor.getPlatform() === 'ios') {
           // iOS 시뮬레이터: localhost, 실제 기기: 컴퓨터 IP 주소 필요
           // 실제 기기에서는 환경 변수나 하드코딩된 IP 사용
-          this.baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://192.168.68.74:3000';
+          this.baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://192.168.68.72:3000';
         } else {
           this.baseUrl = 'http://localhost:3000';
         }
@@ -244,6 +244,60 @@ class IotService {
    */
   async setFanSpeed(fanSpeed: FanSpeed): Promise<{ success: boolean }> {
     return this.controlAirConditioner({ fanSpeed });
+  }
+
+  /**
+   * 온도 임계값 저장 (12시간 유효)
+   */
+  async saveTemperatureThreshold(targetTemperature: number): Promise<{ success: boolean; message?: string }> {
+    try {
+      console.log(`온도 임계값 저장 요청: ${this.baseUrl}/air_conditioner/temperature_threshold`, { target_temperature: targetTemperature });
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      
+      const response = await fetch(`${this.baseUrl}/air_conditioner/temperature_threshold`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ target_temperature: targetTemperature }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('온도 임계값 저장 응답:', data);
+      
+      if (!data.success) {
+        throw new Error(data.error || '임계값 저장 실패');
+      }
+
+      return {
+        success: true,
+        message: data.message || '임계값 저장 성공',
+      };
+    } catch (error: any) {
+      console.error('Failed to save temperature threshold:', error);
+      
+      if (error.name === 'AbortError') {
+        return {
+          success: false,
+          message: '서버 응답 시간 초과. 서버가 실행 중인지 확인해주세요.',
+        };
+      }
+      
+      return {
+        success: false,
+        message: error.message || '임계값 저장 실패',
+      };
+    }
   }
 }
 
