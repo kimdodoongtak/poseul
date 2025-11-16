@@ -2,14 +2,12 @@
 에어컨 자동 온도 조절 시스템 모듈
 
 주요 기능:
-1. 초기 세팅: room_threshold에서 min_temp, max_temp 가져와서 목표 온도(중간값) 및 목표 습도(60%) 설정
-2. 피드백 분류: predicted_skin_temp 예측값이 들어올 때마다 분류값에 따라 H/C/G로 분류하여 temp_change 테이블에 저장
-3. 자동 조절: 30분마다 최근 3개 피드백을 다수결로 판단하여 에어컨 조절
+1. 초기 세팅: room_threshold에서 min_temp, max_temp 가져와서 목표 온도(중간값) 설정
+2. 자동 조절: 30분마다 최근 3개 피드백을 다수결로 판단하여 에어컨 조절
 """
 
 from sqlalchemy import text
 from datetime import datetime
-from typing import Optional
 import logging
 
 logger = logging.getLogger(__name__)
@@ -20,7 +18,7 @@ last_adjustment_time = None
 
 def initialize_air_conditioner_settings(engine, air_conditioner_available: bool, get_air_conditioner_state_func, set_temperature_func):
     """
-    초기 세팅: room_threshold에서 min_temp, max_temp 가져와서 목표 온도(중간값) 및 목표 습도(60%) 설정
+    초기 세팅: room_threshold에서 min_temp, max_temp 가져와서 목표 온도(중간값) 설정
     
     Args:
         engine: SQLAlchemy 엔진
@@ -51,9 +49,8 @@ def initialize_air_conditioner_settings(engine, air_conditioner_available: bool,
                     min_temp = float(threshold_result.min_temp)
                     max_temp = float(threshold_result.max_temp)
                     target_temp = (min_temp + max_temp) / 2.0  # 중간값
-                    target_humidity = 60.0  # 목표 습도 60%
                     
-                    logger.info(f"🌡️ 초기 세팅: 목표 온도={target_temp}°C (범위: {min_temp}~{max_temp}°C), 목표 습도={target_humidity}%")
+                    logger.info(f"🌡️ 초기 세팅: 목표 온도={target_temp}°C (범위: {min_temp}~{max_temp}°C)")
                     
                     # 에어컨에 목표 온도 설정
                     if air_conditioner_available:
@@ -68,90 +65,6 @@ def initialize_air_conditioner_settings(engine, air_conditioner_available: bool,
                 logger.error(f"❌ 초기 세팅 실패: {e}")
     except Exception as e:
         logger.error(f"❌ 초기 세팅 중 오류: {e}")
-
-
-def classify_and_save_feedback(
-    engine,
-    predicted_skin_temp: float,
-    air_conditioner_available: bool,
-    get_air_conditioner_state_func,
-    cold_threshold: float = 34.5,
-    hot_threshold: float = 35.6
-):
-    """
-    predicted_skin_temp 예측값이 들어올 때마다 분류값에 따라 H/C/G로 분류하여 temp_change 테이블에 저장
-    
-    Args:
-        engine: SQLAlchemy 엔진
-        predicted_skin_temp: 예측된 피부 온도
-        air_conditioner_available: 에어컨 모듈 사용 가능 여부
-        get_air_conditioner_state_func: 에어컨 상태 조회 함수
-        cold_threshold: 추움 분류 기준 (기본값: 34.5)
-        hot_threshold: 더움 분류 기준 (기본값: 35.6)
-    """
-    try:
-        # 피부온도 분류 (cold_threshold 미만: 추움(C), hot_threshold 초과: 더움(H), 그 외: 쾌적(G))
-        if predicted_skin_temp < cold_threshold:
-            classification = 'C'  # 추움
-        elif predicted_skin_temp > hot_threshold:
-            classification = 'H'  # 더움
-        else:
-            classification = 'G'  # 쾌적
-        
-        # 에어컨 상태 가져오기
-        current_temp = None
-        current_humidity = None
-        target_temp = None
-        target_humidity = None
-        
-        if air_conditioner_available:
-            try:
-                state_response = get_air_conditioner_state_func()
-                if state_response and 'result' in state_response and 'value' in state_response['result']:
-                    state = state_response['result']['value']
-                    current_temp = state.get('temperature', {}).get('currentTemperature')
-                    target_temp = state.get('temperature', {}).get('targetTemperature')
-                    current_humidity = state.get('airQualitySensor', {}).get('humidity')
-                    # 목표 습도는 기본값 60%로 설정 (에어컨에서 직접 가져올 수 없으면)
-                    target_humidity = 60.0
-            except Exception as e:
-                logger.warning(f"⚠️ 에어컨 상태 조회 실패 (temp_change 저장 계속): {e}")
-        
-        # temp_change 테이블에 저장
-        with engine.connect() as conn:
-            try:
-                # temp_change 테이블 존재 여부 확인
-                table_check = text("""
-                    SELECT COUNT(*) as count
-                    FROM information_schema.tables 
-                    WHERE table_schema = 'main' 
-                    AND table_name = 'temp_change'
-                """)
-                table_exists = conn.execute(table_check).fetchone().count > 0
-                
-                if table_exists:
-                    # temp_change 테이블에 데이터 삽입
-                    insert_temp_change = text("""
-                        INSERT INTO temp_change 
-                        (classification, current_temperature, current_humidity, target_temperature, target_humidity, created_at)
-                        VALUES 
-                        (:classification, :current_temp, :current_humidity, :target_temp, :target_humidity, NOW())
-                    """)
-                    conn.execute(insert_temp_change, {
-                        'classification': classification,
-                        'current_temp': current_temp,
-                        'current_humidity': current_humidity,
-                        'target_temp': target_temp,
-                        'target_humidity': target_humidity
-                    })
-                    conn.commit()
-                    logger.info(f"✅ temp_change 테이블에 분류 저장: {classification} (predicted_skin_temp: {predicted_skin_temp})")
-                else:
-                    logger.warning("⚠️ temp_change 테이블이 존재하지 않습니다.")
-            except Exception as e:
-                logger.warning(f"⚠️ temp_change 테이블 저장 실패: {e}")
-    except Exception as e:
-        logger.warning(f"⚠️ 피드백 분류 및 저장 실패: {e}")
 
 
 def get_majority_feedback(feedbacks: list) -> str:
@@ -189,16 +102,22 @@ def adjust_air_conditioner(
     engine,
     air_conditioner_available: bool,
     get_air_conditioner_state_func,
-    set_temperature_func
+    set_temperature_func,
+    cold_threshold: float = 34.5,
+    hot_threshold: float = 35.6,
+    update_threshold_callback=None
 ):
     """
-    30분마다 최근 3개 피드백을 다수결로 판단하여 조절
+    30분마다 predicted_results에서 최근 3개 predicted_skin_temp를 분류하여 다수결로 판단하고 조절
     
     Args:
         engine: SQLAlchemy 엔진
         air_conditioner_available: 에어컨 모듈 사용 가능 여부
         get_air_conditioner_state_func: 에어컨 상태 조회 함수
         set_temperature_func: 에어컨 온도 설정 함수
+        cold_threshold: 추움 분류 기준 (기본값: 34.5)
+        hot_threshold: 더움 분류 기준 (기본값: 35.6)
+        update_threshold_callback: 전역 변수 갱신 콜백 함수 (cold_threshold, hot_threshold) -> None
     """
     global last_adjustment_time
     
@@ -214,35 +133,97 @@ def adjust_air_conditioner(
         logger.info("🔄 에어컨 자동 조절 시작...")
         
         with engine.connect() as conn:
-            # temp_change 테이블에서 최근 3개 피드백 가져오기
+            # room_threshold 테이블에서 min_skinthreshold, max_skinthreshold 확인 및 전역 변수 갱신
+            try:
+                threshold_table_check = text("""
+                    SELECT COUNT(*) as count
+                    FROM information_schema.tables 
+                    WHERE table_schema = 'main' 
+                    AND table_name = 'room_threshold'
+                """)
+                threshold_table_exists = conn.execute(threshold_table_check).fetchone().count > 0
+                
+                if threshold_table_exists:
+                    # min_skinthreshold, max_skinthreshold 컬럼 존재 여부 확인
+                    columns_check = text("""
+                        SELECT COLUMN_NAME 
+                        FROM INFORMATION_SCHEMA.COLUMNS 
+                        WHERE TABLE_SCHEMA = 'main' 
+                        AND TABLE_NAME = 'room_threshold'
+                        AND COLUMN_NAME IN ('min_skinthreshold', 'max_skinthreshold')
+                    """)
+                    columns_result = conn.execute(columns_check).fetchall()
+                    column_names = [row.COLUMN_NAME for row in columns_result]
+                    
+                    has_min_skin = 'min_skinthreshold' in column_names
+                    has_max_skin = 'max_skinthreshold' in column_names
+                    
+                    if has_min_skin and has_max_skin:
+                        # min_skinthreshold, max_skinthreshold 값 가져오기
+                        skin_threshold_query = text("SELECT min_skinthreshold, max_skinthreshold FROM room_threshold LIMIT 1")
+                        skin_threshold_result = conn.execute(skin_threshold_query).fetchone()
+                        
+                        if skin_threshold_result and skin_threshold_result.min_skinthreshold is not None and skin_threshold_result.max_skinthreshold is not None:
+                            db_cold_threshold = float(skin_threshold_result.min_skinthreshold)
+                            db_hot_threshold = float(skin_threshold_result.max_skinthreshold)
+                            
+                            # DB 값과 현재 전역 변수 값이 다르면 갱신
+                            if db_cold_threshold != cold_threshold or db_hot_threshold != hot_threshold:
+                                logger.info(f"🔄 DB에서 피부온도 분류 기준 변경 감지: cold={db_cold_threshold}°C, hot={db_hot_threshold}°C (기존: cold={cold_threshold}°C, hot={hot_threshold}°C)")
+                                
+                                # 콜백 함수를 통해 전역 변수 갱신
+                                if update_threshold_callback:
+                                    update_threshold_callback(db_cold_threshold, db_hot_threshold)
+                                    logger.info(f"✅ 전역 변수 갱신 완료: COLD_THRESHOLD={db_cold_threshold}°C, HOT_THRESHOLD={db_hot_threshold}°C")
+                                
+                                # 현재 함수에서 사용할 값도 갱신
+                                cold_threshold = db_cold_threshold
+                                hot_threshold = db_hot_threshold
+                            else:
+                                logger.debug(f"ℹ️ DB 피부온도 분류 기준 변경 없음: cold={cold_threshold}°C, hot={hot_threshold}°C")
+            except Exception as e:
+                logger.warning(f"⚠️ 피부온도 분류 기준 확인 실패 (계속 진행): {e}")
+            
+            # predicted_results 테이블에서 최근 3개 predicted_skin_temp 가져오기
             try:
                 table_check = text("""
                     SELECT COUNT(*) as count
                     FROM information_schema.tables 
                     WHERE table_schema = 'main' 
-                    AND table_name = 'temp_change'
+                    AND table_name = 'predicted_results'
                 """)
                 table_exists = conn.execute(table_check).fetchone().count > 0
                 
                 if not table_exists:
-                    logger.warning("⚠️ temp_change 테이블이 존재하지 않습니다.")
+                    logger.warning("⚠️ predicted_results 테이블이 존재하지 않습니다.")
                     return
                 
-                # 최근 3개 피드백 가져오기
-                feedback_query = text("""
-                    SELECT classification 
-                    FROM temp_change 
-                    ORDER BY created_at DESC 
+                # 최근 3개 predicted_skin_temp 가져오기
+                temp_query = text("""
+                    SELECT predicted_skin_temp 
+                    FROM predicted_results 
+                    WHERE predicted_skin_temp IS NOT NULL
                     LIMIT 3
                 """)
-                feedback_results = conn.execute(feedback_query).fetchall()
+                temp_results = conn.execute(temp_query).fetchall()
                 
-                if len(feedback_results) < 3:
-                    logger.info(f"⏳ 피드백이 {len(feedback_results)}개만 있습니다. 3개가 필요합니다.")
+                if len(temp_results) < 3:
+                    logger.info(f"⏳ predicted_skin_temp가 {len(temp_results)}개만 있습니다. 3개가 필요합니다.")
                     return
                 
-                feedbacks = [row.classification for row in feedback_results]
-                logger.info(f"📊 최근 3개 피드백: {feedbacks}")
+                # predicted_skin_temp 값을 분류 기준에 따라 분류
+                feedbacks = []
+                for row in temp_results:
+                    predicted_temp = float(row.predicted_skin_temp)
+                    if predicted_temp < cold_threshold:
+                        classification = 'C'  # 추움
+                    elif predicted_temp > hot_threshold:
+                        classification = 'H'  # 더움
+                    else:
+                        classification = 'G'  # 쾌적
+                    feedbacks.append(classification)
+                
+                logger.info(f"📊 최근 3개 predicted_skin_temp 분류 결과: {feedbacks} (온도값: {[float(row.predicted_skin_temp) for row in temp_results]})")
                 
                 # 다수결 판단
                 majority_feedback = get_majority_feedback(feedbacks)
@@ -261,10 +242,9 @@ def adjust_air_conditioner(
                     
                     state = state_response['result']['value']
                     current_temp = state.get('temperature', {}).get('currentTemperature')
-                    current_humidity = state.get('airQualitySensor', {}).get('humidity')
                     target_temp = state.get('temperature', {}).get('targetTemperature')
                     
-                    logger.info(f"🌡️ 현재 상태: 온도={current_temp}°C, 습도={current_humidity}%, 목표 온도={target_temp}°C")
+                    logger.info(f"🌡️ 현재 상태: 온도={current_temp}°C, 목표 온도={target_temp}°C")
                     
                     # room_threshold에서 범위 가져오기
                     threshold_query = text("SELECT min_temp, max_temp FROM room_threshold LIMIT 1")
@@ -276,57 +256,41 @@ def adjust_air_conditioner(
                     
                     min_temp = float(threshold_result.min_temp)
                     max_temp = float(threshold_result.max_temp)
-                    target_humidity = 60.0  # 목표 습도 60%
                     
-                    # 조절 순서: 습도 먼저, 그 다음 온도
                     actions_taken = []
                     
-                    # 1️⃣ 습도 조절
-                    if current_humidity is not None and current_humidity > target_humidity:
-                        # 현재 습도가 목표 습도에 도달했다면 (현재 습도가 60%보다 높으면)
-                        # 습도는 에어컨에서 직접 조절할 수 없으므로 로그만 남김
-                        logger.info(f"💧 습도 조절 필요: 현재 {current_humidity}% > 목표 {target_humidity}% (에어컨에서 직접 조절 불가)")
-                        actions_taken.append("humidity_check")
-                    else:
-                        logger.info(f"💧 습도 적정: 현재 {current_humidity}% <= 목표 {target_humidity}%")
-                    
-                    # 2️⃣ 온도 조절
+                    # 온도 조절
                     if majority_feedback == 'G':
                         # 쾌적하면 조절 없음
                         logger.info("✅ 쾌적 상태 - 조절 없음")
                         actions_taken.append("none")
                     else:
-                        # 현재 온도가 목표 온도에 도달했다면
-                        if current_temp is not None and target_temp is not None:
-                            # 온도 차이가 0.5도 이내면 도달한 것으로 간주
-                            if abs(current_temp - target_temp) <= 0.5:
-                                new_target_temp = target_temp
-                                
-                                if majority_feedback == 'H':
-                                    # 더움 → 목표 온도 -0.5
-                                    new_target_temp = target_temp - 0.5
-                                    actions_taken.append("temp_down")
-                                elif majority_feedback == 'C':
-                                    # 추움 → 목표 온도 +0.5
-                                    new_target_temp = target_temp + 0.5
-                                    actions_taken.append("temp_up")
-                                
-                                # 조절 후 목표 온도가 범위 내인지 확인
-                                if min_temp <= new_target_temp <= max_temp:
-                                    try:
-                                        set_temperature_func(target_temp=new_target_temp, unit='C')
-                                        logger.info(f"✅ 목표 온도 조절: {target_temp}°C → {new_target_temp}°C")
-                                        target_temp = new_target_temp
-                                    except Exception as e:
-                                        logger.error(f"❌ 목표 온도 조절 실패: {e}")
-                                else:
-                                    logger.warning(f"⚠️ 조절 후 온도 {new_target_temp}°C가 범위({min_temp}~{max_temp}°C)를 벗어남. 조절 취소")
-                                    actions_taken.append("temp_adjustment_cancelled")
+                        # 목표 온도 조절 계산
+                        if target_temp is not None:
+                            new_target_temp = target_temp
+                            
+                            if majority_feedback == 'H':
+                                # 더움 → 목표 온도 -0.5
+                                new_target_temp = target_temp - 0.5
+                                actions_taken.append("temp_down")
+                            elif majority_feedback == 'C':
+                                # 추움 → 목표 온도 +0.5
+                                new_target_temp = target_temp + 0.5
+                                actions_taken.append("temp_up")
+                            
+                            # 조절 후 목표 온도가 범위 내인지 확인
+                            if min_temp <= new_target_temp <= max_temp:
+                                try:
+                                    set_temperature_func(target_temp=new_target_temp, unit='C')
+                                    logger.info(f"✅ 목표 온도 조절: {target_temp}°C → {new_target_temp}°C")
+                                    target_temp = new_target_temp
+                                except Exception as e:
+                                    logger.error(f"❌ 목표 온도 조절 실패: {e}")
                             else:
-                                logger.info(f"⏳ 목표 온도 도달 대기 중... (현재: {current_temp}°C, 목표: {target_temp}°C)")
-                                actions_taken.append("waiting_for_target")
+                                logger.warning(f"⚠️ 조절 후 온도 {new_target_temp}°C가 범위({min_temp}~{max_temp}°C)를 벗어남. 조절 취소")
+                                actions_taken.append("temp_adjustment_cancelled")
                         else:
-                            logger.warning("⚠️ 현재 온도 또는 목표 온도를 가져올 수 없습니다.")
+                            logger.warning("⚠️ 목표 온도를 가져올 수 없습니다.")
                     
                     # 조절 결과를 DB에 기록
                     try:
@@ -334,16 +298,14 @@ def adjust_air_conditioner(
                         action_str = ", ".join(actions_taken) if actions_taken else "none"
                         adjustment_query = text("""
                             INSERT INTO temp_change 
-                            (classification, current_temperature, current_humidity, target_temperature, target_humidity, action_taken, created_at)
+                            (classification, current_temperature, target_temperature, action_taken, created_at)
                             VALUES 
-                            (:classification, :current_temp, :current_humidity, :target_temp, :target_humidity, :action_taken, NOW())
+                            (:classification, :current_temp, :target_temp, :action_taken, NOW())
                         """)
                         conn.execute(adjustment_query, {
                             'classification': majority_feedback,
                             'current_temp': current_temp,
-                            'current_humidity': current_humidity,
                             'target_temp': target_temp,
-                            'target_humidity': target_humidity,
                             'action_taken': action_str
                         })
                         conn.commit()
@@ -362,4 +324,3 @@ def adjust_air_conditioner(
                 
     except Exception as e:
         logger.error(f"❌ 자동 조절 실패: {e}")
-
