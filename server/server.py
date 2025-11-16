@@ -15,6 +15,8 @@ import time
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 import air_conditioner_auto_control
+import temperature_control_logic
+import feedback_based_adjustment
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -1060,7 +1062,7 @@ class TemperatureThresholdRequest(BaseModel):
 
 @app.post("/air_conditioner/temperature_threshold")
 async def save_temperature_threshold_api(data: TemperatureThresholdRequest):
-    """에어컨 온도 임계값을 캐시에 저장 (12시간 유효)"""
+    """에어컨 온도 임계값을 캐시에 저장 (유효)"""
     try:
         threshold = save_threshold(data.target_temperature)
         
@@ -1094,6 +1096,99 @@ async def get_temperature_threshold_api():
     except Exception as e:
         logger.error(f"❌ 온도 임계값 조회 실패: {str(e)}")
         raise HTTPException(status_code=500, detail=f'온도 임계값 조회 실패: {str(e)}')
+
+# ==================== 온도 범위 설정 API ====================
+
+class TemperatureRangeRequest(BaseModel):
+    age: int
+    bmi: float
+    gender: str  # 'M' 또는 'F', 또는 'MALE'/'FEMALE', 또는 0/1
+    force_update: Optional[bool] = False  # 강제 업데이트 여부
+
+@app.post("/temperature-range")
+async def set_temperature_range(data: TemperatureRangeRequest):
+    """
+    사용자 특성(나이, BMI, 성별)에 따라 쾌적 온도 범위를 계산하고 DB에 저장
+    (처음 한번만 적용, 이미 설정되어 있으면 기존 값 유지)
+    """
+    try:
+        logger.info(f"🌡️ 온도 범위 설정 요청: 나이={data.age}세, BMI={data.bmi}, 성별={data.gender}, force_update={data.force_update}")
+        
+        # 온도 범위 초기화
+        success, min_temp, max_temp = temperature_control_logic.initialize_user_temperature_range(
+            engine=engine,
+            age=data.age,
+            bmi=data.bmi,
+            gender=data.gender,
+            air_conditioner_available=AIR_CONDITIONER_AVAILABLE,
+            set_temperature_func=set_temperature,
+            force_update=data.force_update
+        )
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="온도 범위 설정 실패")
+        
+        return {
+            "success": True,
+            "message": "온도 범위 설정 완료",
+            "min_temp": min_temp,
+            "max_temp": max_temp,
+            "target_temp": (min_temp + max_temp) / 2.0,
+            "age": data.age,
+            "bmi": data.bmi,
+            "gender": data.gender
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"온도 범위 설정 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f'온도 범위 설정 실패: {str(e)}')
+
+@app.get("/temperature-range")
+async def get_temperature_range():
+    """
+    DB에서 저장된 쾌적 온도 범위 조회
+    """
+    try:
+        logger.info("🌡️ 온도 범위 조회 요청")
+        
+        temperature_range = temperature_control_logic.get_temperature_range_from_db(engine)
+        
+        if temperature_range is None:
+            return {
+                "success": False,
+                "message": "온도 범위가 설정되어 있지 않습니다.",
+                "min_temp": None,
+                "max_temp": None
+            }
+        
+        min_temp, max_temp = temperature_range
+        
+        # DB에서 사용자 정보도 함께 조회
+        with engine.connect() as conn:
+            query = text("SELECT age, bmi, gender FROM room_threshold LIMIT 1")
+            result = conn.execute(query).fetchone()
+            
+            user_info = None
+            if result:
+                user_info = {
+                    "age": result.age,
+                    "bmi": float(result.bmi) if result.bmi else None,
+                    "gender": result.gender
+                }
+        
+        return {
+            "success": True,
+            "min_temp": min_temp,
+            "max_temp": max_temp,
+            "target_temp": (min_temp + max_temp) / 2.0,
+            "user_info": user_info
+        }
+        
+    except Exception as e:
+        logger.error(f"온도 범위 조회 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f'온도 범위 조회 실패: {str(e)}')
 
 # ==================== 기본 API ====================
 
@@ -1399,6 +1494,16 @@ async def save_temperature_feedback(data: TemperatureFeedbackRequest):
                     
             except Exception as e:
                 logger.error(f"❌ 피드백 처리 실패: {str(e)}")
+            
+            # 피드백 저장 후 자동으로 임계값 조정 처리
+            try:
+                success, message = feedback_based_adjustment.process_daily_feedback(engine, feedback_code)
+                if success:
+                    logger.info(f"✅ {message}")
+                else:
+                    logger.warning(f"⚠️ {message}")
+            except Exception as e:
+                logger.warning(f"⚠️ 피드백 기반 임계값 조정 실패 (계속 진행): {e}")
         
         return {
             "success": True,
@@ -1413,6 +1518,129 @@ async def save_temperature_feedback(data: TemperatureFeedbackRequest):
         return {
             "success": False,
             "message": f"피드백 저장 실패: {str(e)}"
+        }
+
+# ==================== 피드백 기반 조정 API ====================
+
+@app.get("/feedback/count")
+async def get_feedback_count():
+    """
+    현재 피드백 기간의 피드백 횟수 조회 API
+    """
+    try:
+        count = feedback_based_adjustment.get_feedback_count(engine)
+        is_within_limit = feedback_based_adjustment.is_within_feedback_limit(engine)
+        return {
+            "success": True,
+            "count": count,
+            "max_count": 7,
+            "remaining": max(0, 7 - count),
+            "is_within_limit": is_within_limit
+        }
+    except Exception as e:
+        logger.error(f"❌ 피드백 횟수 조회 실패: {str(e)}")
+        return {"success": False, "message": f"피드백 횟수 조회 실패: {str(e)}"}
+
+@app.post("/feedback/reset")
+async def reset_feedback_period():
+    """
+    피드백 기반 조정 기간 재시작 API
+    (피드백 횟수 리셋, 다시 7번까지 가능)
+    """
+    try:
+        success, message = feedback_based_adjustment.reset_feedback_period(engine)
+        
+        if success:
+            return {
+                "success": True,
+                "message": message
+            }
+        else:
+            return {
+                "success": False,
+                "message": message
+            }
+    except Exception as e:
+        logger.error(f"❌ 피드백 기간 재시작 실패: {str(e)}")
+        return {
+            "success": False,
+            "message": f"피드백 기간 재시작 실패: {str(e)}"
+        }
+
+@app.get("/feedback/history")
+async def get_feedback_history(days: int = 7):
+    """
+    최근 N일간의 임계값 조정 이력 조회
+    
+    Args:
+        days: 조회할 일수 (기본값: 7)
+    """
+    try:
+        history = feedback_based_adjustment.get_adjustment_history(engine, days)
+        return {
+            "success": True,
+            "days": days,
+            "history": history,
+            "count": len(history)
+        }
+    except Exception as e:
+        logger.error(f"❌ 조정 이력 조회 실패: {str(e)}")
+        return {
+            "success": False,
+            "message": f"조정 이력 조회 실패: {str(e)}"
+        }
+
+# ==================== 피부온도 분류 기준 관리 API ====================
+
+class ThresholdUpdateRequest(BaseModel):
+    """피부온도 분류 기준 업데이트 요청"""
+    cold_threshold: float
+    hot_threshold: float
+
+@app.post("/threshold/update")
+async def update_thresholds_api(data: ThresholdUpdateRequest):
+    """
+    피부온도 분류 기준(COLD_THRESHOLD, HOT_THRESHOLD) 전역 변수 업데이트
+    """
+    try:
+        global COLD_THRESHOLD, HOT_THRESHOLD
+        old_cold = COLD_THRESHOLD
+        old_hot = HOT_THRESHOLD
+        
+        COLD_THRESHOLD = data.cold_threshold
+        HOT_THRESHOLD = data.hot_threshold
+        
+        logger.info(f"🔄 피부온도 분류 기준 업데이트: COLD={old_cold}°C → {COLD_THRESHOLD}°C, HOT={old_hot}°C → {HOT_THRESHOLD}°C")
+        
+        return {
+            "success": True,
+            "message": "피부온도 분류 기준이 업데이트되었습니다.",
+            "cold_threshold": COLD_THRESHOLD,
+            "hot_threshold": HOT_THRESHOLD
+        }
+    except Exception as e:
+        logger.error(f"❌ 피부온도 분류 기준 업데이트 실패: {str(e)}")
+        return {
+            "success": False,
+            "message": f"피부온도 분류 기준 업데이트 실패: {str(e)}"
+        }
+
+@app.get("/threshold")
+async def get_thresholds_api():
+    """
+    현재 피부온도 분류 기준(COLD_THRESHOLD, HOT_THRESHOLD) 조회
+    """
+    try:
+        return {
+            "success": True,
+            "cold_threshold": COLD_THRESHOLD,
+            "hot_threshold": HOT_THRESHOLD
+        }
+    except Exception as e:
+        logger.error(f"❌ 피부온도 분류 기준 조회 실패: {str(e)}")
+        return {
+            "success": False,
+            "message": f"피부온도 분류 기준 조회 실패: {str(e)}"
         }
 
 @app.get("/health")
@@ -1798,7 +2026,7 @@ if __name__ == "__main__":
     
     # SSL 인증서가 있으면 HTTPS로 실행, 없으면 HTTP로 실행
     if os.path.exists(SSL_KEYFILE) and os.path.exists(SSL_CERTFILE):
-        # logger.info("🔒 HTTPS 모드로 서버 시작 (SSL 인증서 사용)")
+        
         uvicorn.run(
             app, 
             host="0.0.0.0", 
@@ -1808,6 +2036,4 @@ if __name__ == "__main__":
             access_log=False  # HTTP 요청 로그 비활성화
         )
     else:
-        # logger.info("🌐 HTTP 모드로 서버 시작 (SSL 인증서 없음)")
-        # logger.info("💡 HTTPS를 사용하려면 server/generate_ssl_cert.py를 실행하여 인증서를 생성하세요.")
-        uvicorn.run(app, host="0.0.0.0", port=3000, access_log=False)  # HTTP 요청 로그 비활성화
+         uvicorn.run(app, host="0.0.0.0", port=3000, access_log=False)  # HTTP 요청 로그 비활성화
