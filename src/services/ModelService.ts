@@ -36,9 +36,10 @@ class ModelService {
       if (Capacitor.isNativePlatform()) {
         // 안드로이드 에뮬레이터 또는 실제 기기
         if (Capacitor.getPlatform() === 'android') {
-          // 에뮬레이터: 10.0.2.2, 실제 기기: 컴퓨터 IP 주소 필요
-          // 기본값으로 에뮬레이터 사용 (실제 기기는 환경 변수로 설정)
-          this.baseUrl = 'http://10.0.2.2:3000';
+          // 실제 기기 사용 시: 컴퓨터 IP 주소 필요 (예: 192.168.0.143)
+          // 에뮬레이터 사용 시: 10.0.2.2
+          // 환경 변수로 설정 가능하도록 개선
+          this.baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://192.168.0.143:3000';
         } else if (Capacitor.getPlatform() === 'ios') {
           // iOS 시뮬레이터: localhost, 실제 기기: 컴퓨터 IP 주소 필요
           // 실제 기기에서는 환경 변수나 하드코딩된 IP 사용
@@ -72,13 +73,22 @@ class ModelService {
         age: request.age,
       };
 
+      console.log(`온도 예측 요청: ${this.baseUrl}/predict`);
+      
+      // 타임아웃 설정 (15초 - 모델 예측은 시간이 걸릴 수 있음)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+
       const response = await fetch(`${this.baseUrl}/predict`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(serverRequest),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -102,6 +112,17 @@ class ModelService {
       };
     } catch (error: any) {
       console.error('Temperature prediction failed:', error);
+      console.error('Request URL:', `${this.baseUrl}/predict`);
+      
+      if (error.name === 'AbortError') {
+        return {
+          success: false,
+          predictedTemperature: 0,
+          temperatureCategory: '',
+          error: '서버 응답 시간 초과 (15초). 서버가 실행 중인지 확인해주세요.',
+        };
+      }
+      
       return {
         success: false,
         predictedTemperature: 0,
@@ -117,12 +138,21 @@ class ModelService {
    */
   async testModel(): Promise<{ success: boolean; message: string }> {
     try {
+      console.log(`모델 테스트 요청: ${this.baseUrl}/health`);
+      
+      // 타임아웃 설정 (10초)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+
       const response = await fetch(`${this.baseUrl}/health`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
         },
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -137,9 +167,18 @@ class ModelService {
       };
     } catch (error: any) {
       console.error('Model test failed:', error);
+      console.error('Request URL:', `${this.baseUrl}/health`);
+      
+      if (error.name === 'AbortError') {
+        return {
+          success: false,
+          message: `서버 응답 시간 초과 (10초). 서버가 실행 중인지 확인해주세요. (URL: ${this.baseUrl})`,
+        };
+      }
+      
       return {
         success: false,
-        message: `서버 연결 실패: ${error.message || '서버에 연결할 수 없습니다.'}`,
+        message: `서버 연결 실패: ${error.message || '서버에 연결할 수 없습니다.'} (URL: ${this.baseUrl})`,
       };
     }
   }

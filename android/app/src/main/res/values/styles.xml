@@ -15,7 +15,8 @@
     </style>
 
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
-        <item name="android:background">@drawable/splash</item>
+        <item name="android:background">@android:color/white</item>
+        <item name="android:windowBackground">@android:color/white</item>
     </style>
     
     <!-- Theme for native Android fragments (not used in Ionic UI) -->

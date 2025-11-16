@@ -639,11 +639,6 @@ const Health_ios: React.FC = () => {
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen>
-        <IonHeader>
-          <IonToolbar>
-            <IonTitle size="large">포슬💭</IonTitle>
-          </IonToolbar>
-        </IonHeader>
 
         {/* 로그인 버튼 */}
         {isSetupComplete && (
@@ -688,7 +683,7 @@ const Health_ios: React.FC = () => {
           </div>
         )}
 
-        {/* 초기 설정 화면 */}
+        {/* 초기 설정 화면 - iOS만 */}
         {!isSetupComplete && platform === 'ios' && (
           <>
             <IonText className="setup-title">
@@ -841,10 +836,10 @@ const Health_ios: React.FC = () => {
           </>
         )}
 
-        {/* 메인 화면 (설정 완료 후) */}
-        {isSetupComplete && (
-          <>
-
+        {/* 메인 화면 (설정 완료 후 또는 Android/Web) */}
+        {(isSetupComplete || platform !== 'ios') && (
+          <div style={{ padding: '16px', minHeight: '200px' }}>
+            
             {/* 백그라운드 모니터링 토글 */}
             <IonCard>
               <IonCardHeader>
@@ -860,12 +855,12 @@ const Health_ios: React.FC = () => {
                   />
                 </IonItem>
                 {platform === 'android' && (
-                  <IonText color="medium">
+                  <IonText style={{ color: '#666666' }}>
                     <p>Android에서는 서버에서 저장된 건강 데이터를 표시합니다. (iOS에서 수집한 데이터)</p>
                   </IonText>
                 )}
                 {platform === 'web' && (
-                  <IonText color="warning">
+                  <IonText style={{ color: '#ff9500' }}>
                     <p>웹에서는 HealthData를 사용할 수 없습니다. (iOS/Android에서만 사용 가능)</p>
                   </IonText>
                 )}
@@ -938,8 +933,8 @@ const Health_ios: React.FC = () => {
                   </IonRow>
                 </IonGrid>
               </IonCardContent>
-        </IonCard>
-          </>
+            </IonCard>
+          </div>
         )}
       </IonContent>
     </IonPage>

@@ -26,7 +26,9 @@ const Home: React.FC = () => {
   const handleTestModel = async () => {
     setLoading(true);
     try {
+      console.log('모델 테스트 시작...');
       const result = await ModelService.testModel();
+      console.log('모델 테스트 결과:', result);
       alert(result.message);
     } catch (error: any) {
       console.error('Model test failed:', error);
@@ -63,20 +65,15 @@ const Home: React.FC = () => {
   };
 
   return (
-    <IonPage>
+    <IonPage className="home-page">
       <IonHeader>
         <IonToolbar>
           <IonTitle>홈</IonTitle>
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen>
-        <IonHeader>
-          <IonToolbar>
-            <IonTitle size="large">온도 예측</IonTitle>
-          </IonToolbar>
-        </IonHeader>
 
-        <div className="container">
+        <div className="container" style={{ padding: '16px' }}>
           {/* 예측 결과 */}
           {prediction && (
             <IonCard>

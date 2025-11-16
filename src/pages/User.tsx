@@ -17,9 +17,10 @@ import {
   IonSelectOption,
   IonModal,
   IonButtons,
-  IonButton as IonModalButton
+  IonButton as IonModalButton,
+  IonText
 } from '@ionic/react';
-import { LocalNotifications } from '@capacitor/local-notifications';
+import { LocalNotifications, ActionPerformed, LocalNotificationSchema } from '@capacitor/local-notifications';
 import { Capacitor } from '@capacitor/core';
 import SignIn from '../components/SignIn';
 import './User.css';
@@ -202,30 +203,70 @@ const User: React.FC = () => {
 
   const handleFeedbackSubmit = async (feedback: 'hot' | 'cold' | 'comfortable') => {
     try {
-      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 
-        (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios' 
-          ? 'http://192.168.68.74:3000' 
-          : 'http://localhost:3000');
-      
-      const response = await fetch(`${apiBaseUrl}/temperature_feedback`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          feedback: feedback,
-          date: new Date().toISOString()
-        }),
-      });
-
-      if (response.ok) {
-        console.log('✅ 피드백 저장 완료');
-        setShowFeedbackModal(false);
+      // 플랫폼별 기본 URL 설정 (HTTP 사용 - 서버가 HTTP로 실행 중)
+      // IotService, ModelService와 동일한 URL 사용
+      const platform = Capacitor.getPlatform();
+      let apiBaseUrl: string;
+      if (import.meta.env.VITE_API_BASE_URL) {
+        apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
+      } else if (platform === 'android') {
+        // 실제 기기 사용 시: 컴퓨터 IP 주소 필요 (예: 192.168.0.143)
+        // 에뮬레이터 사용 시: 10.0.2.2
+        apiBaseUrl = 'http://192.168.0.143:3000';
+      } else if (platform === 'ios') {
+        apiBaseUrl = 'http://192.168.68.74:3000';
       } else {
-        console.error('피드백 저장 실패');
+        apiBaseUrl = 'http://localhost:3000';
       }
-    } catch (err) {
-      console.error('피드백 저장 중 오류:', err);
+      
+      console.log('📤 피드백 전송 시작:', { feedback, apiBaseUrl });
+      
+      // 타임아웃 추가 (10초)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      
+      try {
+        const response = await fetch(`${apiBaseUrl}/temperature_feedback`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            feedback: feedback,
+            date: new Date().toISOString()
+          }),
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+        console.log('📡 서버 응답 상태:', response.status, response.statusText);
+
+        if (response.ok) {
+          const result = await response.json();
+          console.log('✅ 피드백 저장 완료:', result);
+          setShowFeedbackModal(false);
+          alert('✅ 피드백이 저장되었습니다.');
+        } else {
+          const errorText = await response.text();
+          console.error('❌ 피드백 저장 실패:', response.status, response.statusText, errorText);
+          alert(`피드백 저장 실패: ${response.status} - ${errorText}`);
+        }
+      } catch (fetchError: any) {
+        clearTimeout(timeoutId);
+        
+        if (fetchError.name === 'AbortError') {
+          console.error('❌ 요청 타임아웃 (10초 초과)');
+          alert('요청 시간이 초과되었습니다. 서버가 실행 중인지 확인해주세요.');
+        } else {
+          console.error('❌ 피드백 저장 중 오류:', fetchError);
+          // Mixed Content 경고는 무시하고 실제로 요청이 성공했는지 확인
+          console.log('💡 Mixed Content 경고가 발생했지만, MIXED_CONTENT_ALWAYS_ALLOW 설정으로 요청이 성공했을 수 있습니다.');
+          alert(`피드백 저장 중 오류 발생: ${fetchError.message || fetchError}\n\n서버 로그를 확인해주세요.`);
+        }
+      }
+    } catch (err: any) {
+      console.error('❌ 피드백 저장 중 예외:', err);
+      alert(`피드백 저장 중 예외 발생: ${err.message || err}`);
     }
   };
 
@@ -236,20 +277,20 @@ const User: React.FC = () => {
       let receivedListener: any = null;
       
       // 알림 클릭 이벤트
-      LocalNotifications.addListener('localNotificationActionPerformed', (action) => {
+      LocalNotifications.addListener('localNotificationActionPerformed', (action: ActionPerformed) => {
         if (action.notification.extra?.type === 'temperature_feedback') {
           setShowFeedbackModal(true);
         }
-      }).then((listener) => {
+      }).then((listener: any) => {
         actionListener = listener;
       });
       
       // 알림 수신 이벤트 (앱이 포그라운드에 있을 때)
-      LocalNotifications.addListener('localNotificationReceived', (notification) => {
+      LocalNotifications.addListener('localNotificationReceived', (notification: LocalNotificationSchema) => {
         if (notification.extra?.type === 'temperature_feedback') {
           setShowFeedbackModal(true);
         }
-      }).then((listener) => {
+      }).then((listener: any) => {
         receivedListener = listener;
       });
       
@@ -285,19 +326,13 @@ const User: React.FC = () => {
   };
 
   return (
-    <IonPage>
+    <IonPage className="user-page">
       <IonHeader>
         <IonToolbar>
           <IonTitle>사용자</IonTitle>
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen>
-        <IonHeader>
-          <IonToolbar>
-            <IonTitle size="large">사용자</IonTitle>
-          </IonToolbar>
-        </IonHeader>
-        
         {/* 로그인 모달 */}
         {showSignIn && (
           <div style={{ 
@@ -383,6 +418,9 @@ const User: React.FC = () => {
           </IonCardContent>
         </IonCard>
 
+        {/* 하단 여백 추가 (스크롤 끝까지 내려가도록) */}
+        <div style={{ height: '80px', width: '100%' }}></div>
+
         {/* 피드백 모달 */}
         <IonModal isOpen={showFeedbackModal} onDidDismiss={() => setShowFeedbackModal(false)}>
           <IonHeader>
@@ -393,7 +431,7 @@ const User: React.FC = () => {
               </IonButtons>
             </IonToolbar>
           </IonHeader>
-          <IonContent className="ion-padding">
+          <IonContent className="ion-padding feedback-modal-content">
             <div style={{ textAlign: 'center', padding: '20px 0' }}>
               <h2 className="feedback-title">오늘밤 온도는 어땠나요?</h2>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '32px' }}>
