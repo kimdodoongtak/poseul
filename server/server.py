@@ -13,6 +13,7 @@ import joblib
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 import air_conditioner_auto_control
+import temperature_control_logic
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -95,9 +96,9 @@ def load_model():
 model = load_model()
 
 # ==================== 피부온도 분류 기준 설정 ====================
-# 나중에 경로로 설정 가능하도록 변수로 관리
-COLD_THRESHOLD = 34.5  # 추움 분류 기준 (나중에 경로로 설정 가능)
-HOT_THRESHOLD = 35.6    # 더움 분류 기준 (나중에 경로로 설정 가능)
+# 갱신 가능하도록 전역 변수로 관리
+COLD_THRESHOLD = 34.5  # 추움 분류 기준 (갱신 가능)
+HOT_THRESHOLD = 35.6    # 더움 분류 기준 (갱신 가능)
 
 # 에어컨 제어 모듈 import
 # IoT 폴더의 모듈 import를 위한 경로 추가
@@ -275,6 +276,16 @@ class TemperatureFeedbackRequest(BaseModel):
     feedback: str  # 'hot', 'cold', 'comfortable'
     date: Optional[str] = None  # ISO format date string
 
+class TemperatureRangeRequest(BaseModel):
+    age: int
+    bmi: float
+    gender: str  # 'M' 또는 'F', 또는 'MALE'/'FEMALE', 또는 0/1
+    force_update: Optional[bool] = False  # 강제 업데이트 여부
+
+class ThresholdUpdateRequest(BaseModel):
+    cold_threshold: Optional[float] = None
+    hot_threshold: Optional[float] = None
+
 # ==================== Health Data API ====================
 
 @app.post("/healthdata")
@@ -446,16 +457,6 @@ async def receive_health_data(data: HealthData):
             })
             
             conn.commit()
-            
-            # predicted_skin_temp가 들어올 때마다 분류하여 temp_change 테이블에 저장
-            air_conditioner_auto_control.classify_and_save_feedback(
-                engine=engine,
-                predicted_skin_temp=predicted_skin_temp,
-                air_conditioner_available=AIR_CONDITIONER_AVAILABLE,
-                get_air_conditioner_state_func=get_air_conditioner_state,
-                cold_threshold=COLD_THRESHOLD,
-                hot_threshold=HOT_THRESHOLD
-            )
         
         logger.info(f"✅ 데이터가 DB에 저장되었습니다. (gender: {gender}, bmi: {bmi}, age: {age}, predicted_skin_temp: {predicted_skin_temp})")
         return {
@@ -890,6 +891,93 @@ async def control_air_conditioner_api(data: AirConditionerControlRequest):
         logger.error(f"에어컨 제어 실패: {str(e)}")
         raise HTTPException(status_code=500, detail=f'에어컨 제어 실패: {str(e)}')
 
+# ==================== 온도 범위 설정 API ====================
+
+@app.post("/temperature-range")
+async def set_temperature_range(data: TemperatureRangeRequest):
+    """
+    사용자 특성(나이, BMI, 성별)에 따라 쾌적 온도 범위를 계산하고 DB에 저장
+    (처음 한번만 적용, 이미 설정되어 있으면 기존 값 유지)
+    """
+    try:
+        logger.info(f"🌡️ 온도 범위 설정 요청: 나이={data.age}세, BMI={data.bmi}, 성별={data.gender}, force_update={data.force_update}")
+        
+        # 온도 범위 초기화
+        success, min_temp, max_temp = temperature_control_logic.initialize_user_temperature_range(
+            engine=engine,
+            age=data.age,
+            bmi=data.bmi,
+            gender=data.gender,
+            air_conditioner_available=AIR_CONDITIONER_AVAILABLE,
+            set_temperature_func=set_temperature,
+            force_update=data.force_update
+        )
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="온도 범위 설정 실패")
+        
+        return {
+            "success": True,
+            "message": "온도 범위 설정 완료",
+            "min_temp": min_temp,
+            "max_temp": max_temp,
+            "target_temp": (min_temp + max_temp) / 2.0,
+            "age": data.age,
+            "bmi": data.bmi,
+            "gender": data.gender
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"온도 범위 설정 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f'온도 범위 설정 실패: {str(e)}')
+
+@app.get("/temperature-range")
+async def get_temperature_range():
+    """
+    DB에서 저장된 쾌적 온도 범위 조회
+    """
+    try:
+        logger.info("🌡️ 온도 범위 조회 요청")
+        
+        temperature_range = temperature_control_logic.get_temperature_range_from_db(engine)
+        
+        if temperature_range is None:
+            return {
+                "success": False,
+                "message": "온도 범위가 설정되지 않았습니다",
+                "min_temp": None,
+                "max_temp": None
+            }
+        
+        min_temp, max_temp = temperature_range
+        
+        # DB에서 사용자 정보도 함께 조회
+        with engine.connect() as conn:
+            query = text("SELECT age, bmi, gender FROM room_threshold LIMIT 1")
+            result = conn.execute(query).fetchone()
+            
+            user_info = None
+            if result:
+                user_info = {
+                    "age": result.age,
+                    "bmi": float(result.bmi) if result.bmi else None,
+                    "gender": result.gender
+                }
+        
+        return {
+            "success": True,
+            "min_temp": min_temp,
+            "max_temp": max_temp,
+            "target_temp": (min_temp + max_temp) / 2.0,
+            "user_info": user_info
+        }
+        
+    except Exception as e:
+        logger.error(f"온도 범위 조회 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f'온도 범위 조회 실패: {str(e)}')
+
 # ==================== 기본 API ====================
 
 @app.get("/")
@@ -1023,6 +1111,59 @@ async def save_temperature_feedback(data: TemperatureFeedbackRequest):
             "message": f"피드백 저장 실패: {str(e)}"
         }
 
+@app.post("/threshold/update")
+async def update_threshold(data: ThresholdUpdateRequest):
+    """
+    피부온도 분류 기준 갱신 API
+    
+    Args:
+        cold_threshold: 추움 분류 기준 (선택)
+        hot_threshold: 더움 분류 기준 (선택)
+    """
+    global COLD_THRESHOLD, HOT_THRESHOLD
+    
+    try:
+        updated = []
+        
+        if data.cold_threshold is not None:
+            if data.cold_threshold < 0 or data.cold_threshold > 50:
+                raise HTTPException(status_code=400, detail="cold_threshold는 0~50 사이의 값이어야 합니다.")
+            COLD_THRESHOLD = data.cold_threshold
+            updated.append(f"cold_threshold={COLD_THRESHOLD}")
+            logger.info(f"✅ COLD_THRESHOLD 갱신: {COLD_THRESHOLD}°C")
+        
+        if data.hot_threshold is not None:
+            if data.hot_threshold < 0 or data.hot_threshold > 50:
+                raise HTTPException(status_code=400, detail="hot_threshold는 0~50 사이의 값이어야 합니다.")
+            HOT_THRESHOLD = data.hot_threshold
+            updated.append(f"hot_threshold={HOT_THRESHOLD}")
+            logger.info(f"✅ HOT_THRESHOLD 갱신: {HOT_THRESHOLD}°C")
+        
+        if not updated:
+            raise HTTPException(status_code=400, detail="cold_threshold 또는 hot_threshold 중 하나 이상을 제공해야 합니다.")
+        
+        return {
+            "success": True,
+            "message": "분류 기준 갱신 완료",
+            "cold_threshold": COLD_THRESHOLD,
+            "hot_threshold": HOT_THRESHOLD,
+            "updated": updated
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 분류 기준 갱신 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f'분류 기준 갱신 실패: {str(e)}')
+
+@app.get("/threshold")
+async def get_threshold():
+    """현재 피부온도 분류 기준 조회"""
+    return {
+        "success": True,
+        "cold_threshold": COLD_THRESHOLD,
+        "hot_threshold": HOT_THRESHOLD
+    }
+
 @app.get("/health")
 async def health_check():
     """서버 상태 확인 (모델, 에어컨, DB 연결 상태 포함)"""
@@ -1096,12 +1237,24 @@ async def test_db_connection():
 scheduler = BackgroundScheduler()
 
 def adjust_air_conditioner_wrapper():
-    """스케줄러에서 호출할 래퍼 함수"""
+    """스케줄러에서 호출할 래퍼 함수 (전역 변수 사용)"""
+    global COLD_THRESHOLD, HOT_THRESHOLD
+    
+    def update_thresholds(new_cold: float, new_hot: float):
+        """전역 변수 갱신 콜백 함수"""
+        global COLD_THRESHOLD, HOT_THRESHOLD
+        COLD_THRESHOLD = new_cold
+        HOT_THRESHOLD = new_hot
+    
+    # 전역 변수에서 최신 값 가져오기 (런타임에 갱신 가능)
     air_conditioner_auto_control.adjust_air_conditioner(
         engine=engine,
         air_conditioner_available=AIR_CONDITIONER_AVAILABLE,
         get_air_conditioner_state_func=get_air_conditioner_state,
-        set_temperature_func=set_temperature
+        set_temperature_func=set_temperature,
+        cold_threshold=COLD_THRESHOLD,  # 전역 변수에서 가져옴 (갱신 가능)
+        hot_threshold=HOT_THRESHOLD,    # 전역 변수에서 가져옴 (갱신 가능)
+        update_threshold_callback=update_thresholds  # DB 값 변경 시 전역 변수 갱신 콜백
     )
 
 scheduler.add_job(
