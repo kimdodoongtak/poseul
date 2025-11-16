@@ -16,7 +16,6 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 import air_conditioner_auto_control
 import temperature_control_logic
-import feedback_based_adjustment
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -1494,16 +1493,6 @@ async def save_temperature_feedback(data: TemperatureFeedbackRequest):
                     
             except Exception as e:
                 logger.error(f"❌ 피드백 처리 실패: {str(e)}")
-            
-            # 피드백 저장 후 자동으로 임계값 조정 처리
-            try:
-                success, message = feedback_based_adjustment.process_daily_feedback(engine, feedback_code)
-                if success:
-                    logger.info(f"✅ {message}")
-                else:
-                    logger.warning(f"⚠️ {message}")
-            except Exception as e:
-                logger.warning(f"⚠️ 피드백 기반 임계값 조정 실패 (계속 진행): {e}")
         
         return {
             "success": True,
@@ -1518,129 +1507,6 @@ async def save_temperature_feedback(data: TemperatureFeedbackRequest):
         return {
             "success": False,
             "message": f"피드백 저장 실패: {str(e)}"
-        }
-
-# ==================== 피드백 기반 조정 API ====================
-
-@app.get("/feedback/count")
-async def get_feedback_count():
-    """
-    현재 피드백 기간의 피드백 횟수 조회 API
-    """
-    try:
-        count = feedback_based_adjustment.get_feedback_count(engine)
-        is_within_limit = feedback_based_adjustment.is_within_feedback_limit(engine)
-        return {
-            "success": True,
-            "count": count,
-            "max_count": 7,
-            "remaining": max(0, 7 - count),
-            "is_within_limit": is_within_limit
-        }
-    except Exception as e:
-        logger.error(f"❌ 피드백 횟수 조회 실패: {str(e)}")
-        return {"success": False, "message": f"피드백 횟수 조회 실패: {str(e)}"}
-
-@app.post("/feedback/reset")
-async def reset_feedback_period():
-    """
-    피드백 기반 조정 기간 재시작 API
-    (피드백 횟수 리셋, 다시 7번까지 가능)
-    """
-    try:
-        success, message = feedback_based_adjustment.reset_feedback_period(engine)
-        
-        if success:
-            return {
-                "success": True,
-                "message": message
-            }
-        else:
-            return {
-                "success": False,
-                "message": message
-            }
-    except Exception as e:
-        logger.error(f"❌ 피드백 기간 재시작 실패: {str(e)}")
-        return {
-            "success": False,
-            "message": f"피드백 기간 재시작 실패: {str(e)}"
-        }
-
-@app.get("/feedback/history")
-async def get_feedback_history(days: int = 7):
-    """
-    최근 N일간의 임계값 조정 이력 조회
-    
-    Args:
-        days: 조회할 일수 (기본값: 7)
-    """
-    try:
-        history = feedback_based_adjustment.get_adjustment_history(engine, days)
-        return {
-            "success": True,
-            "days": days,
-            "history": history,
-            "count": len(history)
-        }
-    except Exception as e:
-        logger.error(f"❌ 조정 이력 조회 실패: {str(e)}")
-        return {
-            "success": False,
-            "message": f"조정 이력 조회 실패: {str(e)}"
-        }
-
-# ==================== 피부온도 분류 기준 관리 API ====================
-
-class ThresholdUpdateRequest(BaseModel):
-    """피부온도 분류 기준 업데이트 요청"""
-    cold_threshold: float
-    hot_threshold: float
-
-@app.post("/threshold/update")
-async def update_thresholds_api(data: ThresholdUpdateRequest):
-    """
-    피부온도 분류 기준(COLD_THRESHOLD, HOT_THRESHOLD) 전역 변수 업데이트
-    """
-    try:
-        global COLD_THRESHOLD, HOT_THRESHOLD
-        old_cold = COLD_THRESHOLD
-        old_hot = HOT_THRESHOLD
-        
-        COLD_THRESHOLD = data.cold_threshold
-        HOT_THRESHOLD = data.hot_threshold
-        
-        logger.info(f"🔄 피부온도 분류 기준 업데이트: COLD={old_cold}°C → {COLD_THRESHOLD}°C, HOT={old_hot}°C → {HOT_THRESHOLD}°C")
-        
-        return {
-            "success": True,
-            "message": "피부온도 분류 기준이 업데이트되었습니다.",
-            "cold_threshold": COLD_THRESHOLD,
-            "hot_threshold": HOT_THRESHOLD
-        }
-    except Exception as e:
-        logger.error(f"❌ 피부온도 분류 기준 업데이트 실패: {str(e)}")
-        return {
-            "success": False,
-            "message": f"피부온도 분류 기준 업데이트 실패: {str(e)}"
-        }
-
-@app.get("/threshold")
-async def get_thresholds_api():
-    """
-    현재 피부온도 분류 기준(COLD_THRESHOLD, HOT_THRESHOLD) 조회
-    """
-    try:
-        return {
-            "success": True,
-            "cold_threshold": COLD_THRESHOLD,
-            "hot_threshold": HOT_THRESHOLD
-        }
-    except Exception as e:
-        logger.error(f"❌ 피부온도 분류 기준 조회 실패: {str(e)}")
-        return {
-            "success": False,
-            "message": f"피부온도 분류 기준 조회 실패: {str(e)}"
         }
 
 @app.get("/health")
