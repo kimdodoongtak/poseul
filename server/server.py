@@ -4,7 +4,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional
 from sqlalchemy import text
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 import os
 import sys
@@ -12,6 +12,9 @@ import numpy as np
 import pandas as pd
 import joblib
 import time
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.interval import IntervalTrigger
+import air_conditioner_auto_control
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -141,6 +144,11 @@ def load_model():
 
 # 서버 시작 시 모델 로드
 model = load_model()
+
+# ==================== 피부온도 분류 기준 설정 ====================
+# 나중에 경로로 설정 가능하도록 변수로 관리
+COLD_THRESHOLD = 34.5  # 추움 분류 기준 (나중에 경로로 설정 가능)
+HOT_THRESHOLD = 35.6    # 더움 분류 기준 (나중에 경로로 설정 가능)
 
 # 에어컨 제어 모듈 import
 # IoT 폴더의 모듈 import를 위한 경로 추가
@@ -336,22 +344,6 @@ class AndroidAppHealthMetrics(BaseModel):
     load_avg_5min: Optional[float] = None
     load_avg_15min: Optional[float] = None
     error_log: Optional[str] = None
-
-class AndroidUIPerformanceMetrics(BaseModel):
-    """Android UI 렌더링 성능 지표 모델"""
-    timestamp: Optional[str] = None
-    package_name: Optional[str] = None
-    skipped_frames: Optional[int] = None  # 스킵된 프레임 수
-    frame_duration_ms: Optional[float] = None  # 프레임 렌더링 시간 (ms)
-    frame_time_future_ms: Optional[float] = None  # 프레임 시간 미래 오프셋 (ms)
-    choreographer_warnings: Optional[int] = None  # Choreographer 경고 횟수
-    webview_load_time_ms: Optional[float] = None  # WebView 로드 시간
-    main_thread_blocked_ms: Optional[float] = None  # 메인 스레드 블록 시간
-    render_priority: Optional[str] = None  # 렌더링 우선순위
-    hardware_acceleration: Optional[bool] = None  # 하드웨어 가속 사용 여부
-    black_screen_detected: Optional[bool] = None  # 검은 화면 감지 여부
-    screen_state: Optional[str] = None  # 화면 상태 (visible, hidden, black)
-    performance_log: Optional[str] = None  # 성능 로그
 
 # ==================== Health Data API ====================
 
@@ -611,6 +603,16 @@ async def receive_health_data(data: HealthData):
             })
             
             conn.commit()
+            
+            # predicted_skin_temp가 들어올 때마다 분류하여 temp_change 테이블에 저장
+            air_conditioner_auto_control.classify_and_save_feedback(
+                engine=engine,
+                predicted_skin_temp=predicted_skin_temp,
+                air_conditioner_available=AIR_CONDITIONER_AVAILABLE,
+                get_air_conditioner_state_func=get_air_conditioner_state,
+                cold_threshold=COLD_THRESHOLD,
+                hot_threshold=HOT_THRESHOLD
+            )
         
         logger.info(f"✅ 데이터가 DB에 저장되었습니다. (gender: {gender}, bmi: {bmi}, age: {age}, predicted_skin_temp: {predicted_skin_temp})")
         return {
@@ -1676,166 +1678,48 @@ async def get_connectivity_errors(limit: int = 50):
         logger.error(f"❌ 연결 오류 로그 조회 실패: {str(e)}")
         raise HTTPException(status_code=500, detail=f'연결 오류 로그 조회 실패: {str(e)}')
 
-@app.post("/android/health/ui-performance")
-async def receive_ui_performance_metrics(metrics: AndroidUIPerformanceMetrics):
-    """Android UI 렌더링 성능 지표 수신 및 분석"""
-    try:
-        # 타임스탬프 추가
-        if not metrics.timestamp:
-            metrics.timestamp = datetime.now().isoformat()
-        
-        # 로그 저장
-        log_entry = {
-            "timestamp": metrics.timestamp,
-            "type": "ui_performance",
-            "package_name": metrics.package_name or "io.ionic.starter",
-            "skipped_frames": metrics.skipped_frames,
-            "frame_duration_ms": metrics.frame_duration_ms,
-            "frame_time_future_ms": metrics.frame_time_future_ms,
-            "choreographer_warnings": metrics.choreographer_warnings,
-            "webview_load_time_ms": metrics.webview_load_time_ms,
-            "main_thread_blocked_ms": metrics.main_thread_blocked_ms,
-            "render_priority": metrics.render_priority,
-            "hardware_acceleration": metrics.hardware_acceleration,
-            "black_screen_detected": metrics.black_screen_detected,
-            "screen_state": metrics.screen_state,
-            "performance_log": metrics.performance_log
-        }
-        
-        android_app_health_logs.append(log_entry)
-        
-        # 최근 1000개만 유지
-        if len(android_app_health_logs) > 1000:
-            android_app_health_logs.pop(0)
-        
-        # 경고 조건 확인
-        warnings = []
-        if metrics.skipped_frames and metrics.skipped_frames > 30:
-            warnings.append(f"심각한 프레임 드롭: {metrics.skipped_frames}프레임 스킵")
-        if metrics.frame_duration_ms and metrics.frame_duration_ms > 1000:
-            warnings.append(f"느린 프레임 렌더링: {metrics.frame_duration_ms:.0f}ms")
-        if metrics.frame_duration_ms and metrics.frame_duration_ms > 500:
-            warnings.append(f"프레임 렌더링 지연: {metrics.frame_duration_ms:.0f}ms (권장: <16ms)")
-        if metrics.main_thread_blocked_ms and metrics.main_thread_blocked_ms > 500:
-            warnings.append(f"메인 스레드 블록: {metrics.main_thread_blocked_ms:.0f}ms")
-        if metrics.black_screen_detected:
-            warnings.append("검은 화면 감지됨")
-        if metrics.screen_state == "black":
-            warnings.append("화면 상태: 검은색")
-        if metrics.choreographer_warnings and metrics.choreographer_warnings > 10:
-            warnings.append(f"⚠️ Choreographer 경고 다수: {metrics.choreographer_warnings}건 (그래픽 HAL vsync 타임스탬프 문제)")
-        if metrics.frame_time_future_ms and metrics.frame_time_future_ms > 5:
-            warnings.append(f"프레임 시간 미래 오프셋: {metrics.frame_time_future_ms:.2f}ms (vsync 타임스탬프 문제)")
-        
-        if warnings:
-            logger.warning(f"⚠️ UI 성능 문제 감지: {'; '.join(warnings)}")
-            if metrics.black_screen_detected or metrics.screen_state == "black":
-                logger.error(f"🚨 검은 화면 문제 감지! 프레임 스킵: {metrics.skipped_frames}, 렌더링 시간: {metrics.frame_duration_ms}ms")
-            if metrics.choreographer_warnings and metrics.choreographer_warnings > 10:
-                logger.error(f"🚨 Choreographer 경고 다수! 그래픽 HAL vsync 타임스탬프 문제 - 에뮬레이터 설정 확인 필요")
-        else:
-            logger.info(f"✅ UI 성능 지표 수신: 프레임 스킵={metrics.skipped_frames}, 렌더링 시간={metrics.frame_duration_ms}ms")
-        
-        return {
-            "success": True,
-            "message": "UI 성능 지표 수신 완료",
-            "warnings": warnings if warnings else None,
-            "timestamp": metrics.timestamp,
-            "recommendations": _get_ui_performance_recommendations(metrics)
-        }
-        
-    except Exception as e:
-        logger.error(f"❌ UI 성능 지표 수신 실패: {str(e)}")
-        raise HTTPException(status_code=500, detail=f'UI 성능 지표 수신 실패: {str(e)}')
+# ==================== 에어컨 자동 온도 조절 시스템 ====================
 
-def _get_ui_performance_recommendations(metrics: AndroidUIPerformanceMetrics) -> list:
-    """UI 성능 문제에 대한 권장사항 생성"""
-    recommendations = []
-    
-    if metrics.skipped_frames and metrics.skipped_frames > 30:
-        recommendations.append("메인 스레드에서 무거운 작업을 백그라운드 스레드로 이동하세요")
-        recommendations.append("WebView 로딩을 비동기로 처리하세요")
-    
-    if metrics.frame_duration_ms and metrics.frame_duration_ms > 1000:
-        recommendations.append("렌더링 최적화: 불필요한 레이아웃 재계산을 줄이세요")
-        recommendations.append("이미지 최적화: 큰 이미지를 리사이즈하거나 지연 로딩하세요")
-    
-    if metrics.frame_duration_ms and metrics.frame_duration_ms > 500:
-        recommendations.append("프레임 렌더링이 느립니다. GPU 가속을 확인하세요")
-        recommendations.append("에뮬레이터의 그래픽 성능 설정을 높이세요 (Hardware - GLES 2.0)")
-    
-    if metrics.main_thread_blocked_ms and metrics.main_thread_blocked_ms > 500:
-        recommendations.append("네트워크 요청을 백그라운드 스레드에서 처리하세요")
-        recommendations.append("데이터베이스 쿼리를 비동기로 실행하세요")
-    
-    if metrics.black_screen_detected or metrics.screen_state == "black":
-        recommendations.append("WebView 배경색을 명시적으로 설정하세요 (setBackgroundColor)")
-        recommendations.append("Window 배경색도 설정하세요 (getWindow().getDecorView().setBackgroundColor)")
-        recommendations.append("WebView의 visibility를 확인하세요 (VISIBLE)")
-        recommendations.append("하드웨어 가속이 활성화되어 있는지 확인하세요")
-    
-    if metrics.choreographer_warnings and metrics.choreographer_warnings > 10:
-        recommendations.append("⚠️ Choreographer 경고: 그래픽 HAL vsync 타임스탬프 문제")
-        recommendations.append("에뮬레이터 사용 시: AVD Manager > Edit > Advanced Settings > Graphics: Hardware - GLES 2.0")
-        recommendations.append("에뮬레이터 사용 시: Emulator Settings > Extended Controls > Settings > Advanced > OpenGL ES renderer: Desktop native OpenGL")
-        recommendations.append("실제 기기에서 테스트하여 에뮬레이터 문제인지 확인하세요")
-        recommendations.append("에뮬레이터 RAM을 2GB 이상으로 설정하세요")
-        recommendations.append("에뮬레이터의 Multi-core CPU를 활성화하세요")
-    
-    if metrics.frame_time_future_ms and metrics.frame_time_future_ms > 5:
-        recommendations.append("프레임 시간이 미래로 설정되어 있습니다 (vsync 타임스탬프 문제)")
-        recommendations.append("에뮬레이터의 그래픽 드라이버를 업데이트하세요")
-        recommendations.append("호스트 시스템의 그래픽 드라이버를 업데이트하세요")
-    
-    if not recommendations:
-        recommendations.append("현재 UI 성능이 양호합니다")
-    
-    return recommendations
+# 스케줄러 초기화
+scheduler = BackgroundScheduler()
 
-@app.get("/android/health/ui-performance")
-async def get_ui_performance_metrics(limit: int = 100):
-    """UI 성능 지표 조회"""
-    try:
-        # UI 성능 로그만 필터링
-        ui_performance_logs = [log for log in android_app_health_logs if log.get("type") == "ui_performance"]
-        
-        # 최근 N개만 반환
-        recent_logs = ui_performance_logs[-limit:] if len(ui_performance_logs) > limit else ui_performance_logs
-        
-        # 통계 계산
-        if recent_logs:
-            skipped_frames = [log.get("skipped_frames") for log in recent_logs if log.get("skipped_frames")]
-            frame_durations = [log.get("frame_duration_ms") for log in recent_logs if log.get("frame_duration_ms")]
-            main_thread_blocks = [log.get("main_thread_blocked_ms") for log in recent_logs if log.get("main_thread_blocked_ms")]
-            black_screen_count = sum(1 for log in recent_logs if log.get("black_screen_detected") or log.get("screen_state") == "black")
-            
-            stats = {
-                "total_logs": len(ui_performance_logs),
-                "recent_logs": len(recent_logs),
-                "avg_skipped_frames": sum(skipped_frames) / len(skipped_frames) if skipped_frames else None,
-                "max_skipped_frames": max(skipped_frames) if skipped_frames else None,
-                "avg_frame_duration_ms": sum(frame_durations) / len(frame_durations) if frame_durations else None,
-                "max_frame_duration_ms": max(frame_durations) if frame_durations else None,
-                "avg_main_thread_blocked_ms": sum(main_thread_blocks) / len(main_thread_blocks) if main_thread_blocks else None,
-                "max_main_thread_blocked_ms": max(main_thread_blocks) if main_thread_blocks else None,
-                "black_screen_occurrences": black_screen_count,
-                "black_screen_rate": (black_screen_count / len(recent_logs) * 100) if recent_logs else 0
-            }
-        else:
-            stats = {
-                "total_logs": 0,
-                "recent_logs": 0
-            }
-        
-        return {
-            "success": True,
-            "stats": stats,
-            "logs": recent_logs
-        }
-        
-    except Exception as e:
-        logger.error(f"❌ UI 성능 지표 조회 실패: {str(e)}")
-        raise HTTPException(status_code=500, detail=f'UI 성능 지표 조회 실패: {str(e)}')
+def adjust_air_conditioner_wrapper():
+    """스케줄러에서 호출할 래퍼 함수"""
+    air_conditioner_auto_control.adjust_air_conditioner(
+        engine=engine,
+        air_conditioner_available=AIR_CONDITIONER_AVAILABLE,
+        get_air_conditioner_state_func=get_air_conditioner_state,
+        set_temperature_func=set_temperature
+    )
+
+scheduler.add_job(
+    adjust_air_conditioner_wrapper,
+    trigger=IntervalTrigger(minutes=30),
+    id='air_conditioner_adjustment',
+    name='에어컨 자동 온도 조절',
+    replace_existing=True
+)
+
+# 서버 시작 시 초기 세팅 및 스케줄러 시작
+@app.on_event("startup")
+async def startup_event():
+    """서버 시작 시 초기 세팅 및 스케줄러 시작"""
+    logger.info("🚀 서버 시작 중...")
+    air_conditioner_auto_control.initialize_air_conditioner_settings(
+        engine=engine,
+        air_conditioner_available=AIR_CONDITIONER_AVAILABLE,
+        get_air_conditioner_state_func=get_air_conditioner_state,
+        set_temperature_func=set_temperature
+    )
+    scheduler.start()
+    logger.info("✅ 스케줄러 시작 완료 (30분마다 자동 조절)")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """서버 종료 시 스케줄러 종료"""
+    logger.info("🛑 서버 종료 중...")
+    scheduler.shutdown()
+    logger.info("✅ 스케줄러 종료 완료")
 
 if __name__ == "__main__":
     import uvicorn
