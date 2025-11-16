@@ -1,3 +1,4 @@
+import React, { useEffect } from 'react';
 import { Route } from 'react-router-dom';
 import {
   IonApp,
@@ -10,6 +11,7 @@ import {
   setupIonicReact
 } from '@ionic/react';
 import { IonReactRouter } from '@ionic/react-router';
+import { Capacitor } from '@capacitor/core';
 
 import { home, person, settings, heart } from 'ionicons/icons';
 import Home from './pages/Home';
@@ -42,15 +44,41 @@ import '@ionic/react/css/display.css';
 
 /* import '@ionic/react/css/palettes/dark.always.css'; */
 /* import '@ionic/react/css/palettes/dark.class.css'; */
-import '@ionic/react/css/palettes/dark.system.css';
+/* import '@ionic/react/css/palettes/dark.system.css'; */ // 다크 모드 비활성화
 
 /* Theme variables */
 import './theme/variables.css';
 
 setupIonicReact();
 
-const App: React.FC = () => (
-  <IonApp>
+const App: React.FC = () => {
+  console.log('🎯 App 컴포넌트 렌더링 시작');
+  
+  useEffect(() => {
+    // 플랫폼에 따라 body에 클래스 추가
+    const platform = Capacitor.getPlatform();
+    if (platform === 'android') {
+      document.body.classList.add('platform-android');
+      document.body.classList.remove('platform-ios');
+    } else if (platform === 'ios') {
+      document.body.classList.add('platform-ios');
+      document.body.classList.remove('platform-android');
+    } else {
+      document.body.classList.add('platform-web');
+    }
+    
+    // Safe area CSS 변수 설정 (Android)
+    if (platform === 'android') {
+      const root = document.documentElement;
+      // 갤럭시 S24 플러스 펀치홀 높이 대략 84px
+      root.style.setProperty('--safe-area-inset-top', '84px');
+      // 하단 네비게이션 바 높이 (기본값)
+      root.style.setProperty('--safe-area-inset-bottom', '0px');
+    }
+  }, []);
+  
+  return (
+    <IonApp className={Capacitor.getPlatform() === 'android' ? 'platform-android' : Capacitor.getPlatform() === 'ios' ? 'platform-ios' : 'platform-web'}>
     <IonReactRouter>
       <IonTabs>
         <IonRouterOutlet>
@@ -92,5 +120,6 @@ const App: React.FC = () => (
     </IonReactRouter>
   </IonApp>
 );
+};
 
 export default App;

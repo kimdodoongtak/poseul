@@ -44,13 +44,13 @@ class IotService {
       if (Capacitor.isNativePlatform()) {
         // 안드로이드 에뮬레이터 또는 실제 기기
         if (Capacitor.getPlatform() === 'android') {
-          // 에뮬레이터: 10.0.2.2, 실제 기기: 컴퓨터 IP 주소 필요
-          // 기본값으로 에뮬레이터 사용 (실제 기기는 환경 변수로 설정)
-          this.baseUrl = 'http://10.0.2.2:3000';
+          // 실제 기기 사용 시: 컴퓨터 IP 주소 필요 (예: 192.168.0.143)
+          // 에뮬레이터 사용 시: 10.0.2.2
+          // 환경 변수로 설정 가능하도록 개선
+          this.baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://192.168.0.143:3000';
         } else if (Capacitor.getPlatform() === 'ios') {
           // iOS 시뮬레이터: localhost, 실제 기기: 컴퓨터 IP 주소 필요
           // 실제 기기에서는 환경 변수나 하드코딩된 IP 사용
-          // TODO: 환경 변수로 설정 가능하도록 개선 필요
           this.baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://192.168.68.74:3000';
         } else {
           this.baseUrl = 'http://localhost:3000';
@@ -70,9 +70,9 @@ class IotService {
     try {
       console.log(`IoT 상태 조회 요청: ${this.baseUrl}/air_conditioner/state`);
       
-      // 타임아웃 설정 (3초로 단축하여 ANR 방지)
+      // 타임아웃 설정 (10초로 증가하여 서버 시작 시간 고려)
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3000);
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
       
       const response = await fetch(`${this.baseUrl}/air_conditioner/state`, {
         method: 'GET',
@@ -129,11 +129,12 @@ class IotService {
       return result;
     } catch (error: any) {
       console.error('Failed to get IoT status:', error);
+      console.error('Request URL:', `${this.baseUrl}/air_conditioner/state`);
       // 네트워크 에러인지 확인
       if (error.name === 'AbortError') {
-        throw new Error('서버 응답 시간 초과. 서버가 실행 중인지 확인해주세요.');
+        throw new Error(`서버 응답 시간 초과 (10초). 서버가 실행 중인지 확인해주세요. (URL: ${this.baseUrl})`);
       } else if (error.message?.includes('Failed to fetch') || error.message?.includes('Mixed Content')) {
-        throw new Error('서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요.');
+        throw new Error(`서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요. (URL: ${this.baseUrl})`);
       }
       throw error;
     }
@@ -168,9 +169,9 @@ class IotService {
 
       console.log(`IoT 제어 요청: ${this.baseUrl}/air_conditioner/control`, serverRequest);
       
-      // 타임아웃 설정 (3초로 단축하여 ANR 방지)
+      // 타임아웃 설정 (10초로 증가하여 서버 시작 시간 고려)
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3000);
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
       
       const response = await fetch(`${this.baseUrl}/air_conditioner/control`, {
         method: 'POST',

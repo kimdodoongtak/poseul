@@ -1,5 +1,66 @@
 /* Home 페이지 스타일 */
 
+/* Home 페이지의 IonContent 배경 - 보라색 그라데이션 */
+.home-page ion-content {
+  --background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  background-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  --padding-start: 16px;
+  --padding-end: 16px;
+  --padding-top: 16px;
+  --padding-bottom: 16px;
+  color: #ffffff !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+/* Home 페이지의 Shadow DOM 내부 스타일 */
+.home-page ion-content::part(scroll) {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  background-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+}
+
+.home-page ion-content .scroll-content {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  background-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+}
+
+/* IonContent 안의 헤더 제거 (중복 방지) */
+.home-page ion-content ion-header {
+  display: none !important;
+}
+
+/* 모바일 헤더 보라색 그라데이션 배경 */
+@media (max-width: 767px) {
+  .home-page ion-header {
+    --background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    background-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  }
+
+  .home-page ion-header::part(native) {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    background-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  }
+
+  .home-page ion-toolbar {
+    --background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    --border-color: transparent !important;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    background-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  }
+
+  .home-page ion-toolbar::part(native) {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    background-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  }
+}
+
+.home-page ion-title {
+  --color: white;
+  background: transparent !important;
+}
+
 /* 컨테이너 */
 .container {
   padding: 16px;
@@ -7,36 +68,39 @@
   margin: 0 auto;
 }
 
-/* 카드 스타일 */
-ion-card {
+/* 카드 스타일 - Home 페이지에만 적용 */
+.home-page ion-card {
   margin: 20px 0;
   border-radius: 20px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
   transition: transform 0.3s ease, box-shadow 0.3s ease;
   overflow: hidden;
-  background: white;
+  background: white !important;
 }
 
-ion-card:hover {
+.home-page ion-card:hover {
   transform: translateY(-4px);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
 }
 
-ion-card-header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+.home-page ion-card-header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
   color: white;
   padding: 24px;
 }
 
-ion-card-title {
+.home-page ion-card-title {
   font-size: 1.4rem;
   font-weight: 600;
   color: white;
   margin: 0;
 }
 
-ion-card-content {
+.home-page ion-card-content {
   padding: 24px;
+  background: white !important;
+  background-color: white !important;
+  color: #000000 !important;
 }
 
 /* 입력 폼 스타일 */

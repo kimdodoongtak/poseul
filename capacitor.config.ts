@@ -23,7 +23,8 @@ const config: CapacitorConfig & {
     'HapticsPlugin',
     'KeyboardPlugin',
     'StatusBarPlugin',
-    'HealthData'
+    'HealthData',
+    'HttpRequestPlugin'
   ]
 };
 

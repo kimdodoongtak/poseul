@@ -14,15 +14,15 @@ http://ionicframework.com/docs/theming/ */
   --cr-signin-bg-rgb: 242, 242, 247;
 }
 
-@media (prefers-color-scheme: dark) {
+/* 다크 모드 비활성화 - 항상 라이트 모드 사용 */
+/* @media (prefers-color-scheme: dark) {
   :root {
     --cr-color-shadow: #000000;
     --cr-color-background: #25254b;
     --cr-label-color-secondary: rgba(235, 235, 245, 0.6);
-    /* Sign In */
     --cr-signin-bg-rgb: 28, 28, 30;
   }
-}
+} */
 
 /* Fonts */
 @font-face {
@@ -64,6 +64,155 @@ http://ionicframework.com/docs/theming/ */
 
 body {
   font-family: "MemomentKkukkkuk", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Helvetica Neue", Arial, sans-serif !important;
+  background-color: #ffffff !important;
+  margin: 0;
+  padding: 0;
+  color: #000000 !important;
+}
+
+html {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+}
+
+#root {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  width: 100%;
+  height: 100%;
+  min-height: 100vh;
+}
+
+ion-app {
+  --background: #ffffff !important;
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 100vh !important;
+  position: relative !important;
+  z-index: 1 !important;
+}
+
+/* Shadow DOM 내부 스타일 강제 적용 */
+ion-app::part(native) {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+}
+
+ion-content {
+  --background: #ffffff !important;
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  position: relative !important;
+  z-index: 1 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+/* Android (갤럭시 S24 플러스) - Safe area 처리 */
+.platform-android ion-content {
+  --padding-top: 16px !important;
+  --padding-bottom: 16px !important;
+  --padding-start: 16px !important;
+  --padding-end: 16px !important;
+}
+
+/* iOS - 기존 디자인 유지 */
+.platform-ios ion-content {
+  --padding-top: 16px !important;
+  --padding-bottom: 16px !important;
+  --padding-start: 16px !important;
+  --padding-end: 16px !important;
+}
+
+/* Shadow DOM 내부 스타일 강제 적용 */
+ion-content::part(scroll) {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+}
+
+ion-content .scroll-content {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+}
+
+/* Shadow DOM 내부의 실제 스크롤 컨테이너 */
+ion-content .inner-scroll {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+}
+
+ion-tabs {
+  --background: #ffffff !important;
+  background-color: #ffffff !important;
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* 탭 바를 하단에 고정 */
+ion-tab-bar {
+  position: fixed !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  width: 100% !important;
+  z-index: 1000 !important;
+  background-color: #ffffff !important;
+  border-top: 1px solid #e0e0e0 !important;
+}
+
+/* Android (갤럭시 S24 플러스) - Safe area 처리 */
+.platform-android ion-tab-bar {
+  padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+  height: calc(56px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+/* iOS - 기존 디자인 유지 */
+.platform-ios ion-tab-bar {
+  height: 56px !important;
+}
+
+/* 탭 바가 하단에 있을 때 콘텐츠 영역 조정 */
+ion-router-outlet {
+  --background: #ffffff !important;
+  background-color: #ffffff !important;
+  display: block !important;
+  width: 100% !important;
+  position: relative !important;
+  overflow: visible !important;
+  min-height: calc(100vh - 56px) !important;
+}
+
+/* Android (갤럭시 S24 플러스) - 콘텐츠 영역 조정 */
+.platform-android ion-router-outlet {
+  min-height: calc(100vh - 56px) !important;
+  padding-bottom: 56px !important;
+}
+
+/* iOS - 기존 디자인 유지 */
+.platform-ios ion-router-outlet {
+  min-height: calc(100vh - 56px) !important;
+  padding-bottom: 56px !important;
+}
+
+/* IonPage 스타일 */
+ion-page {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  position: relative !important;
+  z-index: 1 !important;
 }
 
 ion-content,
@@ -79,6 +228,42 @@ ion-card,
 ion-card-title,
 ion-card-content {
   font-family: "MemomentKkukkkuk", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Helvetica Neue", Arial, sans-serif !important;
+}
+
+/* 카드와 콘텐츠가 보이도록 강제 */
+ion-card {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  background-color: #ffffff !important;
+  color: #000000 !important;
+}
+
+ion-card-content {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  color: #000000 !important;
+}
+
+ion-item {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  color: #000000 !important;
+}
+
+ion-text {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  color: #000000 !important;
+}
+
+ion-button {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
 }
 
 /* Typography - 메모먼트 꾹꾹체 적용 */
@@ -200,4 +385,38 @@ ion-content ion-header {
   position: sticky !important;
   top: 0 !important;
   z-index: 10 !important;
+}
+
+/* Android (갤럭시 S24 플러스) - 헤더 Safe area 처리 */
+.platform-android ion-header {
+  padding-top: env(safe-area-inset-top, 0px) !important;
+}
+
+/* iOS - 기존 디자인 유지 */
+.platform-ios ion-header {
+  padding-top: 0 !important;
+}
+
+/* Android (갤럭시 S24 플러스) - 카드 및 아이템 간격 조정 */
+.platform-android ion-card {
+  margin: 12px 16px !important;
+  border-radius: 12px !important;
+}
+
+.platform-android ion-item {
+  --padding-start: 16px !important;
+  --padding-end: 16px !important;
+  --min-height: 56px !important;
+}
+
+/* iOS - 기존 디자인 유지 */
+.platform-ios ion-card {
+  margin: 16px !important;
+  border-radius: 16px !important;
+}
+
+.platform-ios ion-item {
+  --padding-start: 16px !important;
+  --padding-end: 16px !important;
+  --min-height: 44px !important;
 }

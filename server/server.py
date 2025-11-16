@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional
 from sqlalchemy import text
@@ -10,6 +11,7 @@ import sys
 import numpy as np
 import pandas as pd
 import joblib
+import time
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -25,6 +27,54 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 연결 오류 추적
+connectivity_error_count = 0
+last_connectivity_error = None
+
+# Android 앱 건강 로그 저장소 (미들웨어에서 사용하기 위해 여기서 초기화)
+android_app_health_logs = []
+
+@app.middleware("http")
+async def track_connectivity_errors(request: Request, call_next):
+    """연결 오류 추적 미들웨어"""
+    global connectivity_error_count, last_connectivity_error, android_app_health_logs
+    start_time = time.time()
+    
+    try:
+        response = await call_next(request)
+        process_time = time.time() - start_time
+        
+        # 응답 시간이 너무 길면 경고
+        if process_time > 5.0:
+            logger.warning(f"⚠️ 느린 응답 시간: {request.url.path} - {process_time:.2f}초")
+        
+        return response
+    except Exception as e:
+        error_msg = str(e)
+        connectivity_error_count += 1
+        last_connectivity_error = {
+            "timestamp": datetime.now().isoformat(),
+            "path": str(request.url.path),
+            "method": request.method,
+            "error": error_msg
+        }
+        
+        logger.error(f"❌ 연결 오류 발생: {request.url.path} - {error_msg}")
+        
+        # Android 앱 건강 로그에 연결 오류 기록
+        android_app_health_logs.append({
+            "timestamp": datetime.now().isoformat(),
+            "type": "connectivity_error",
+            "path": str(request.url.path),
+            "method": request.method,
+            "error": error_msg
+        })
+        # 최근 1000개만 유지
+        if len(android_app_health_logs) > 1000:
+            android_app_health_logs.pop(0)
+        
+        raise
 
 # DB 연결 설정
 # DBeaver 연결 정보에 맞게 수정:
@@ -54,7 +104,8 @@ engine = sqlalchemy.create_engine(
 # 모델 로드
 # 서버 디렉토리 기준으로 모델 파일 경로 설정
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_FILE = os.path.join(BASE_DIR, 'ai_thermal_model_final.pkl')
+PROJECT_ROOT = os.path.dirname(BASE_DIR)  # server 디렉토리의 상위 디렉토리 (프로젝트 루트)
+MODEL_FILE = os.path.join(PROJECT_ROOT, 'android', 'plus', 'model', 'pycode', 'ai_thermal_model_final.pkl')
 
 model = None
 model_loaded = False
@@ -93,7 +144,6 @@ model = load_model()
 
 # 에어컨 제어 모듈 import
 # IoT 폴더의 모듈 import를 위한 경로 추가
-PROJECT_ROOT = os.path.dirname(BASE_DIR)  # server 디렉토리의 상위 디렉토리 (프로젝트 루트)
 IOT_MODULE_PATH = os.path.join(PROJECT_ROOT, 'android', 'plus', 'IoT')
 sys.path.insert(0, IOT_MODULE_PATH)
 
@@ -267,6 +317,42 @@ class TemperatureFeedbackRequest(BaseModel):
     feedback: str  # 'hot', 'cold', 'comfortable'
     date: Optional[str] = None  # ISO format date string
 
+class AndroidAppHealthMetrics(BaseModel):
+    """Android 앱 건강 지표 모델"""
+    timestamp: Optional[str] = None
+    package_name: Optional[str] = None
+    cpu_usage_percent: Optional[float] = None
+    cpu_user_percent: Optional[float] = None
+    cpu_kernel_percent: Optional[float] = None
+    memory_pressure_some: Optional[float] = None
+    memory_pressure_full: Optional[float] = None
+    io_pressure_some: Optional[float] = None
+    io_pressure_full: Optional[float] = None
+    cpu_pressure_some: Optional[float] = None
+    cpu_pressure_full: Optional[float] = None
+    anr_count: Optional[int] = None
+    connectivity_errors: Optional[int] = None
+    load_avg_1min: Optional[float] = None
+    load_avg_5min: Optional[float] = None
+    load_avg_15min: Optional[float] = None
+    error_log: Optional[str] = None
+
+class AndroidUIPerformanceMetrics(BaseModel):
+    """Android UI 렌더링 성능 지표 모델"""
+    timestamp: Optional[str] = None
+    package_name: Optional[str] = None
+    skipped_frames: Optional[int] = None  # 스킵된 프레임 수
+    frame_duration_ms: Optional[float] = None  # 프레임 렌더링 시간 (ms)
+    frame_time_future_ms: Optional[float] = None  # 프레임 시간 미래 오프셋 (ms)
+    choreographer_warnings: Optional[int] = None  # Choreographer 경고 횟수
+    webview_load_time_ms: Optional[float] = None  # WebView 로드 시간
+    main_thread_blocked_ms: Optional[float] = None  # 메인 스레드 블록 시간
+    render_priority: Optional[str] = None  # 렌더링 우선순위
+    hardware_acceleration: Optional[bool] = None  # 하드웨어 가속 사용 여부
+    black_screen_detected: Optional[bool] = None  # 검은 화면 감지 여부
+    screen_state: Optional[str] = None  # 화면 상태 (visible, hidden, black)
+    performance_log: Optional[str] = None  # 성능 로그
+
 # ==================== Health Data API ====================
 
 @app.post("/healthdata")
@@ -421,6 +507,93 @@ async def receive_health_data(data: HealthData):
                 logger.warning(f"room_threshold 테이블 처리 중 오류: {e}")
             
             # predicted_results 테이블에 데이터 삽입 (쾌적 온도 범위는 저장하지 않음)
+            # predicted_skin 컬럼이 있는지 확인
+            predicted_skin_code = None
+            try:
+                # predicted_skin 컬럼 존재 여부 확인
+                columns_check = text("""
+                    SELECT COLUMN_NAME 
+                    FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_SCHEMA = 'main' 
+                    AND TABLE_NAME = 'predicted_results'
+                    AND COLUMN_NAME = 'predicted_skin'
+                """)
+                has_predicted_skin_column = conn.execute(columns_check).fetchone() is not None
+                
+                # 예측값을 코드로 변환 (임계값 사용)
+                if predicted_skin_temp > 0 and has_predicted_skin_column:
+                    # 임계값 가져오기 (new_skinthreshold 테이블에서 최신 값 또는 기본값)
+                    temp_min_threshold = 32.5
+                    temp_max_threshold = 34.5
+                    
+                    try:
+                        # new_skinthreshold 테이블 존재 여부 확인
+                        new_table_check = text("""
+                            SELECT COUNT(*) as count
+                            FROM information_schema.tables 
+                            WHERE table_schema = 'main' 
+                            AND table_name = 'new_skinthreshold'
+                        """)
+                        new_table_exists = conn.execute(new_table_check).fetchone().count > 0
+                        
+                        if new_table_exists:
+                            # 최신 임계값 가져오기
+                            latest_threshold_query = text("""
+                                SELECT min_skinthreshold, max_skinthreshold
+                                FROM new_skinthreshold
+                                ORDER BY id DESC
+                                LIMIT 1
+                            """)
+                            latest_threshold = conn.execute(latest_threshold_query).fetchone()
+                            
+                            if latest_threshold and latest_threshold.min_skinthreshold is not None:
+                                temp_min_threshold = float(latest_threshold.min_skinthreshold)
+                                temp_max_threshold = float(latest_threshold.max_skinthreshold)
+                    except Exception as e:
+                        logger.warning(f"⚠️ 임계값 조회 실패, 기본값 사용: {str(e)}")
+                    
+                    # 예측값을 코드로 변환
+                    predicted_skin_code = convert_predicted_temp_to_code(predicted_skin_temp, temp_min_threshold, temp_max_threshold)
+                    logger.info(f"🔮 예측값 코드 변환: {predicted_skin_temp}°C → {predicted_skin_code} (임계값: {temp_min_threshold}~{temp_max_threshold}°C)")
+                
+                if has_predicted_skin_column and predicted_skin_code is not None:
+                    # predicted_skin 컬럼이 있으면 함께 저장
+                    insert_query = text("""
+                        INSERT INTO predicted_results 
+                        (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp, predicted_skin)
+                        VALUES 
+                        (:heart_rate, :hrv, :oxygen_sat, :bmi, :age, :gender, :predicted_temp, :predicted_skin)
+                    """)
+                    conn.execute(insert_query, {
+                        'heart_rate': data.heartRate,
+                        'hrv': data.HRV,
+                        'oxygen_sat': data.oxygenSaturation,
+                        'bmi': bmi,
+                        'age': age,
+                        'gender': gender,
+                        'predicted_temp': predicted_skin_temp,
+                        'predicted_skin': predicted_skin_code
+                    })
+                else:
+                    # predicted_skin 컬럼이 없으면 기존 방식으로 저장
+                    insert_query = text("""
+                        INSERT INTO predicted_results 
+                        (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp)
+                        VALUES 
+                        (:heart_rate, :hrv, :oxygen_sat, :bmi, :age, :gender, :predicted_temp)
+                    """)
+                    conn.execute(insert_query, {
+                        'heart_rate': data.heartRate,
+                        'hrv': data.HRV,
+                        'oxygen_sat': data.oxygenSaturation,
+                        'bmi': bmi,
+                        'age': age,
+                        'gender': gender,
+                        'predicted_temp': predicted_skin_temp
+                    })
+            except Exception as e:
+                logger.warning(f"⚠️ predicted_skin 컬럼 확인 실패, 기존 방식으로 저장: {str(e)}")
+                # 예외 발생 시 기존 방식으로 저장
             insert_query = text("""
                 INSERT INTO predicted_results 
                 (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp)
@@ -878,9 +1051,30 @@ async def control_air_conditioner_api(data: AirConditionerControlRequest):
 async def root():
     return {"message": "Unified Server is running (Health Data + Model Prediction + IoT Control)"}
 
+def convert_predicted_temp_to_code(predicted_temp, min_threshold, max_threshold):
+    """
+    예측된 피부 온도를 코드로 변환 (C: 추움, H: 더움, G: 쾌적)
+    
+    Parameters:
+    - predicted_temp: 예측된 피부 온도
+    - min_threshold: 최소 임계값
+    - max_threshold: 최대 임계값
+    
+    Returns:
+    - 'C' (추움): predicted_temp < min_threshold
+    - 'H' (더움): predicted_temp > max_threshold
+    - 'G' (쾌적): min_threshold <= predicted_temp <= max_threshold
+    """
+    if predicted_temp < min_threshold:
+        return 'C'
+    elif predicted_temp > max_threshold:
+        return 'H'
+    else:
+        return 'G'
+
 @app.post("/temperature_feedback")
 async def save_temperature_feedback(data: TemperatureFeedbackRequest):
-    """온도 피드백 저장 API"""
+    """온도 피드백 저장 API - new_skinthreshold 테이블에 저장하고 예측값과 비교하여 임계값 조정"""
     try:
         logger.info(f"📝 온도 피드백 저장 요청: {data.dict()}")
         
@@ -966,7 +1160,7 @@ async def save_temperature_feedback(data: TemperatureFeedbackRequest):
             except Exception as e:
                 logger.error(f"❌ room_threshold 피드백 저장 실패: {str(e)}")
             
-            # temperature_feedback 테이블에도 저장 (선택적)
+            # temperature_feedback 테이블에 저장 (테이블이 없으면 생성)
             try:
                 # temperature_feedback 테이블 존재 여부 확인
                 table_check = text("""
@@ -977,26 +1171,192 @@ async def save_temperature_feedback(data: TemperatureFeedbackRequest):
                 """)
                 table_exists = conn.execute(table_check).fetchone().count > 0
                 
-                if table_exists:
-                    # 테이블이 있으면 저장
+                if not table_exists:
+                    # 테이블이 없으면 생성
+                    create_table = text("""
+                        CREATE TABLE IF NOT EXISTS temperature_feedback (
+                            id INT AUTO_INCREMENT PRIMARY KEY,
+                            feedback VARCHAR(20) NOT NULL,
+                            feedback_date DATETIME
+                        )
+                    """)
+                    conn.execute(create_table)
+                    conn.commit()
+                    logger.info("✅ temperature_feedback 테이블 생성 완료")
+                
+                # 테이블이 있으면 저장 (코드로 변환하여 저장: C, H, G)
                     insert_query = text("""
-                        INSERT INTO temperature_feedback (feedback, feedback_date, created_at)
-                        VALUES (:feedback, :feedback_date, NOW())
+                        INSERT INTO temperature_feedback (feedback, feedback_date)
+                        VALUES (:feedback, :feedback_date)
                     """)
                     conn.execute(insert_query, {
-                        'feedback': data.feedback,
+                    'feedback': feedback_code,  # 코드로 변환된 값 저장 (C, H, G)
                         'feedback_date': feedback_date
                     })
                     conn.commit()
-                    logger.info(f"✅ temperature_feedback 테이블에 피드백 저장 완료: {data.feedback}")
+                logger.info(f"✅ temperature_feedback 테이블에 피드백 저장 완료: {feedback_code} ({data.feedback})")
             except Exception as e:
-                logger.warning(f"temperature_feedback 테이블 저장 실패 (선택적): {str(e)}")
+                logger.error(f"❌ temperature_feedback 테이블 저장 실패: {str(e)}")
+            
+            # 피드백과 예측값 비교하여 임계값 조정
+            try:
+                # 최신 예측값 가져오기 (predicted_results 테이블에서)
+                predicted_skin_temp = None
+                predicted_skin_code = None
+                try:
+                    # predicted_results 테이블의 컬럼 구조 확인
+                    columns_check = text("""
+                        SELECT COLUMN_NAME 
+                        FROM INFORMATION_SCHEMA.COLUMNS 
+                        WHERE TABLE_SCHEMA = 'main' 
+                        AND TABLE_NAME = 'predicted_results'
+                    """)
+                    columns = [row.COLUMN_NAME for row in conn.execute(columns_check).fetchall()]
+                    
+                    # predicted_results 테이블에서 최신 예측값 가져오기 (ID로 정렬)
+                    if 'id' in columns:
+                        latest_prediction_query = text("""
+                            SELECT predicted_skin_temp
+                            FROM predicted_results
+                            WHERE predicted_skin_temp IS NOT NULL
+                            ORDER BY id DESC
+                            LIMIT 1
+                        """)
+                    else:
+                        # ID도 없으면 그냥 최신 하나 가져오기
+                        latest_prediction_query = text("""
+                            SELECT predicted_skin_temp
+                            FROM predicted_results
+                            WHERE predicted_skin_temp IS NOT NULL
+                            LIMIT 1
+                        """)
+                    
+                    latest_prediction = conn.execute(latest_prediction_query).fetchone()
+                    
+                    if latest_prediction:
+                        predicted_skin_temp = float(latest_prediction.predicted_skin_temp)
+                        logger.info(f"📊 최신 예측 피부 온도: {predicted_skin_temp}°C")
+                except Exception as e:
+                    logger.warning(f"⚠️ 예측값 조회 실패: {str(e)}")
+                
+                # 현재 임계값 가져오기 (new_skinthreshold 테이블에서 최신 값 또는 기본값)
+                min_threshold = 32.5
+                max_threshold = 34.5
+                
+                try:
+                    # new_skinthreshold 테이블 존재 여부 확인
+                    new_table_check = text("""
+                        SELECT COUNT(*) as count
+                        FROM information_schema.tables 
+                        WHERE table_schema = 'main' 
+                        AND table_name = 'new_skinthreshold'
+                    """)
+                    new_table_exists = conn.execute(new_table_check).fetchone().count > 0
+                    
+                    if new_table_exists:
+                        # 최신 임계값 가져오기 (ID로 정렬)
+                        latest_threshold_query = text("""
+                            SELECT min_skinthreshold, max_skinthreshold
+                            FROM new_skinthreshold
+                            ORDER BY id DESC
+                            LIMIT 1
+                        """)
+                        latest_threshold = conn.execute(latest_threshold_query).fetchone()
+                        
+                        if latest_threshold and latest_threshold.min_skinthreshold is not None:
+                            min_threshold = float(latest_threshold.min_skinthreshold)
+                            max_threshold = float(latest_threshold.max_skinthreshold)
+                            logger.info(f"📋 최신 임계값 사용: {min_threshold}~{max_threshold}°C")
+                        else:
+                            logger.info(f"📋 기본 임계값 사용: {min_threshold}~{max_threshold}°C")
+                    else:
+                        logger.info(f"📋 기본 임계값 사용 (new_skinthreshold 테이블 없음): {min_threshold}~{max_threshold}°C")
+                except Exception as e:
+                    logger.warning(f"⚠️ 임계값 조회 실패, 기본값 사용: {str(e)}")
+                
+                # 예측값을 코드로 변환
+                if predicted_skin_temp is not None:
+                    predicted_skin_code = convert_predicted_temp_to_code(predicted_skin_temp, min_threshold, max_threshold)
+                    logger.info(f"🔮 예측값 코드 변환: {predicted_skin_temp}°C → {predicted_skin_code}")
+                
+                # 피드백과 예측값 비교하여 임계값 조정
+                new_min_threshold = min_threshold
+                new_max_threshold = max_threshold
+                
+                if predicted_skin_code is not None:
+                    if feedback_code == predicted_skin_code:
+                        # 같으면 기존 값 유지
+                        logger.info(f"✅ 피드백과 예측값이 일치: {feedback_code} = {predicted_skin_code}, 임계값 유지")
+                    else:
+                        # 다르면 피드백에 따라 임계값 조정
+                        if feedback_code == 'C':
+                            # 추움: 각각 0.5도씩 올림
+                            new_min_threshold = min_threshold + 0.5
+                            new_max_threshold = max_threshold + 0.5
+                            logger.info(f"❄️ 피드백: 추움(C), 임계값 조정: {min_threshold}~{max_threshold}°C → {new_min_threshold}~{new_max_threshold}°C")
+                        elif feedback_code == 'H':
+                            # 더움: 각각 0.5도씩 내림
+                            new_min_threshold = min_threshold - 0.5
+                            new_max_threshold = max_threshold - 0.5
+                            logger.info(f"🔥 피드백: 더움(H), 임계값 조정: {min_threshold}~{max_threshold}°C → {new_min_threshold}~{new_max_threshold}°C")
+                        elif feedback_code == 'G':
+                            # 쾌적: 변경 없음
+                            logger.info(f"✅ 피드백: 쾌적(G), 임계값 유지")
+                else:
+                    logger.warning("⚠️ 예측값이 없어 임계값 조정을 건너뜁니다.")
+                
+                # new_skinthreshold 테이블에 갱신된 임계값 저장
+                try:
+                    # new_skinthreshold 테이블 존재 여부 확인 및 생성
+                    new_table_check = text("""
+                        SELECT COUNT(*) as count
+                        FROM information_schema.tables 
+                        WHERE table_schema = 'main' 
+                        AND table_name = 'new_skinthreshold'
+                    """)
+                    new_table_exists = conn.execute(new_table_check).fetchone().count > 0
+                    
+                    if not new_table_exists:
+                        # 테이블이 없으면 생성
+                        create_new_table = text("""
+                            CREATE TABLE IF NOT EXISTS new_skinthreshold (
+                                id INT AUTO_INCREMENT PRIMARY KEY,
+                                min_skinthreshold DECIMAL(4,1) NOT NULL,
+                                max_skinthreshold DECIMAL(4,1) NOT NULL,
+                                feedback VARCHAR(1),
+                                predicted_skin VARCHAR(1)
+                            )
+                        """)
+                        conn.execute(create_new_table)
+                        conn.commit()
+                        logger.info("✅ new_skinthreshold 테이블 생성 완료")
+                    
+                    # 갱신된 임계값 저장
+                    insert_new_threshold = text("""
+                        INSERT INTO new_skinthreshold (min_skinthreshold, max_skinthreshold, feedback, predicted_skin)
+                        VALUES (:min_threshold, :max_threshold, :feedback, :predicted_skin)
+                    """)
+                    conn.execute(insert_new_threshold, {
+                        'min_threshold': new_min_threshold,
+                        'max_threshold': new_max_threshold,
+                        'feedback': feedback_code,
+                        'predicted_skin': predicted_skin_code
+                    })
+                    conn.commit()
+                    logger.info(f"✅ new_skinthreshold 테이블에 갱신된 임계값 저장 완료: {new_min_threshold}~{new_max_threshold}°C")
+                except Exception as e:
+                    logger.error(f"❌ new_skinthreshold 테이블 저장 실패: {str(e)}")
+                    
+            except Exception as e:
+                logger.error(f"❌ 피드백 처리 실패: {str(e)}")
         
         return {
             "success": True,
             "message": "피드백이 저장되었습니다.",
             "feedback": data.feedback,
-            "feedback_code": feedback_code
+            "feedback_code": feedback_code,
+            "predicted_skin_code": predicted_skin_code,
+            "threshold_adjusted": predicted_skin_code is not None and feedback_code != predicted_skin_code
         }
     except Exception as e:
         logger.error(f"❌ 온도 피드백 저장 실패: {str(e)}")
@@ -1021,12 +1381,49 @@ async def health_check():
         db_error = str(e)
         logger.error(f"❌ DB 연결 테스트 실패: {db_error}")
     
+    # Android 앱 건강 상태 확인
+    android_health_status = None
+    if android_app_health_logs:
+        recent_logs = android_app_health_logs[-10:]  # 최근 10개
+        anr_logs = [log for log in recent_logs if log.get("type") == "ANR"]
+        recent_metrics = [log for log in recent_logs if log.get("type") != "ANR"]
+        
+        if recent_metrics:
+            cpu_values = [log.get("cpu_usage_percent") for log in recent_metrics if log.get("cpu_usage_percent")]
+            memory_values = [log.get("memory_pressure_some") for log in recent_metrics if log.get("memory_pressure_some")]
+            
+            android_health_status = {
+                "has_recent_metrics": True,
+                "recent_anr_count": len(anr_logs),
+                "avg_cpu_usage": sum(cpu_values) / len(cpu_values) if cpu_values else None,
+                "avg_memory_pressure": sum(memory_values) / len(memory_values) if memory_values else None,
+                "status": "warning" if (anr_logs or (cpu_values and max(cpu_values) > 30) or (memory_values and max(memory_values) > 40)) else "healthy"
+            }
+        else:
+            android_health_status = {
+                "has_recent_metrics": False,
+                "status": "unknown"
+            }
+    else:
+        android_health_status = {
+            "has_recent_metrics": False,
+            "status": "no_data"
+        }
+    
+    # 전체 상태 결정
+    overall_status = "healthy"
+    if not db_connected or not model_loaded:
+        overall_status = "degraded"
+    if android_health_status and android_health_status.get("status") == "warning":
+        overall_status = "warning"
+    
     return {
-        "status": "healthy",
+        "status": overall_status,
         "model_loaded": model_loaded,
         "air_conditioner_available": AIR_CONDITIONER_AVAILABLE,
         "database_connected": db_connected,
-        "database_error": db_error if not db_connected else None
+        "database_error": db_error if not db_connected else None,
+        "android_app_health": android_health_status
     }
 
 @app.get("/health/db")
@@ -1072,6 +1469,394 @@ async def test_db_connection():
             "message": "DB 연결 실패"
         }
 
+# ==================== Android App Health Monitoring ====================
+
+# android_app_health_logs는 이미 파일 상단에서 초기화됨
+
+@app.post("/android/health/metrics")
+async def receive_android_health_metrics(metrics: AndroidAppHealthMetrics):
+    """Android 앱 건강 지표 수신 및 로깅"""
+    try:
+        # 타임스탬프 추가
+        if not metrics.timestamp:
+            metrics.timestamp = datetime.now().isoformat()
+        
+        # 로그 저장
+        log_entry = {
+            "timestamp": metrics.timestamp,
+            "package_name": metrics.package_name or "io.ionic.starter",
+            "cpu_usage_percent": metrics.cpu_usage_percent,
+            "cpu_user_percent": metrics.cpu_user_percent,
+            "cpu_kernel_percent": metrics.cpu_kernel_percent,
+            "memory_pressure_some": metrics.memory_pressure_some,
+            "memory_pressure_full": metrics.memory_pressure_full,
+            "io_pressure_some": metrics.io_pressure_some,
+            "io_pressure_full": metrics.io_pressure_full,
+            "cpu_pressure_some": metrics.cpu_pressure_some,
+            "cpu_pressure_full": metrics.cpu_pressure_full,
+            "anr_count": metrics.anr_count,
+            "connectivity_errors": metrics.connectivity_errors,
+            "load_avg_1min": metrics.load_avg_1min,
+            "load_avg_5min": metrics.load_avg_5min,
+            "load_avg_15min": metrics.load_avg_15min,
+            "error_log": metrics.error_log
+        }
+        
+        android_app_health_logs.append(log_entry)
+        
+        # 최근 1000개만 유지
+        if len(android_app_health_logs) > 1000:
+            android_app_health_logs.pop(0)
+        
+        # 경고 조건 확인
+        warnings = []
+        if metrics.cpu_usage_percent and metrics.cpu_usage_percent > 30:
+            warnings.append(f"높은 CPU 사용률: {metrics.cpu_usage_percent:.1f}%")
+        if metrics.memory_pressure_some and metrics.memory_pressure_some > 40:
+            warnings.append(f"높은 메모리 압력: {metrics.memory_pressure_some:.2f}")
+        if metrics.io_pressure_some and metrics.io_pressure_some > 40:
+            warnings.append(f"높은 I/O 압력: {metrics.io_pressure_some:.2f}")
+        if metrics.cpu_pressure_some and metrics.cpu_pressure_some > 80:
+            warnings.append(f"높은 CPU 압력: {metrics.cpu_pressure_some:.2f}")
+        if metrics.anr_count and metrics.anr_count > 0:
+            warnings.append(f"ANR 발생: {metrics.anr_count}건")
+        if metrics.connectivity_errors and metrics.connectivity_errors > 0:
+            warnings.append(f"연결 오류: {metrics.connectivity_errors}건")
+        
+        if warnings:
+            logger.warning(f"⚠️ Android 앱 건강 지표 경고: {'; '.join(warnings)}")
+        else:
+            logger.info(f"✅ Android 앱 건강 지표 수신: CPU={metrics.cpu_usage_percent}%, 메모리 압력={metrics.memory_pressure_some}")
+        
+        return {
+            "success": True,
+            "message": "건강 지표 수신 완료",
+            "warnings": warnings if warnings else None,
+            "timestamp": metrics.timestamp
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Android 앱 건강 지표 수신 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f'건강 지표 수신 실패: {str(e)}')
+
+@app.post("/android/health/anr")
+async def receive_anr_log(anr_data: dict):
+    """ANR 로그 수신 및 분석"""
+    try:
+        timestamp = datetime.now().isoformat()
+        
+        # ANR 정보 추출
+        package_name = anr_data.get("package_name", "unknown")
+        pid = anr_data.get("pid", None)
+        reason = anr_data.get("reason", "Unknown")
+        error_id = anr_data.get("error_id", None)
+        load_avg = anr_data.get("load_avg", {})
+        cpu_usage = anr_data.get("cpu_usage", {})
+        pressure_stats = anr_data.get("pressure_stats", {})
+        full_log = anr_data.get("full_log", "")
+        
+        log_entry = {
+            "timestamp": timestamp,
+            "package_name": package_name,
+            "pid": pid,
+            "reason": reason,
+            "error_id": error_id,
+            "load_avg": load_avg,
+            "cpu_usage": cpu_usage,
+            "pressure_stats": pressure_stats,
+            "full_log": full_log
+        }
+        
+        android_app_health_logs.append({
+            "timestamp": timestamp,
+            "type": "ANR",
+            "data": log_entry
+        })
+        
+        # 최근 1000개만 유지
+        if len(android_app_health_logs) > 1000:
+            android_app_health_logs.pop(0)
+        
+        logger.error(f"🚨 ANR 감지: {package_name} (PID: {pid}) - {reason}")
+        logger.error(f"   로드 평균: {load_avg}")
+        logger.error(f"   CPU 사용률: {cpu_usage}")
+        
+        return {
+            "success": True,
+            "message": "ANR 로그 수신 완료",
+            "timestamp": timestamp,
+            "error_id": error_id
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ ANR 로그 수신 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f'ANR 로그 수신 실패: {str(e)}')
+
+@app.get("/android/health/metrics")
+async def get_android_health_metrics(limit: int = 100):
+    """Android 앱 건강 지표 조회"""
+    try:
+        # 최근 N개만 반환
+        recent_logs = android_app_health_logs[-limit:] if len(android_app_health_logs) > limit else android_app_health_logs
+        
+        # 통계 계산
+        if recent_logs:
+            cpu_values = [log.get("cpu_usage_percent") for log in recent_logs if log.get("cpu_usage_percent")]
+            memory_values = [log.get("memory_pressure_some") for log in recent_logs if log.get("memory_pressure_some")]
+            io_values = [log.get("io_pressure_some") for log in recent_logs if log.get("io_pressure_some")]
+            
+            stats = {
+                "total_logs": len(android_app_health_logs),
+                "recent_logs": len(recent_logs),
+                "avg_cpu_usage": sum(cpu_values) / len(cpu_values) if cpu_values else None,
+                "max_cpu_usage": max(cpu_values) if cpu_values else None,
+                "avg_memory_pressure": sum(memory_values) / len(memory_values) if memory_values else None,
+                "max_memory_pressure": max(memory_values) if memory_values else None,
+                "avg_io_pressure": sum(io_values) / len(io_values) if io_values else None,
+                "max_io_pressure": max(io_values) if io_values else None,
+            }
+        else:
+            stats = {
+                "total_logs": 0,
+                "recent_logs": 0
+            }
+        
+        return {
+            "success": True,
+            "stats": stats,
+            "logs": recent_logs
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Android 앱 건강 지표 조회 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f'건강 지표 조회 실패: {str(e)}')
+
+@app.get("/android/health/anr")
+async def get_anr_logs(limit: int = 50):
+    """ANR 로그 조회"""
+    try:
+        # ANR 로그만 필터링
+        anr_logs = [log for log in android_app_health_logs if log.get("type") == "ANR"]
+        
+        # 최근 N개만 반환
+        recent_anr_logs = anr_logs[-limit:] if len(anr_logs) > limit else anr_logs
+        
+        return {
+            "success": True,
+            "total_anr_count": len(anr_logs),
+            "recent_anr_count": len(recent_anr_logs),
+            "anr_logs": recent_anr_logs
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ ANR 로그 조회 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f'ANR 로그 조회 실패: {str(e)}')
+
+@app.get("/android/health/connectivity")
+async def get_connectivity_errors(limit: int = 50):
+    """연결 오류 로그 조회"""
+    try:
+        global connectivity_error_count, last_connectivity_error
+        
+        # 연결 오류 로그만 필터링
+        connectivity_logs = [log for log in android_app_health_logs if log.get("type") == "connectivity_error"]
+        
+        # 최근 N개만 반환
+        recent_connectivity_logs = connectivity_logs[-limit:] if len(connectivity_logs) > limit else connectivity_logs
+        
+        return {
+            "success": True,
+            "total_connectivity_error_count": connectivity_error_count,
+            "recent_connectivity_error_count": len(recent_connectivity_logs),
+            "last_connectivity_error": last_connectivity_error,
+            "connectivity_logs": recent_connectivity_logs
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ 연결 오류 로그 조회 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f'연결 오류 로그 조회 실패: {str(e)}')
+
+@app.post("/android/health/ui-performance")
+async def receive_ui_performance_metrics(metrics: AndroidUIPerformanceMetrics):
+    """Android UI 렌더링 성능 지표 수신 및 분석"""
+    try:
+        # 타임스탬프 추가
+        if not metrics.timestamp:
+            metrics.timestamp = datetime.now().isoformat()
+        
+        # 로그 저장
+        log_entry = {
+            "timestamp": metrics.timestamp,
+            "type": "ui_performance",
+            "package_name": metrics.package_name or "io.ionic.starter",
+            "skipped_frames": metrics.skipped_frames,
+            "frame_duration_ms": metrics.frame_duration_ms,
+            "frame_time_future_ms": metrics.frame_time_future_ms,
+            "choreographer_warnings": metrics.choreographer_warnings,
+            "webview_load_time_ms": metrics.webview_load_time_ms,
+            "main_thread_blocked_ms": metrics.main_thread_blocked_ms,
+            "render_priority": metrics.render_priority,
+            "hardware_acceleration": metrics.hardware_acceleration,
+            "black_screen_detected": metrics.black_screen_detected,
+            "screen_state": metrics.screen_state,
+            "performance_log": metrics.performance_log
+        }
+        
+        android_app_health_logs.append(log_entry)
+        
+        # 최근 1000개만 유지
+        if len(android_app_health_logs) > 1000:
+            android_app_health_logs.pop(0)
+        
+        # 경고 조건 확인
+        warnings = []
+        if metrics.skipped_frames and metrics.skipped_frames > 30:
+            warnings.append(f"심각한 프레임 드롭: {metrics.skipped_frames}프레임 스킵")
+        if metrics.frame_duration_ms and metrics.frame_duration_ms > 1000:
+            warnings.append(f"느린 프레임 렌더링: {metrics.frame_duration_ms:.0f}ms")
+        if metrics.frame_duration_ms and metrics.frame_duration_ms > 500:
+            warnings.append(f"프레임 렌더링 지연: {metrics.frame_duration_ms:.0f}ms (권장: <16ms)")
+        if metrics.main_thread_blocked_ms and metrics.main_thread_blocked_ms > 500:
+            warnings.append(f"메인 스레드 블록: {metrics.main_thread_blocked_ms:.0f}ms")
+        if metrics.black_screen_detected:
+            warnings.append("검은 화면 감지됨")
+        if metrics.screen_state == "black":
+            warnings.append("화면 상태: 검은색")
+        if metrics.choreographer_warnings and metrics.choreographer_warnings > 10:
+            warnings.append(f"⚠️ Choreographer 경고 다수: {metrics.choreographer_warnings}건 (그래픽 HAL vsync 타임스탬프 문제)")
+        if metrics.frame_time_future_ms and metrics.frame_time_future_ms > 5:
+            warnings.append(f"프레임 시간 미래 오프셋: {metrics.frame_time_future_ms:.2f}ms (vsync 타임스탬프 문제)")
+        
+        if warnings:
+            logger.warning(f"⚠️ UI 성능 문제 감지: {'; '.join(warnings)}")
+            if metrics.black_screen_detected or metrics.screen_state == "black":
+                logger.error(f"🚨 검은 화면 문제 감지! 프레임 스킵: {metrics.skipped_frames}, 렌더링 시간: {metrics.frame_duration_ms}ms")
+            if metrics.choreographer_warnings and metrics.choreographer_warnings > 10:
+                logger.error(f"🚨 Choreographer 경고 다수! 그래픽 HAL vsync 타임스탬프 문제 - 에뮬레이터 설정 확인 필요")
+        else:
+            logger.info(f"✅ UI 성능 지표 수신: 프레임 스킵={metrics.skipped_frames}, 렌더링 시간={metrics.frame_duration_ms}ms")
+        
+        return {
+            "success": True,
+            "message": "UI 성능 지표 수신 완료",
+            "warnings": warnings if warnings else None,
+            "timestamp": metrics.timestamp,
+            "recommendations": _get_ui_performance_recommendations(metrics)
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ UI 성능 지표 수신 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f'UI 성능 지표 수신 실패: {str(e)}')
+
+def _get_ui_performance_recommendations(metrics: AndroidUIPerformanceMetrics) -> list:
+    """UI 성능 문제에 대한 권장사항 생성"""
+    recommendations = []
+    
+    if metrics.skipped_frames and metrics.skipped_frames > 30:
+        recommendations.append("메인 스레드에서 무거운 작업을 백그라운드 스레드로 이동하세요")
+        recommendations.append("WebView 로딩을 비동기로 처리하세요")
+    
+    if metrics.frame_duration_ms and metrics.frame_duration_ms > 1000:
+        recommendations.append("렌더링 최적화: 불필요한 레이아웃 재계산을 줄이세요")
+        recommendations.append("이미지 최적화: 큰 이미지를 리사이즈하거나 지연 로딩하세요")
+    
+    if metrics.frame_duration_ms and metrics.frame_duration_ms > 500:
+        recommendations.append("프레임 렌더링이 느립니다. GPU 가속을 확인하세요")
+        recommendations.append("에뮬레이터의 그래픽 성능 설정을 높이세요 (Hardware - GLES 2.0)")
+    
+    if metrics.main_thread_blocked_ms and metrics.main_thread_blocked_ms > 500:
+        recommendations.append("네트워크 요청을 백그라운드 스레드에서 처리하세요")
+        recommendations.append("데이터베이스 쿼리를 비동기로 실행하세요")
+    
+    if metrics.black_screen_detected or metrics.screen_state == "black":
+        recommendations.append("WebView 배경색을 명시적으로 설정하세요 (setBackgroundColor)")
+        recommendations.append("Window 배경색도 설정하세요 (getWindow().getDecorView().setBackgroundColor)")
+        recommendations.append("WebView의 visibility를 확인하세요 (VISIBLE)")
+        recommendations.append("하드웨어 가속이 활성화되어 있는지 확인하세요")
+    
+    if metrics.choreographer_warnings and metrics.choreographer_warnings > 10:
+        recommendations.append("⚠️ Choreographer 경고: 그래픽 HAL vsync 타임스탬프 문제")
+        recommendations.append("에뮬레이터 사용 시: AVD Manager > Edit > Advanced Settings > Graphics: Hardware - GLES 2.0")
+        recommendations.append("에뮬레이터 사용 시: Emulator Settings > Extended Controls > Settings > Advanced > OpenGL ES renderer: Desktop native OpenGL")
+        recommendations.append("실제 기기에서 테스트하여 에뮬레이터 문제인지 확인하세요")
+        recommendations.append("에뮬레이터 RAM을 2GB 이상으로 설정하세요")
+        recommendations.append("에뮬레이터의 Multi-core CPU를 활성화하세요")
+    
+    if metrics.frame_time_future_ms and metrics.frame_time_future_ms > 5:
+        recommendations.append("프레임 시간이 미래로 설정되어 있습니다 (vsync 타임스탬프 문제)")
+        recommendations.append("에뮬레이터의 그래픽 드라이버를 업데이트하세요")
+        recommendations.append("호스트 시스템의 그래픽 드라이버를 업데이트하세요")
+    
+    if not recommendations:
+        recommendations.append("현재 UI 성능이 양호합니다")
+    
+    return recommendations
+
+@app.get("/android/health/ui-performance")
+async def get_ui_performance_metrics(limit: int = 100):
+    """UI 성능 지표 조회"""
+    try:
+        # UI 성능 로그만 필터링
+        ui_performance_logs = [log for log in android_app_health_logs if log.get("type") == "ui_performance"]
+        
+        # 최근 N개만 반환
+        recent_logs = ui_performance_logs[-limit:] if len(ui_performance_logs) > limit else ui_performance_logs
+        
+        # 통계 계산
+        if recent_logs:
+            skipped_frames = [log.get("skipped_frames") for log in recent_logs if log.get("skipped_frames")]
+            frame_durations = [log.get("frame_duration_ms") for log in recent_logs if log.get("frame_duration_ms")]
+            main_thread_blocks = [log.get("main_thread_blocked_ms") for log in recent_logs if log.get("main_thread_blocked_ms")]
+            black_screen_count = sum(1 for log in recent_logs if log.get("black_screen_detected") or log.get("screen_state") == "black")
+            
+            stats = {
+                "total_logs": len(ui_performance_logs),
+                "recent_logs": len(recent_logs),
+                "avg_skipped_frames": sum(skipped_frames) / len(skipped_frames) if skipped_frames else None,
+                "max_skipped_frames": max(skipped_frames) if skipped_frames else None,
+                "avg_frame_duration_ms": sum(frame_durations) / len(frame_durations) if frame_durations else None,
+                "max_frame_duration_ms": max(frame_durations) if frame_durations else None,
+                "avg_main_thread_blocked_ms": sum(main_thread_blocks) / len(main_thread_blocks) if main_thread_blocks else None,
+                "max_main_thread_blocked_ms": max(main_thread_blocks) if main_thread_blocks else None,
+                "black_screen_occurrences": black_screen_count,
+                "black_screen_rate": (black_screen_count / len(recent_logs) * 100) if recent_logs else 0
+            }
+        else:
+            stats = {
+                "total_logs": 0,
+                "recent_logs": 0
+            }
+        
+        return {
+            "success": True,
+            "stats": stats,
+            "logs": recent_logs
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ UI 성능 지표 조회 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f'UI 성능 지표 조회 실패: {str(e)}')
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=3000)
+    import os
+    
+    # SSL 인증서 파일 경로
+    SSL_KEYFILE = os.path.join(os.path.dirname(__file__), "server.key")
+    SSL_CERTFILE = os.path.join(os.path.dirname(__file__), "server.crt")
+    
+    # SSL 인증서가 있으면 HTTPS로 실행, 없으면 HTTP로 실행
+    if os.path.exists(SSL_KEYFILE) and os.path.exists(SSL_CERTFILE):
+        # logger.info("🔒 HTTPS 모드로 서버 시작 (SSL 인증서 사용)")
+        uvicorn.run(
+            app, 
+            host="0.0.0.0", 
+            port=3000,
+            ssl_keyfile=SSL_KEYFILE,
+            ssl_certfile=SSL_CERTFILE,
+            access_log=False  # HTTP 요청 로그 비활성화
+        )
+    else:
+        # logger.info("🌐 HTTP 모드로 서버 시작 (SSL 인증서 없음)")
+        # logger.info("💡 HTTPS를 사용하려면 server/generate_ssl_cert.py를 실행하여 인증서를 생성하세요.")
+        uvicorn.run(app, host="0.0.0.0", port=3000, access_log=False)  # HTTP 요청 로그 비활성화

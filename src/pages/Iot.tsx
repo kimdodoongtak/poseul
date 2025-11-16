@@ -145,20 +145,15 @@ const Iot: React.FC = () => {
   };
 
   return (
-    <IonPage>
+    <IonPage className="iot-page">
       <IonHeader>
         <IonToolbar>
           <IonTitle>IoT 제어</IonTitle>
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen>
-        <IonHeader>
-          <IonToolbar>
-            <IonTitle size="large">에어컨 제어</IonTitle>
-          </IonToolbar>
-        </IonHeader>
 
-        <div className="container">
+        <div className="container" style={{ padding: '16px', display: 'block', visibility: 'visible', opacity: 1 }}>
           {/* 에러 메시지 */}
           {error && (
             <IonCard>

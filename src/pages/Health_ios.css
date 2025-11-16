@@ -64,70 +64,68 @@ ion-header:first-of-type ion-title::after {
   background-image: none !important;
 }
 
-/* IonContent 안의 헤더 투명 및 항상 표시 */
+/* IonContent 안의 헤더 제거 (중복 방지) */
 ion-content ion-header {
-  --background: transparent !important;
-  background: transparent !important;
-  background-image: none !important;
-  position: sticky !important;
-  top: 0 !important;
-  z-index: 10 !important;
+  display: none !important;
 }
 
-ion-content ion-header::part(native) {
-  background: transparent !important;
-  background-image: none !important;
-}
-
-ion-content ion-header ion-toolbar {
-  --background: transparent !important;
-  background: transparent !important;
-  background-image: none !important;
-}
-
-ion-content ion-header ion-toolbar::part(native) {
-  background: transparent !important;
-  background-image: none !important;
-}
-
-/* 컨테이너 */
-ion-content {
-  --background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+/* Health_ios 페이지의 IonContent 배경 - 클래스 기반 선택자 사용 */
+.health-ios-page ion-content {
+  --background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  background-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
   --padding-start: 16px;
   --padding-end: 16px;
   --padding-top: 16px;
   --padding-bottom: 16px;
+  color: #ffffff !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
 }
 
-/* 카드 스타일 */
-ion-card {
+/* Health_ios 페이지의 Shadow DOM 내부 스타일 */
+.health-ios-page ion-content::part(scroll) {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  background-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+}
+
+.health-ios-page ion-content .scroll-content {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  background-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+}
+
+/* 카드 스타일 - Health_ios 페이지에만 적용 */
+.health-ios-page ion-card {
   margin: 16px 0;
   border-radius: 20px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
   overflow: hidden;
+  background: white !important;
 }
 
-ion-card:hover {
+.health-ios-page ion-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
 }
 
-ion-card-header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+.health-ios-page ion-card-header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
   color: white;
   padding: 20px;
 }
 
-ion-card-title {
+.health-ios-page ion-card-title {
   font-size: 1.3rem;
   font-weight: 600;
   color: white;
 }
 
-ion-card-content {
+.health-ios-page ion-card-content {
   padding: 20px;
-  background: white;
+  background: white !important;
+  background-color: white !important;
+  color: #000000 !important;
   width: 100%;
   box-sizing: border-box;
 }
@@ -162,8 +160,8 @@ ion-card-content {
   box-shadow: 0 8px 24px rgba(79, 172, 254, 0.3);
 }
 
-/* 입력 필드 */
-ion-item {
+/* 입력 필드 - Health_ios 페이지에만 적용 */
+.health-ios-page ion-item {
   --border-radius: 12px;
   --padding-start: 16px;
   --padding-end: 16px;
@@ -175,11 +173,11 @@ ion-item {
   transition: background 0.2s ease;
 }
 
-ion-item:hover {
+.health-ios-page ion-item:hover {
   background: #eeeeee !important;
 }
 
-ion-item ion-label {
+.health-ios-page ion-item ion-label {
   font-weight: 500;
   color: #333;
 }
