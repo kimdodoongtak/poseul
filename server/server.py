@@ -1165,25 +1165,10 @@ async def get_temperature_range():
         
         min_temp, max_temp = temperature_range
         
-        # DB에서 사용자 정보도 함께 조회
-        with engine.connect() as conn:
-            query = text("SELECT age, bmi, gender FROM room_threshold LIMIT 1")
-            result = conn.execute(query).fetchone()
-            
-            user_info = None
-            if result:
-                user_info = {
-                    "age": result.age,
-                    "bmi": float(result.bmi) if result.bmi else None,
-                    "gender": result.gender
-                }
-        
         return {
             "success": True,
             "min_temp": min_temp,
-            "max_temp": max_temp,
-            "target_temp": (min_temp + max_temp) / 2.0,
-            "user_info": user_info
+            "max_temp": max_temp
         }
         
     except Exception as e:

@@ -18,8 +18,8 @@ android {
         
         // 서버 URL 설정 (통합 서버 포트 3000)
         // 에뮬레이터: 10.0.2.2
-        // 실제 기기: 컴퓨터의 IP 주소 (예: 192.168.0.143)
-        buildConfigField "String", "SERVER_URL", '"http://10.0.2.2:3000"'
+        // 실제 기기: 컴퓨터의 IP 주소 (현재: 192.168.0.143)
+        buildConfigField "String", "SERVER_URL", '"http://192.168.0.143:3000"'
     }
 
     buildTypes {

@@ -16,7 +16,7 @@ import {
   IonText,
   IonAlert,
 } from '@ionic/react';
-import { IotService, AirConditionerMode, FanSpeed } from '../services';
+import { IotService, AirConditionerMode, FanSpeed, getIotServiceBaseUrl } from '../services';
 import './Iot.css';
 
 const Iot: React.FC = () => {
@@ -25,18 +25,22 @@ const Iot: React.FC = () => {
   // 기본 상태 설정 - 서버 연결 실패 시에도 UI가 보이도록
   const [status, setStatus] = useState<{
     currentTemperature: number;
-    airQuality: number;
     power: boolean;
     targetTemperature: number;
     mode: AirConditionerMode;
     fanSpeed: FanSpeed;
   }>({
     currentTemperature: 0,
-    airQuality: 0,
     power: false,
     targetTemperature: 24,
     mode: 'AUTO',
     fanSpeed: 'AUTO',
+  });
+  
+  // 온도 범위 상태
+  const [temperatureRange, setTemperatureRange] = useState<{ min: number | null; max: number | null }>({
+    min: null,
+    max: null,
   });
   
   // 온도 임계값 설정 팝업 관련 상태
@@ -49,12 +53,40 @@ const Iot: React.FC = () => {
       const result = await IotService.getStatus();
       setStatus({
         currentTemperature: result.currentTemperature,
-        airQuality: result.airQuality,
         power: result.state.power,
         targetTemperature: result.state.targetTemperature,
         mode: result.state.mode,
         fanSpeed: result.state.fanSpeed,
       });
+      
+      // 온도 범위도 함께 조회
+      try {
+        // IotService의 baseUrl 가져오기
+        const baseUrl = getIotServiceBaseUrl();
+        console.log('🌡️ 온도 범위 조회 시작:', `${baseUrl}/temperature-range`);
+        const rangeResponse = await fetch(`${baseUrl}/temperature-range`);
+        console.log('🌡️ 온도 범위 응답 상태:', rangeResponse.status);
+        
+        if (rangeResponse.ok) {
+          const rangeData = await rangeResponse.json();
+          console.log('🌡️ 온도 범위 데이터:', rangeData);
+          
+          if (rangeData.success && rangeData.min_temp != null && rangeData.max_temp != null) {
+            console.log('✅ 온도 범위 설정:', rangeData.min_temp, '~', rangeData.max_temp);
+            setTemperatureRange({
+              min: rangeData.min_temp,
+              max: rangeData.max_temp,
+            });
+          } else {
+            console.warn('⚠️ 온도 범위 데이터가 없거나 유효하지 않음:', rangeData);
+          }
+        } else {
+          const errorText = await rangeResponse.text();
+          console.error('❌ 온도 범위 조회 실패:', rangeResponse.status, errorText);
+        }
+      } catch (e) {
+        console.error('❌ 온도 범위 조회 중 오류:', e);
+      }
     } catch (error: any) {
       console.error('Failed to load status:', error);
       setError(error.message || '서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요.');
@@ -236,13 +268,18 @@ const Iot: React.FC = () => {
               <IonItem>
                 <IonLabel>
                   <h2>현재 온도</h2>
-                  <p>{status.currentTemperature}°C</p>
-                </IonLabel>
-              </IonItem>
-              <IonItem>
-                <IonLabel>
-                  <h2>공기질</h2>
-                  <p>{status.airQuality}</p>
+                  <p style={{ fontSize: '24px', fontWeight: 'bold', marginTop: '8px' }}>
+                    {status.currentTemperature}°C
+                  </p>
+                  {temperatureRange.min !== null && temperatureRange.max !== null ? (
+                    <p style={{ fontSize: '14px', color: '#666', marginTop: '8px' }}>
+                      {Math.round(temperatureRange.min)}°C ~ {Math.round(temperatureRange.max)}°C
+                    </p>
+                  ) : (
+                    <p style={{ fontSize: '12px', color: '#999', marginTop: '8px', fontStyle: 'italic' }}>
+                      온도 범위 정보 없음
+                    </p>
+                  )}
                 </IonLabel>
               </IonItem>
             </IonCardContent>

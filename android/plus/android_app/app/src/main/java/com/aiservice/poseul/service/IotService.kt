@@ -20,21 +20,44 @@ data class AirConditionerStateResponse(
 )
 
 data class AirConditionerState(
+    @SerializedName("power") val power: Boolean?,
     @SerializedName("power_on") val powerOn: Boolean?,
-    @SerializedName("current_temperature") val currentTemperature: Double?,
-    @SerializedName("target_temperature") val targetTemperature: Double?,
+    @SerializedName("currentTemperature") val currentTemperature: Double?,
+    @SerializedName("current_temperature") val currentTemperatureAlt: Double?,
+    @SerializedName("targetTemperature") val targetTemperature: Double?,
+    @SerializedName("target_temperature") val targetTemperatureAlt: Double?,
     @SerializedName("temperature_unit") val temperatureUnit: String?,
     @SerializedName("job_mode") val jobMode: String?,
+    @SerializedName("mode") val mode: String?,
     @SerializedName("wind_strength") val windStrength: String?,
+    @SerializedName("fanSpeed") val fanSpeed: String?,
     @SerializedName("air_quality") val airQuality: AirQuality?,
     @SerializedName("filter_percent") val filterPercent: Int?
-)
+) {
+    // 호환성을 위한 getter
+    val actualPowerOn: Boolean?
+        get() = power ?: powerOn
+    
+    val actualCurrentTemperature: Double?
+        get() = currentTemperature ?: currentTemperatureAlt
+    
+    val actualTargetTemperature: Double?
+        get() = targetTemperature ?: targetTemperatureAlt
+}
 
 data class AirQuality(
     @SerializedName("pm1") val pm1: Int?,
     @SerializedName("pm2") val pm2: Int?,
     @SerializedName("pm10") val pm10: Int?,
     @SerializedName("humidity") val humidity: Int?
+)
+
+data class TemperatureRangeResponse(
+    @SerializedName("success") val success: Boolean,
+    @SerializedName("min_temp") val minTemp: Double?,
+    @SerializedName("max_temp") val maxTemp: Double?,
+    @SerializedName("target_temp") val targetTemp: Double?,
+    @SerializedName("message") val message: String?
 )
 
 data class AirConditionerControlRequest(
@@ -247,6 +270,70 @@ class IotService {
             return@withContext false
         } finally {
             writer?.close()
+            connection?.disconnect()
+        }
+    }
+    
+    /**
+     * 온도 범위 조회
+     */
+    suspend fun getTemperatureRange(): TemperatureRangeResponse? = withContext(Dispatchers.IO) {
+        var connection: HttpURLConnection? = null
+        try {
+            val fullUrl = "$SERVER_URL/temperature-range"
+            Log.i("IotService", "🔍 [TEMPERATURE RANGE] 온도 범위 조회 시작")
+            Log.d("IotService", "🌐 [TEMPERATURE RANGE] 요청 URL: $fullUrl")
+            
+            val url = URL(fullUrl)
+            connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.connectTimeout = 10000
+            connection.readTimeout = 10000
+            connection.setRequestProperty("Connection", "close")
+            connection.setRequestProperty("Accept", "application/json")
+            connection.setRequestProperty("User-Agent", "Android-App")
+            connection.useCaches = false
+            
+            val responseCode = connection.responseCode
+            Log.i("IotService", "📡 [TEMPERATURE RANGE] HTTP 응답 코드: $responseCode")
+            
+            val responseText = if (responseCode == HttpURLConnection.HTTP_OK) {
+                connection.inputStream?.bufferedReader()?.use { it.readText() } ?: "{}"
+            } else {
+                connection.errorStream?.bufferedReader()?.use { it.readText() } ?: "{\"success\":false,\"error\":\"HTTP $responseCode\"}"
+            }
+            
+            Log.d("IotService", "📥 [TEMPERATURE RANGE] 응답 내용: $responseText")
+            
+            try {
+                val response = gson.fromJson(responseText, TemperatureRangeResponse::class.java)
+                if (response.success) {
+                    Log.i("IotService", "✅ [TEMPERATURE RANGE] 온도 범위 조회 성공: ${response.minTemp}°C ~ ${response.maxTemp}°C")
+                } else {
+                    Log.e("IotService", "❌ [TEMPERATURE RANGE] 온도 범위 조회 실패: ${response.message}")
+                }
+                return@withContext response
+            } catch (e: Exception) {
+                Log.e("IotService", "❌ [TEMPERATURE RANGE] JSON 파싱 실패: ${e.message}")
+                return@withContext TemperatureRangeResponse(
+                    success = false,
+                    minTemp = null,
+                    maxTemp = null,
+                    targetTemp = null,
+                    message = "JSON 파싱 실패: ${e.message}"
+                )
+            }
+            
+        } catch (e: Exception) {
+            Log.e("IotService", "💥 [TEMPERATURE RANGE] 온도 범위 조회 오류 발생", e)
+            return@withContext TemperatureRangeResponse(
+                success = false,
+                minTemp = null,
+                maxTemp = null,
+                targetTemp = null,
+                message = "연결 실패: ${e.message}"
+            )
+        } finally {
             connection?.disconnect()
         }
     }
