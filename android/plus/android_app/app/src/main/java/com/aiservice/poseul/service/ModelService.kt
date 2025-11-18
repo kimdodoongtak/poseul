@@ -9,11 +9,14 @@ import java.io.OutputStreamWriter
 import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
 import android.util.Log
+import com.aiservice.poseul.BuildConfig
 
 class ModelService {
     
     companion object {
-        private const val SERVER_URL = "http://10.0.2.2:3000" // 에뮬레이터에서 호스트 PC 접근용 IP (통합 서버 포트 3000)
+        // 서버 URL은 build.gradle의 BuildConfig에서 가져옴
+        // 에뮬레이터: 10.0.2.2, 실제 기기: 컴퓨터 IP 주소 (현재: 192.168.0.143)
+        private const val SERVER_URL = BuildConfig.SERVER_URL
         private const val PREDICT_ENDPOINT = "/predict"
         private const val HEALTH_ENDPOINT = "/health"
         private const val MODEL_INFO_ENDPOINT = "/model_info"

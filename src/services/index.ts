@@ -9,7 +9,7 @@ export type {
   TemperaturePredictionResponse,
 } from './ModelService';
 
-export { default as IotService } from './IotService';
+export { default as IotService, getIotServiceBaseUrl } from './IotService';
 export type {
   AirConditionerState,
   AirConditionerControlRequest,

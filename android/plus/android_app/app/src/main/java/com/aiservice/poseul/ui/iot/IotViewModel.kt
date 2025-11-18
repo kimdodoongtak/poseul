@@ -37,6 +37,10 @@ class IotViewModel : ViewModel() {
     // 에어컨 상태
     private val _airConditionerState = MutableLiveData<AirConditionerState?>()
     val airConditionerState: LiveData<AirConditionerState?> = _airConditionerState
+    
+    // 온도 범위
+    private val _temperatureRange = MutableLiveData<Pair<Double?, Double?>>()
+    val temperatureRange: LiveData<Pair<Double?, Double?>> = _temperatureRange
 
     // 앱 시작 시 메인 스레드 부하를 줄이기 위해 자동 로딩 제거
     // 필요할 때 refreshDevices()를 호출하여 로드
@@ -47,12 +51,32 @@ class IotViewModel : ViewModel() {
             try {
                 // 실제 API 호출을 통해 에어컨 정보를 가져옵니다
                 loadAirConditionerState()
+                // 온도 범위도 함께 로드
+                loadTemperatureRange()
             } catch (e: Exception) {
                 Log.e("IotViewModel", "IOT 기기 정보 로드 실패", e)
                 _errorMessage.value = "IOT 기기 정보를 불러오는 중 오류가 발생했습니다: ${e.message}"
             } finally {
                 _isLoading.value = false
             }
+        }
+    }
+    
+    private suspend fun loadTemperatureRange() = withContext(Dispatchers.IO) {
+        try {
+            Log.d("IotViewModel", "온도 범위 조회 시작")
+            val rangeResponse = iotService.getTemperatureRange()
+            
+            if (rangeResponse?.success == true && rangeResponse.minTemp != null && rangeResponse.maxTemp != null) {
+                _temperatureRange.postValue(Pair(rangeResponse.minTemp, rangeResponse.maxTemp))
+                Log.d("IotViewModel", "온도 범위 로드 성공: ${rangeResponse.minTemp}°C ~ ${rangeResponse.maxTemp}°C")
+            } else {
+                Log.e("IotViewModel", "온도 범위 조회 실패: ${rangeResponse?.message}")
+                _temperatureRange.postValue(Pair(null, null))
+            }
+        } catch (e: Exception) {
+            Log.e("IotViewModel", "온도 범위 조회 중 오류 발생", e)
+            _temperatureRange.postValue(Pair(null, null))
         }
     }
 
@@ -73,10 +97,10 @@ class IotViewModel : ViewModel() {
                         id = stateResponse.deviceId ?: "ac_001",
                         name = "에어컨",
                         type = "air_conditioner",
-                        isOnline = state.powerOn == true,
-                        currentTemperature = state.currentTemperature?.toInt(),
-                        targetTemperature = state.targetTemperature?.toInt(),
-                        powerOn = state.powerOn ?: false
+                        isOnline = state.actualPowerOn == true,
+                        currentTemperature = state.actualCurrentTemperature?.toInt(),
+                        targetTemperature = state.actualTargetTemperature?.toInt(),
+                        powerOn = state.actualPowerOn ?: false
                     )
                 )
                 

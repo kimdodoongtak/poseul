@@ -9,7 +9,6 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import com.aiservice.poseul.databinding.FragmentIotBinding
 import com.aiservice.poseul.service.AirConditionerState
-import com.aiservice.poseul.service.AirQuality
 
 class IotFragment : Fragment() {
 
@@ -45,6 +44,18 @@ class IotFragment : Fragment() {
         viewModel.airConditionerState.observe(viewLifecycleOwner) { state: AirConditionerState? ->
             state?.let { airConditionerState ->
                 updateAirConditionerUI(airConditionerState)
+            }
+        }
+        
+        // 온도 범위 관찰
+        viewModel.temperatureRange.observe(viewLifecycleOwner) { range: Pair<Double?, Double?> ->
+            range.first?.let { minTemp ->
+                range.second?.let { maxTemp ->
+                    binding.airConditionerTemperatureRange.text = "${minTemp.toInt()}°C ~ ${maxTemp.toInt()}°C"
+                    binding.airConditionerTemperatureRange.visibility = View.VISIBLE
+                }
+            } ?: run {
+                binding.airConditionerTemperatureRange.visibility = View.GONE
             }
         }
         
@@ -129,7 +140,7 @@ class IotFragment : Fragment() {
     
     private fun updateAirConditionerUI(state: AirConditionerState) {
         // 전원 상태
-        val isOnline = state.powerOn == true
+        val isOnline = state.actualPowerOn == true
         binding.airConditionerStatus.text = if (isOnline) "온라인" else "오프라인"
         binding.airConditionerStatus.setTextColor(
             if (isOnline) 0xFF4CAF50.toInt() else 0xFFF44336.toInt()
@@ -138,34 +149,26 @@ class IotFragment : Fragment() {
         // 전원 버튼 텍스트 업데이트
         binding.powerButton.text = if (isOnline) "끄기" else "켜기"
         
-        // 온도 정보
-        state.currentTemperature?.let { temp: Double ->
+        // 현재 온도 정보만 표시
+        state.actualCurrentTemperature?.let { temp: Double ->
             val unit = state.temperatureUnit ?: "C"
             binding.airConditionerCurrentTemp.text = "${temp.toInt()}°$unit"
-        }
-        
-        state.targetTemperature?.let { temp: Double ->
-            val unit = state.temperatureUnit ?: "C"
-            binding.airConditionerTargetTemp.text = "${temp.toInt()}°$unit"
+        } ?: run {
+            binding.airConditionerCurrentTemp.text = "--°C"
         }
         
         // 작동 모드 표시 및 버튼 상태 업데이트
-        state.jobMode?.let { mode: String ->
-            Log.d("IotFragment", "작동 모드: $mode")
-            // 현재 모드에 따라 버튼 강조 (선택적으로 구현 가능)
-            updateModeButtonState(mode)
+        val mode = state.mode ?: state.jobMode
+        mode?.let { m: String ->
+            Log.d("IotFragment", "작동 모드: $m")
+            updateModeButtonState(m)
         }
         
         // 풍량 표시 및 버튼 상태 업데이트
-        state.windStrength?.let { strength: String ->
-            Log.d("IotFragment", "풍량: $strength")
-            // 현재 풍량에 따라 버튼 강조 (선택적으로 구현 가능)
-            updateWindButtonState(strength)
-        }
-        
-        // 공기질 정보 (있다면)
-        state.airQuality?.let { airQuality: AirQuality ->
-            Log.d("IotFragment", "PM2.5: ${airQuality.pm2}, 습도: ${airQuality.humidity}%")
+        val strength = state.fanSpeed ?: state.windStrength
+        strength?.let { s: String ->
+            Log.d("IotFragment", "풍량: $s")
+            updateWindButtonState(s)
         }
     }
     

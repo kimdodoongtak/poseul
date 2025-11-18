@@ -33,6 +33,11 @@ export interface AirConditionerStatusResponse {
 
 class IotService {
   private baseUrl: string;
+  
+  // baseUrl을 외부에서 접근할 수 있도록 getter 추가
+  getBaseUrl(): string {
+    return this.baseUrl;
+  }
 
   constructor(baseUrl?: string) {
     if (baseUrl) {
@@ -44,14 +49,14 @@ class IotService {
       if (Capacitor.isNativePlatform()) {
         // 안드로이드 에뮬레이터 또는 실제 기기
         if (Capacitor.getPlatform() === 'android') {
-          // 실제 기기 사용 시: 컴퓨터 IP 주소 필요 (예: 192.168.68.72)
+          // 실제 기기 사용 시: 컴퓨터 IP 주소 필요 (현재: 192.168.0.143)
           // 에뮬레이터 사용 시: 10.0.2.2
           // 환경 변수로 설정 가능하도록 개선
-          this.baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://192.168.68.72:3000';
+          this.baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://192.168.0.143:3000';
         } else if (Capacitor.getPlatform() === 'ios') {
           // iOS 시뮬레이터: localhost, 실제 기기: 컴퓨터 IP 주소 필요
           // 실제 기기에서는 환경 변수나 하드코딩된 IP 사용
-          this.baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://192.168.68.72:3000';
+          this.baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://192.168.0.143:3000';
         } else {
           this.baseUrl = 'http://localhost:3000';
         }
@@ -308,5 +313,12 @@ class IotService {
   }
 }
 
-export default new IotService();
+const iotServiceInstance = new IotService();
+
+// getBaseUrl을 외부에서 접근할 수 있도록 export
+export function getIotServiceBaseUrl(): string {
+  return iotServiceInstance.getBaseUrl();
+}
+
+export default iotServiceInstance;
 

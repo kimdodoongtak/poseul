@@ -5,6 +5,7 @@
 1. 사용자 특성(나이, BMI, 성별)에 따른 쾌적 온도 범위 계산
 2. 계산된 온도 범위를 DB의 room_threshold 테이블에 저장
 3. 에어컨 자동 온도 조절
+4. 사용자가 수동으로 설정한 임계값 캐시 우선 사용 (12시간 유효)
 """
 
 from sqlalchemy import text
@@ -13,6 +14,8 @@ from typing import Optional, Tuple
 import logging
 
 logger = logging.getLogger(__name__)
+
+# temperature_threshold_cache 모듈 import (순환 참조 방지를 위해 함수 내부에서 import)
 
 # 마지막 조절 시간 추적
 last_adjustment_time = None
@@ -294,7 +297,11 @@ def initialize_user_temperature_range(
 
 def get_temperature_range_from_db(engine) -> Optional[Tuple[float, float]]:
     """
-    DB에서 저장된 온도 범위 가져오기
+    온도 범위 가져오기 (캐시 우선, DB 차선)
+    
+    우선순위:
+    1. 사용자가 수동으로 설정한 임계값 캐시 (12시간 유효) - temperature_threshold_cache
+    2. DB의 room_threshold 테이블에서 가져오기
     
     Args:
         engine: SQLAlchemy 엔진
@@ -303,13 +310,49 @@ def get_temperature_range_from_db(engine) -> Optional[Tuple[float, float]]:
         (min_temp, max_temp) 또는 None
     """
     try:
+        # 1. 먼저 캐시에서 확인 (사용자가 수동으로 설정한 임계값)
+        try:
+            from temperature_threshold_cache import get_temperature_threshold
+            cached_threshold = get_temperature_threshold()
+            
+            if cached_threshold is not None:
+                min_temp = cached_threshold.get("min_temp")
+                max_temp = cached_threshold.get("max_temp")
+                target_temp = cached_threshold.get("target_temperature")
+                
+                if min_temp is not None and max_temp is not None:
+                    logger.info("=" * 60)
+                    logger.info(f"🎯 [자동 조절] 수동 조절로 설정된 캐시 임계값 사용 중!")
+                    logger.info(f"   임계값 범위: {min_temp}~{max_temp}°C")
+                    logger.info(f"   목표 온도: {target_temp}°C")
+                    logger.info(f"   만료 시간: {cached_threshold.get('expires_at')}")
+                    logger.info(f"   ✅ 이 범위로 에어컨 자동 조절이 진행됩니다!")
+                    logger.info("=" * 60)
+                    return float(min_temp), float(max_temp)
+                else:
+                    logger.debug("ℹ️ 캐시에 임계값이 있지만 min_temp 또는 max_temp가 없습니다.")
+        except ImportError as e:
+            logger.warning(f"⚠️ temperature_threshold_cache 모듈 import 실패: {e}")
+        except Exception as e:
+            logger.warning(f"⚠️ 캐시 조회 중 오류 발생 (DB에서 가져오기로 전환): {e}")
+        
+        # 2. 캐시가 없거나 만료되었으면 DB에서 가져오기
+        logger.debug("ℹ️ 캐시된 임계값이 없어 DB에서 가져옵니다.")
         with engine.connect() as conn:
             query = text("SELECT min_temp, max_temp FROM room_threshold LIMIT 1")
             result = conn.execute(query).fetchone()
             
             if result and result.min_temp is not None and result.max_temp is not None:
-                return float(result.min_temp), float(result.max_temp)
+                min_temp = float(result.min_temp)
+                max_temp = float(result.max_temp)
+                logger.info("=" * 60)
+                logger.info(f"📋 [자동 조절] DB에서 기본 온도 범위 사용")
+                logger.info(f"   임계값 범위: {min_temp}~{max_temp}°C")
+                logger.info(f"   (캐시된 수동 조절 임계값이 없거나 만료됨)")
+                logger.info("=" * 60)
+                return min_temp, max_temp
             else:
+                logger.warning("⚠️ room_threshold 테이블에 온도 범위가 없습니다.")
                 return None
                 
     except Exception as e:
