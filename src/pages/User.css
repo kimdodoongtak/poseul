@@ -398,6 +398,51 @@ ion-button.cold-feedback-button::part(native) {
   color: white !important;
 }
 
+/* 피드백 버튼 비활성화 스타일 */
+ion-button[disabled].comfortable-feedback-button,
+ion-button[disabled].cold-feedback-button,
+ion-button[disabled][color="danger"] {
+  --background: #9e9e9e !important;
+  --background-hover: #9e9e9e !important;
+  --background-activated: #9e9e9e !important;
+  --color: #ffffff !important;
+  --opacity: 0.6 !important;
+  cursor: not-allowed !important;
+  pointer-events: none !important;
+}
+
+ion-button[disabled].comfortable-feedback-button::part(native),
+ion-button[disabled].cold-feedback-button::part(native),
+ion-button[disabled][color="danger"]::part(native) {
+  background: #9e9e9e !important;
+  color: #ffffff !important;
+  opacity: 0.6 !important;
+}
+
+ion-button.comfortable-feedback-button[disabled],
+ion-button.cold-feedback-button[disabled],
+ion-button[color="danger"][disabled] {
+  background: #9e9e9e !important;
+  color: #ffffff !important;
+  opacity: 0.6 !important;
+}
+
+/* "지금 피드백 남기기" 버튼 비활성화 스타일 */
+ion-button[disabled] {
+  --background: #9e9e9e !important;
+  --background-hover: #9e9e9e !important;
+  --background-activated: #9e9e9e !important;
+  --color: #ffffff !important;
+  --opacity: 0.6 !important;
+  cursor: not-allowed !important;
+}
+
+ion-button[disabled]::part(native) {
+  background: #9e9e9e !important;
+  color: #ffffff !important;
+  opacity: 0.6 !important;
+}
+
 /* 온도 범위 재갱신 버튼 스타일 */
 .reset-feedback-button {
   --background: linear-gradient(135deg, #ff6b6b 0%, #ffa500 50%, #ffd700 100%) !important;
