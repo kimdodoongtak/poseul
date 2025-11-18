@@ -219,6 +219,7 @@ def adjust_air_conditioner(
                     
                     if total_count < 3:
                         logger.info(f"⏳ predicted_skin_temp가 {total_count}개만 있습니다. 3개가 필요합니다.")
+                        print(f"⏳ 데이터 부족: predicted_skin_temp가 {total_count}개만 있습니다. 3개가 필요합니다.")
                         return
                     
                     # 단순 쿼리로 3개 가져오기 (정렬 컬럼이 없으므로 삽입 순서대로 반환될 가능성)
@@ -251,11 +252,17 @@ def adjust_air_conditioner(
                         classification = 'G'  # 쾌적
                     feedbacks.append(classification)
                 
-                logger.info(f"📊 최근 3개 predicted_skin_temp 분류 결과: {feedbacks} (온도값: {[float(row.predicted_skin_temp) for row in temp_results]})")
+                temp_values = [float(row.predicted_skin_temp) for row in temp_results]
+                logger.info(f"📊 최근 3개 predicted_skin_temp 분류 결과: {feedbacks} (온도값: {temp_values})")
+                print(f"📊 최근 3개 피부온도 데이터:")
+                print(f"   온도값: {temp_values}°C")
+                print(f"   분류 결과: {feedbacks} ({'더움' if feedbacks[0] == 'H' else '추움' if feedbacks[0] == 'C' else '쾌적'}, {'더움' if feedbacks[1] == 'H' else '추움' if feedbacks[1] == 'C' else '쾌적'}, {'더움' if feedbacks[2] == 'H' else '추움' if feedbacks[2] == 'C' else '쾌적'})")
                 
                 # 다수결 판단
                 majority_feedback = get_majority_feedback(feedbacks)
-                logger.info(f"🎯 다수결 결과: {majority_feedback} ({'더움' if majority_feedback == 'H' else '추움' if majority_feedback == 'C' else '쾌적'})")
+                majority_text = '더움' if majority_feedback == 'H' else '추움' if majority_feedback == 'C' else '쾌적'
+                logger.info(f"🎯 다수결 결과: {majority_feedback} ({majority_text})")
+                print(f"🎯 다수결 결과: {majority_feedback} ({majority_text})")
                 
                 # 에어컨 상태 가져오기
                 if not air_conditioner_available:
@@ -273,6 +280,9 @@ def adjust_air_conditioner(
                     target_temp = state.get('temperature', {}).get('targetTemperature')
                     
                     logger.info(f"🌡️ 현재 상태: 온도={current_temp}°C, 목표 온도={target_temp}°C")
+                    print(f"🌡️ 에어컨 현재 상태:")
+                    print(f"   현재 온도: {current_temp}°C")
+                    print(f"   목표 온도: {target_temp}°C")
                     
                     # 1. 먼저 수동 조절 범위 캐시 확인
                     cached_threshold = get_temperature_threshold()
@@ -301,6 +311,7 @@ def adjust_air_conditioner(
                     if majority_feedback == 'G':
                         # 쾌적하면 조절 없음
                         logger.info("✅ 쾌적 상태 - 조절 없음")
+                        print(f"✅ 쾌적 상태 - 온도 조절 없음")
                         actions_taken.append("none")
                     else:
                         # 목표 온도 조절 계산
@@ -311,24 +322,30 @@ def adjust_air_conditioner(
                                 # 더움 → 목표 온도 -0.5
                                 new_target_temp = target_temp - 0.5
                                 actions_taken.append("temp_down")
+                                print(f"🔥 더움 감지 → 목표 온도 낮춤: {target_temp}°C → {new_target_temp}°C")
                             elif majority_feedback == 'C':
                                 # 추움 → 목표 온도 +0.5
                                 new_target_temp = target_temp + 0.5
                                 actions_taken.append("temp_up")
+                                print(f"❄️ 추움 감지 → 목표 온도 높임: {target_temp}°C → {new_target_temp}°C")
                             
                             # 조절 후 목표 온도가 범위 내인지 확인
                             if min_temp <= new_target_temp <= max_temp:
                                 try:
                                     set_temperature_func(target_temp=new_target_temp, unit='C')
                                     logger.info(f"🌡️ 온도 조절 완료: {target_temp}°C → {new_target_temp}°C (다수결: {majority_feedback}, 범위: {min_temp}~{max_temp}°C)")
+                                    print(f"✅ 온도 조절 완료: {target_temp}°C → {new_target_temp}°C (조절 범위: {min_temp}~{max_temp}°C)")
                                     target_temp = new_target_temp
                                 except Exception as e:
                                     logger.error(f"❌ 목표 온도 조절 실패: {e}")
+                                    print(f"❌ 목표 온도 조절 실패: {e}")
                             else:
                                 logger.warning(f"⚠️ 조절 후 온도 {new_target_temp}°C가 범위({min_temp}~{max_temp}°C)를 벗어남. 조절 취소")
+                                print(f"⚠️ 조절 후 온도 {new_target_temp}°C가 범위({min_temp}~{max_temp}°C)를 벗어남. 조절 취소")
                                 actions_taken.append("temp_adjustment_cancelled")
                         else:
                             logger.warning("⚠️ 목표 온도를 가져올 수 없습니다.")
+                            print(f"⚠️ 목표 온도를 가져올 수 없습니다.")
                     
                     # 조절 결과를 DB에 기록
                     try:

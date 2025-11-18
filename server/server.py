@@ -117,42 +117,18 @@ engine = sqlalchemy.create_engine(
 # 서버 디렉토리 기준으로 모델 파일 경로 설정
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BASE_DIR)  # server 디렉토리의 상위 디렉토리 (프로젝트 루트)
-# 사용자가 지정한 모델 파일 경로
-MODEL_FILE = os.path.join(PROJECT_ROOT, 'ai_thermal_model_final.pkl')
+# ai_thermal_model_final.pkl 파일 경로 (android/plus/model/pycode/ 디렉토리에 있음)
+MODEL_FILE = os.path.join(PROJECT_ROOT, 'android', 'plus', 'model', 'pycode', 'ai_thermal_model_final.pkl')
 
 model = None
 model_loaded = False
 
 def load_model():
-    """모델/함수 로드 - pickle 파일에서 함수를 로드하거나 모듈에서 직접 가져오기"""
+    """모델/함수 로드 - pickle 파일에서 로드"""
     global model, model_loaded
     if model is not None:
         model_loaded = True
         return model
-    
-    # 먼저 모듈에서 직접 함수를 가져오기 시도
-    try:
-        import sys
-        import importlib.util
-        
-        model_pycode_path = os.path.join(PROJECT_ROOT, 'android', 'plus', 'model', 'pycode')
-        model_module_file = os.path.join(model_pycode_path, 'aI_service_model_with_age.py')
-        
-        if os.path.exists(model_module_file):
-            # 모듈을 동적으로 로드
-            spec = importlib.util.spec_from_file_location("ai_service_model", model_module_file)
-            if spec and spec.loader:
-                model_module = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(model_module)
-                
-                # 함수가 모듈에 있는지 확인
-                if hasattr(model_module, 'predict_temperature_with_age'):
-                    model = model_module.predict_temperature_with_age
-                    model_loaded = True
-                    logger.info("✅ 예측 함수 로드 성공! (모듈에서 직접)")
-                    return model
-    except Exception as e:
-        logger.warning(f"⚠️ 모듈에서 함수 로드 실패: {e}")
     
     # pickle 파일에서 로드 시도
     if not os.path.exists(MODEL_FILE):
@@ -2015,8 +1991,13 @@ def update_thresholds(new_cold: float, new_hot: float):
 
 def adjust_air_conditioner_wrapper():
     """스케줄러에서 호출할 래퍼 함수"""
+    from datetime import datetime
+    current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     try:
-        logger.info("⏰ 스케줄러 실행: 에어컨 자동 조절 시작")
+        print("\n" + "=" * 80)
+        print(f"⏰ [{current_time}] 스케줄러 실행: 에어컨 자동 조절 시작 (2분 주기)")
+        print("=" * 80)
+        logger.info(f"⏰ [{current_time}] 스케줄러 실행: 에어컨 자동 조절 시작 (2분 주기)")
         air_conditioner_auto_control.adjust_air_conditioner(
             engine=engine,
             air_conditioner_available=AIR_CONDITIONER_AVAILABLE,
@@ -2026,9 +2007,13 @@ def adjust_air_conditioner_wrapper():
             hot_threshold=HOT_THRESHOLD,
             update_threshold_callback=update_thresholds
         )
-        logger.info("✅ 스케줄러 실행 완료: 에어컨 자동 조절 종료")
+        print(f"✅ [{current_time}] 스케줄러 실행 완료: 에어컨 자동 조절 종료")
+        print("=" * 80 + "\n")
+        logger.info(f"✅ [{current_time}] 스케줄러 실행 완료: 에어컨 자동 조절 종료")
     except Exception as e:
-        logger.error(f"❌ 스케줄러 실행 중 오류: {e}")
+        print(f"\n❌ [{current_time}] 스케줄러 실행 중 오류: {e}")
+        print("=" * 80 + "\n")
+        logger.error(f"❌ [{current_time}] 스케줄러 실행 중 오류: {e}")
         import traceback
         logger.error(f"❌ 스케줄러 오류 상세: {traceback.format_exc()}")
 
@@ -2090,6 +2075,4 @@ if __name__ == "__main__":
             access_log=False  # HTTP 요청 로그 비활성화
         )
     else:
-        # logger.info("🌐 HTTP 모드로 서버 시작 (SSL 인증서 없음)")
-        # logger.info("💡 HTTPS를 사용하려면 server/generate_ssl_cert.py를 실행하여 인증서를 생성하세요.")
         uvicorn.run(app, host="0.0.0.0", port=3000, access_log=False)  # HTTP 요청 로그 비활성화
