@@ -34,11 +34,31 @@ def get_last_prediction(engine) -> Optional[Tuple[float, str]]:
     try:
         with engine.connect() as conn:
             # predicted_results 테이블에서 최근 예측값 가져오기
-            query = text("""
+            # 테이블 컬럼 확인하여 정렬 컬럼 찾기
+            columns_check = text("""
+                SELECT COLUMN_NAME 
+                FROM INFORMATION_SCHEMA.COLUMNS 
+                WHERE TABLE_SCHEMA = 'main' 
+                AND TABLE_NAME = 'predicted_results'
+            """)
+            columns = [row.COLUMN_NAME for row in conn.execute(columns_check).fetchall()]
+            
+            # 정렬 컬럼 결정 (no 컬럼 우선 사용)
+            order_by_clause = ""
+            if 'no' in columns:
+                order_by_clause = "ORDER BY no DESC"
+            elif 'id' in columns:
+                order_by_clause = "ORDER BY id DESC"
+            elif 'created_at' in columns:
+                order_by_clause = "ORDER BY created_at DESC"
+            else:
+                logger.warning("⚠️ 정렬 컬럼을 찾을 수 없습니다. 최신 데이터가 아닐 수 있습니다.")
+            
+            query = text(f"""
                 SELECT predicted_skin_temp 
                 FROM predicted_results 
                 WHERE predicted_skin_temp IS NOT NULL
-                ORDER BY id DESC
+                {order_by_clause}
                 LIMIT 1
             """)
             result = conn.execute(query).fetchone()
@@ -213,8 +233,7 @@ def update_thresholds_in_db(
             update_room_query = text("""
                 UPDATE room_threshold 
                 SET min_temp = :room_min,
-                    max_temp = :room_max,
-                    updated_at = NOW()
+                    max_temp = :room_max
                 LIMIT 1
             """)
             conn.execute(update_room_query, {
@@ -241,8 +260,7 @@ def update_thresholds_in_db(
                     update_skin_query = text("""
                         UPDATE new_skinthreshold 
                         SET min_skinthreshold = :skin_min,
-                            max_skinthreshold = :skin_max,
-                            updated_at = NOW()
+                            max_skinthreshold = :skin_max
                         LIMIT 1
                     """)
                     conn.execute(update_skin_query, {
@@ -252,8 +270,8 @@ def update_thresholds_in_db(
                 else:
                     # 레코드가 없으면 기본값으로 삽입
                     insert_skin_query = text("""
-                        INSERT INTO new_skinthreshold (min_skinthreshold, max_skinthreshold, created_at, updated_at)
-                        VALUES (:skin_min, :skin_max, NOW(), NOW())
+                        INSERT INTO new_skinthreshold (min_skinthreshold, max_skinthreshold)
+                        VALUES (:skin_min, :skin_max)
                     """)
                     conn.execute(insert_skin_query, {
                         'skin_min': skin_min_temp,
@@ -264,18 +282,16 @@ def update_thresholds_in_db(
                 # new_skinthreshold 테이블이 없으면 생성하고 기본값 삽입
                 create_table_query = text("""
                     CREATE TABLE IF NOT EXISTS new_skinthreshold (
-                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        no INT AUTO_INCREMENT PRIMARY KEY,
                         min_skinthreshold DECIMAL(4,1) NOT NULL DEFAULT 34.6,
-                        max_skinthreshold DECIMAL(4,1) NOT NULL DEFAULT 35.6,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                        max_skinthreshold DECIMAL(4,1) NOT NULL DEFAULT 35.6
                     )
                 """)
                 conn.execute(create_table_query)
                 
                 insert_skin_query = text("""
-                    INSERT INTO new_skinthreshold (min_skinthreshold, max_skinthreshold, created_at, updated_at)
-                    VALUES (:skin_min, :skin_max, NOW(), NOW())
+                    INSERT INTO new_skinthreshold (min_skinthreshold, max_skinthreshold)
+                    VALUES (:skin_min, :skin_max)
                 """)
                 conn.execute(insert_skin_query, {
                     'skin_min': skin_min_temp,
@@ -411,11 +427,9 @@ def process_daily_feedback(engine, feedback: str) -> Tuple[bool, Optional[str]]:
                 # 테이블이 없으면 생성
                 create_table_query = text("""
                     CREATE TABLE IF NOT EXISTS new_skinthreshold (
-                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        no INT AUTO_INCREMENT PRIMARY KEY,
                         min_skinthreshold DECIMAL(4,1) NOT NULL DEFAULT 34.6,
-                        max_skinthreshold DECIMAL(4,1) NOT NULL DEFAULT 35.6,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                        max_skinthreshold DECIMAL(4,1) NOT NULL DEFAULT 35.6
                     )
                 """)
                 conn.execute(create_table_query)
@@ -428,8 +442,8 @@ def process_daily_feedback(engine, feedback: str) -> Tuple[bool, Optional[str]]:
             if record_count == 0:
                 # 레코드가 없으면 기본값으로 저장
                 insert_query = text("""
-                    INSERT INTO new_skinthreshold (min_skinthreshold, max_skinthreshold, created_at, updated_at)
-                    VALUES (34.6, 35.6, NOW(), NOW())
+                    INSERT INTO new_skinthreshold (min_skinthreshold, max_skinthreshold)
+                    VALUES (34.6, 35.6)
                 """)
                 conn.execute(insert_query)
                 conn.commit()

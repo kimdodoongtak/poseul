@@ -15,14 +15,14 @@ from datetime import datetime
 BASE_URL = "http://localhost:3000"
 
 # 통일된 사용자 정보
-FIXED_BMI = 22.5
+FIXED_BMI = 30.0
 FIXED_AGE = 30
-FIXED_GENDER = 1.0  # 1.0: 남성, 0.0: 여성
+FIXED_GENDER = 0.0  # 1.0: 남성, 0.0: 여성
 
-# 임의의 건강 데이터 범위
-HEART_RATE_RANGE = (60, 100)  # 심박수 범위
+# 임의의 건강 데이터 범위 (변화폭을 크게 설정)
+HEART_RATE_RANGE = (50, 120)  # 심박수 범위 (넓은 범위)
 HRV_RANGE = (20, 80)  # 심박변이 범위
-OXYGEN_SATURATION_RANGE = (95, 100)  # 혈중 산소포화도 범위
+OXYGEN_SATURATION_RANGE = (90, 100)  # 혈중 산소포화도 범위 (넓은 범위)
 
 def send_health_data(heart_rate, hrv, oxygen_saturation, bmi=FIXED_BMI, age=FIXED_AGE, gender=FIXED_GENDER):
     """건강데이터 전송"""

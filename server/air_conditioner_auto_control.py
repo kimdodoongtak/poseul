@@ -168,20 +168,61 @@ def adjust_air_conditioner(
                         else:
                             logger.debug(f"ℹ️ DB 피부온도 분류 기준 변경 없음: cold={cold_threshold}°C, hot={hot_threshold}°C")
                     else:
-                        # 테이블은 있지만 레코드가 없으면 기본값 사용 (34.6, 35.6)
+                        # 테이블은 있지만 레코드가 없으면 기본값 저장 (34.6, 35.6)
                         db_cold_threshold = 34.6
                         db_hot_threshold = 35.6
-                        logger.info(f"ℹ️ new_skinthreshold 테이블에 레코드가 없습니다. 기본값 사용: cold={db_cold_threshold}°C, hot={db_hot_threshold}°C")
+                        logger.info(f"ℹ️ new_skinthreshold 테이블에 레코드가 없습니다. 기본값 저장: cold={db_cold_threshold}°C, hot={db_hot_threshold}°C")
+                        
+                        # 기본값을 DB에 저장
+                        try:
+                            insert_query = text("""
+                                INSERT INTO new_skinthreshold (min_skinthreshold, max_skinthreshold)
+                                VALUES (:min_skin, :max_skin)
+                            """)
+                            conn.execute(insert_query, {
+                                'min_skin': db_cold_threshold,
+                                'max_skin': db_hot_threshold
+                            })
+                            conn.commit()
+                            logger.info(f"✅ 기본값 저장 완료: cold={db_cold_threshold}°C, hot={db_hot_threshold}°C")
+                        except Exception as insert_error:
+                            logger.warning(f"⚠️ 기본값 저장 실패: {insert_error}")
+                        
                         # 기본값으로 전역 변수 갱신
                         if update_threshold_callback:
                             update_threshold_callback(db_cold_threshold, db_hot_threshold)
                         cold_threshold = db_cold_threshold
                         hot_threshold = db_hot_threshold
                 else:
-                    # new_skinthreshold 테이블이 없으면 기본값 사용 (34.6, 35.6)
+                    # new_skinthreshold 테이블이 없으면 테이블 생성 후 기본값 저장 (34.6, 35.6)
                     db_cold_threshold = 34.6
                     db_hot_threshold = 35.6
-                    logger.info(f"ℹ️ new_skinthreshold 테이블이 없습니다. 기본값 사용: cold={db_cold_threshold}°C, hot={db_hot_threshold}°C")
+                    logger.info(f"ℹ️ new_skinthreshold 테이블이 없습니다. 테이블 생성 후 기본값 저장: cold={db_cold_threshold}°C, hot={db_hot_threshold}°C")
+                    
+                    # 테이블 생성 및 기본값 저장
+                    try:
+                        create_table_query = text("""
+                            CREATE TABLE IF NOT EXISTS new_skinthreshold (
+                                no INT AUTO_INCREMENT PRIMARY KEY,
+                                min_skinthreshold DECIMAL(4,1) NOT NULL DEFAULT 34.6,
+                                max_skinthreshold DECIMAL(4,1) NOT NULL DEFAULT 35.6
+                            )
+                        """)
+                        conn.execute(create_table_query)
+                        
+                        insert_query = text("""
+                            INSERT INTO new_skinthreshold (min_skinthreshold, max_skinthreshold)
+                            VALUES (:min_skin, :max_skin)
+                        """)
+                        conn.execute(insert_query, {
+                            'min_skin': db_cold_threshold,
+                            'max_skin': db_hot_threshold
+                        })
+                        conn.commit()
+                        logger.info(f"✅ 테이블 생성 및 기본값 저장 완료: cold={db_cold_threshold}°C, hot={db_hot_threshold}°C")
+                    except Exception as create_error:
+                        logger.warning(f"⚠️ 테이블 생성 또는 기본값 저장 실패: {create_error}")
+                    
                     # 기본값으로 전역 변수 갱신
                     if update_threshold_callback:
                         update_threshold_callback(db_cold_threshold, db_hot_threshold)
@@ -222,12 +263,37 @@ def adjust_air_conditioner(
                         print(f"⏳ 데이터 부족: predicted_skin_temp가 {total_count}개만 있습니다. 3개가 필요합니다.")
                         return
                     
-                    # 단순 쿼리로 3개 가져오기 (정렬 컬럼이 없으므로 삽입 순서대로 반환될 가능성)
-                    temp_query = text("""
+                    # 테이블 컬럼 확인하여 정렬 컬럼 찾기
+                    columns_check = text("""
+                        SELECT COLUMN_NAME 
+                        FROM INFORMATION_SCHEMA.COLUMNS 
+                        WHERE TABLE_SCHEMA = 'main' 
+                        AND TABLE_NAME = 'predicted_results'
+                    """)
+                    columns = [row.COLUMN_NAME for row in conn.execute(columns_check).fetchall()]
+                    
+                    # 정렬 컬럼 결정 (no 컬럼 우선 사용)
+                    order_by_clause = ""
+                    if 'no' in columns:
+                        order_by_clause = "ORDER BY no DESC"
+                    elif 'id' in columns:
+                        order_by_clause = "ORDER BY id DESC"
+                    elif 'created_at' in columns:
+                        order_by_clause = "ORDER BY created_at DESC"
+                    elif 'timestamp' in columns:
+                        order_by_clause = "ORDER BY timestamp DESC"
+                    elif 'date' in columns:
+                        order_by_clause = "ORDER BY date DESC"
+                    else:
+                        logger.warning("⚠️ 정렬 컬럼을 찾을 수 없습니다. 최신 데이터가 아닐 수 있습니다.")
+                    
+                    # 최신 3개 가져오기 (정렬된 순서로)
+                    temp_query = text(f"""
                         SELECT predicted_skin_temp 
                         FROM predicted_results 
                         WHERE predicted_skin_temp IS NOT NULL 
                           AND predicted_skin_temp > 0
+                        {order_by_clause}
                         LIMIT 3
                     """)
                     temp_results = conn.execute(temp_query).fetchall()
@@ -306,6 +372,9 @@ def adjust_air_conditioner(
                         logger.info(f"💾 DB에서 온도 범위 가져옴: {min_temp}~{max_temp}°C")
                     
                     actions_taken = []
+                    original_target_temp = target_temp  # 원래 목표 온도 저장 (로그 저장용)
+                    temperature_adjusted = False  # 온도 조절이 실제로 실행되었는지 여부
+                    actual_new_temp = target_temp  # 실제로 설정된 새 온도
                     
                     # 온도 조절
                     if majority_feedback == 'G':
@@ -336,16 +405,21 @@ def adjust_air_conditioner(
                                     logger.info(f"🌡️ 온도 조절 완료: {target_temp}°C → {new_target_temp}°C (다수결: {majority_feedback}, 범위: {min_temp}~{max_temp}°C)")
                                     print(f"✅ 온도 조절 완료: {target_temp}°C → {new_target_temp}°C (조절 범위: {min_temp}~{max_temp}°C)")
                                     target_temp = new_target_temp
+                                    temperature_adjusted = True
+                                    actual_new_temp = new_target_temp
                                 except Exception as e:
                                     logger.error(f"❌ 목표 온도 조절 실패: {e}")
                                     print(f"❌ 목표 온도 조절 실패: {e}")
+                                    actual_new_temp = original_target_temp
                             else:
                                 logger.warning(f"⚠️ 조절 후 온도 {new_target_temp}°C가 범위({min_temp}~{max_temp}°C)를 벗어남. 조절 취소")
                                 print(f"⚠️ 조절 후 온도 {new_target_temp}°C가 범위({min_temp}~{max_temp}°C)를 벗어남. 조절 취소")
                                 actions_taken.append("temp_adjustment_cancelled")
+                                actual_new_temp = original_target_temp
                         else:
                             logger.warning("⚠️ 목표 온도를 가져올 수 없습니다.")
                             print(f"⚠️ 목표 온도를 가져올 수 없습니다.")
+                            actual_new_temp = original_target_temp
                     
                     # 조절 결과를 DB에 기록
                     try:
@@ -367,6 +441,66 @@ def adjust_air_conditioner(
                         logger.info(f"✅ 조절 결과 DB 저장 완료: {action_str}")
                     except Exception as e:
                         logger.warning(f"⚠️ 조절 결과 DB 저장 실패: {e}")
+                    
+                    # 테스트 스크립트 로그 테이블에 저장
+                    try:
+                        # test_script_logs 테이블 존재 여부 확인 및 생성
+                        test_log_table_check = text("""
+                            SELECT COUNT(*) as count
+                            FROM information_schema.tables 
+                            WHERE table_schema = 'main' 
+                            AND table_name = 'test_script_logs'
+                        """)
+                        test_log_table_exists = conn.execute(test_log_table_check).fetchone().count > 0
+                        
+                        if not test_log_table_exists:
+                            # 테이블 생성
+                            create_test_log_table = text("""
+                                CREATE TABLE IF NOT EXISTS test_script_logs (
+                                    id INT AUTO_INCREMENT PRIMARY KEY,
+                                    classification_results VARCHAR(50) NOT NULL COMMENT '3개 분류 결과 (예: C,H,G)',
+                                    majority_result VARCHAR(1) NOT NULL COMMENT '다수결 결과 (H, C, G)',
+                                    temperature_action VARCHAR(20) NOT NULL COMMENT '온도 조절 방향 (up, down, none)',
+                                    previous_temperature FLOAT COMMENT '이전 목표 온도',
+                                    new_temperature FLOAT COMMENT '새로운 목표 온도',
+                                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                                )
+                            """)
+                            conn.execute(create_test_log_table)
+                            conn.commit()
+                            logger.info("✅ test_script_logs 테이블 생성 완료")
+                        
+                        # 온도 조절 방향 결정
+                        temp_action = "none"
+                        previous_temp = original_target_temp
+                        new_temp = actual_new_temp  # 실제로 설정된 온도 사용
+                        
+                        if majority_feedback == 'H':
+                            temp_action = "down" if temperature_adjusted else "none"
+                        elif majority_feedback == 'C':
+                            temp_action = "up" if temperature_adjusted else "none"
+                        
+                        # 분류 결과를 문자열로 변환 (예: "C,H,G")
+                        classification_str = ",".join(feedbacks)
+                        
+                        # test_script_logs 테이블에 저장
+                        test_log_query = text("""
+                            INSERT INTO test_script_logs 
+                            (classification_results, majority_result, temperature_action, previous_temperature, new_temperature, created_at)
+                            VALUES 
+                            (:classification_results, :majority_result, :temperature_action, :previous_temperature, :new_temperature, NOW())
+                        """)
+                        conn.execute(test_log_query, {
+                            'classification_results': classification_str,
+                            'majority_result': majority_feedback,
+                            'temperature_action': temp_action,
+                            'previous_temperature': previous_temp,
+                            'new_temperature': new_temp
+                        })
+                        conn.commit()
+                        logger.info(f"✅ 테스트 스크립트 로그 저장 완료: 분류={classification_str}, 다수결={majority_feedback}, 조절={temp_action}")
+                    except Exception as e:
+                        logger.warning(f"⚠️ 테스트 스크립트 로그 저장 실패: {e}")
                     
                     # 마지막 조절 시간 업데이트
                     last_adjustment_time = now

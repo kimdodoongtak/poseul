@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 import logging
 import os
 import sys
+import json
 import numpy as np
 import pandas as pd
 import joblib
@@ -117,8 +118,8 @@ engine = sqlalchemy.create_engine(
 # 서버 디렉토리 기준으로 모델 파일 경로 설정
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BASE_DIR)  # server 디렉토리의 상위 디렉토리 (프로젝트 루트)
-# ai_thermal_model_final.pkl 파일 경로 (android/plus/model/pycode/ 디렉토리에 있음)
-MODEL_FILE = os.path.join(PROJECT_ROOT, 'android', 'plus', 'model', 'pycode', 'ai_thermal_model_final.pkl')
+# ai_thermal_model_final.pkl 파일 경로 (server 디렉토리에 있음)
+MODEL_FILE = os.path.join(BASE_DIR, 'ai_thermal_model_final.pkl')
 
 model = None
 model_loaded = False
@@ -1264,108 +1265,39 @@ async def save_temperature_feedback(data: TemperatureFeedbackRequest):
         # 날짜 처리
         feedback_date = data.date
         if not feedback_date:
-            from datetime import datetime
             feedback_date = datetime.now().isoformat()
         
+        # JSON 파일에 피드백 저장
+        feedback_file = os.path.join(os.path.dirname(__file__), 'temperature_feedback.json')
+        
+        try:
+            # 기존 피드백 데이터 읽기
+            feedbacks = []
+            if os.path.exists(feedback_file):
+                try:
+                    with open(feedback_file, 'r', encoding='utf-8') as f:
+                        feedbacks = json.load(f)
+                except (json.JSONDecodeError, IOError):
+                    feedbacks = []
+            
+            # 새 피드백 추가
+            feedback_entry = {
+                'feedback': feedback_code,
+                'feedback_text': data.feedback,
+                'date': feedback_date,
+                'timestamp': datetime.now().isoformat()
+            }
+            feedbacks.append(feedback_entry)
+            
+            # JSON 파일에 저장
+            with open(feedback_file, 'w', encoding='utf-8') as f:
+                json.dump(feedbacks, f, indent=2, ensure_ascii=False)
+            
+            logger.info(f"✅ 피드백 JSON 파일에 저장 완료: {feedback_code} ({data.feedback})")
+        except Exception as e:
+            logger.error(f"❌ 피드백 JSON 파일 저장 실패: {str(e)}")
+        
         with engine.connect() as conn:
-            # room_threshold 테이블에 feedback 저장
-            try:
-                # room_threshold 테이블 존재 여부 확인
-                table_check = text("""
-                    SELECT COUNT(*) as count
-                    FROM information_schema.tables 
-                    WHERE table_schema = 'main' 
-                    AND table_name = 'room_threshold'
-                """)
-                table_exists = conn.execute(table_check).fetchone().count > 0
-                
-                if table_exists:
-                    # feedback 컬럼 존재 여부 확인
-                    columns_check = text("""
-                        SELECT COLUMN_NAME 
-                        FROM INFORMATION_SCHEMA.COLUMNS 
-                        WHERE TABLE_SCHEMA = 'main' 
-                        AND TABLE_NAME = 'room_threshold'
-                        AND COLUMN_NAME = 'feedback'
-                    """)
-                    has_feedback_column = conn.execute(columns_check).fetchone() is not None
-                    
-                    if has_feedback_column:
-                        # feedback 컬럼이 있으면 업데이트
-                        # id 컬럼이 있는지 확인
-                        id_check = text("""
-                            SELECT COLUMN_NAME 
-                            FROM INFORMATION_SCHEMA.COLUMNS 
-                            WHERE TABLE_SCHEMA = 'main' 
-                            AND TABLE_NAME = 'room_threshold'
-                            AND COLUMN_NAME = 'id'
-                        """)
-                        has_id = conn.execute(id_check).fetchone() is not None
-                        
-                        if has_id:
-                            # id가 있으면 첫 번째 레코드 업데이트
-                            update_query = text("""
-                                UPDATE room_threshold 
-                                SET feedback = :feedback
-                                WHERE id = (SELECT id FROM (SELECT id FROM room_threshold LIMIT 1) AS t)
-                            """)
-                        else:
-                            # id가 없으면 모든 레코드 업데이트 (단일 레코드 가정)
-                            update_query = text("""
-                                UPDATE room_threshold 
-                                SET feedback = :feedback
-                            """)
-                        
-                        conn.execute(update_query, {
-                            'feedback': feedback_code
-                        })
-                        conn.commit()
-                        logger.info(f"✅ room_threshold 테이블에 피드백 저장 완료: {feedback_code} ({data.feedback})")
-                    else:
-                        logger.warning("⚠️ room_threshold 테이블에 feedback 컬럼이 존재하지 않습니다.")
-                else:
-                    logger.warning("⚠️ room_threshold 테이블이 존재하지 않습니다.")
-            except Exception as e:
-                logger.error(f"❌ room_threshold 피드백 저장 실패: {str(e)}")
-            
-            # temperature_feedback 테이블에 저장 (테이블이 없으면 생성)
-            try:
-                # temperature_feedback 테이블 존재 여부 확인
-                table_check = text("""
-                    SELECT COUNT(*) as count
-                    FROM information_schema.tables 
-                    WHERE table_schema = 'main' 
-                    AND table_name = 'temperature_feedback'
-                """)
-                table_exists = conn.execute(table_check).fetchone().count > 0
-                
-                if not table_exists:
-                    # 테이블이 없으면 생성
-                    create_table = text("""
-                        CREATE TABLE IF NOT EXISTS temperature_feedback (
-                            id INT AUTO_INCREMENT PRIMARY KEY,
-                            feedback VARCHAR(20) NOT NULL,
-                            feedback_date DATETIME
-                        )
-                    """)
-                    conn.execute(create_table)
-                    conn.commit()
-                    logger.info("✅ temperature_feedback 테이블 생성 완료")
-                
-                # 테이블이 있으면 저장 (코드로 변환하여 저장: C, H, G)
-                    insert_query = text("""
-                        INSERT INTO temperature_feedback (feedback, feedback_date)
-                        VALUES (:feedback, :feedback_date)
-                    """)
-                    conn.execute(insert_query, {
-                    'feedback': feedback_code,  # 코드로 변환된 값 저장 (C, H, G)
-                        'feedback_date': feedback_date
-                    })
-                    conn.commit()
-                logger.info(f"✅ temperature_feedback 테이블에 피드백 저장 완료: {feedback_code} ({data.feedback})")
-            except Exception as e:
-                logger.error(f"❌ temperature_feedback 테이블 저장 실패: {str(e)}")
-            
             # 피드백과 예측값 비교하여 임계값 조정
             try:
                 # 최신 예측값 가져오기 (predicted_results 테이블에서)
@@ -1488,7 +1420,7 @@ async def save_temperature_feedback(data: TemperatureFeedbackRequest):
                         # 테이블이 없으면 생성
                         create_new_table = text("""
                             CREATE TABLE IF NOT EXISTS new_skinthreshold (
-                                id INT AUTO_INCREMENT PRIMARY KEY,
+                                no INT AUTO_INCREMENT PRIMARY KEY,
                                 min_skinthreshold DECIMAL(4,1) NOT NULL,
                                 max_skinthreshold DECIMAL(4,1) NOT NULL,
                                 feedback VARCHAR(1),
