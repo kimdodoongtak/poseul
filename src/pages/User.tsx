@@ -43,6 +43,8 @@ const User: React.FC = () => {
   const [showSignIn, setShowSignIn] = useState<boolean>(false);
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
   const [showResetAlert, setShowResetAlert] = useState<boolean>(false);
+  const [feedbackCount, setFeedbackCount] = useState<number>(0);
+  const [isFeedbackDisabled, setIsFeedbackDisabled] = useState<boolean>(false);
 
   const requestNotificationPermission = async () => {
     try {
@@ -91,6 +93,30 @@ const User: React.FC = () => {
     }
   };
 
+  // 피드백 카운트 가져오기
+  const fetchFeedbackCount = async () => {
+    try {
+      const apiBaseUrl = getServerUrl();
+      const response = await fetch(`${apiBaseUrl}/feedback/count`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        const count = result.count || 0;
+        setFeedbackCount(count);
+        setIsFeedbackDisabled(count >= 7);
+      } else {
+        console.error('피드백 카운트 조회 실패:', response.status);
+      }
+    } catch (err) {
+      console.error('피드백 카운트 조회 중 오류:', err);
+    }
+  };
+
   useEffect(() => {
     // 저장된 나이, BMI, 성별, 피드백 시간 불러오기
     try {
@@ -105,6 +131,14 @@ const User: React.FC = () => {
     } catch (err) {
       console.log('저장된 사용자 정보 불러오기 실패:', err);
     }
+    
+    // 피드백 카운트 가져오기
+    fetchFeedbackCount();
+    
+    // 주기적으로 피드백 카운트 확인 (30초마다)
+    const intervalId = setInterval(() => {
+      fetchFeedbackCount();
+    }, 30000);
     
     // HealthData 플러그인 로드 (iOS에서 UserDefaults 저장용)
     const loadHealthData = async () => {
@@ -150,6 +184,11 @@ const User: React.FC = () => {
       requestNotificationPermission();
       scheduleDailyNotification();
     }
+    
+    // cleanup 함수
+    return () => {
+      clearInterval(intervalId);
+    };
   }, []);
 
   const handleAgeChange = async (value: string) => {
@@ -260,6 +299,8 @@ const User: React.FC = () => {
           console.log('✅ 피드백 저장 완료:', result);
           setShowFeedbackModal(false);
           alert('✅ 피드백이 저장되었습니다.');
+          // 피드백 카운트 다시 가져오기
+          await fetchFeedbackCount();
         } else {
           const errorText = await response.text();
           console.error('❌ 피드백 저장 실패:', response.status, response.statusText, errorText);
@@ -366,6 +407,9 @@ const User: React.FC = () => {
           console.log('✅ 피드백 기간 재갱신 완료:', result);
           alert(result.message || '✅ 피드백 기간이 재갱신되었습니다.');
           
+          // 재갱신 후 피드백 카운트 다시 가져오기 (버튼 활성화)
+          await fetchFeedbackCount();
+          
           // 재갱신 후 알림 다시 스케줄
           await scheduleDailyNotification();
         } else {
@@ -466,9 +510,26 @@ const User: React.FC = () => {
                 onIonInput={(e) => handleFeedbackTimeChange(e.detail.value!)}
               />
             </IonItem>
-            <IonButton expand="block" onClick={() => setShowFeedbackModal(true)} style={{ marginTop: '16px' }}>
-              지금 피드백 남기기
+            <IonButton 
+              expand="block" 
+              onClick={() => {
+                fetchFeedbackCount(); // 모달 열 때 카운트 다시 확인
+                setShowFeedbackModal(true);
+              }} 
+              disabled={isFeedbackDisabled}
+              style={{ marginTop: '16px' }}
+            >
+              지금 피드백 남기기 {!isFeedbackDisabled && `(${feedbackCount}/7)`}
             </IonButton>
+            {isFeedbackDisabled ? (
+              <IonText color="medium" style={{ display: 'block', textAlign: 'center', marginTop: '8px', fontSize: '14px' }}>
+                피드백을 7번 완료했습니다. 재갱신 버튼을 눌러 다시 시작하세요.
+              </IonText>
+            ) : (
+              <IonText color="medium" style={{ display: 'block', textAlign: 'center', marginTop: '8px', fontSize: '14px' }}>
+                남은 피드백: {7 - feedbackCount}번
+              </IonText>
+            )}
           </IonCardContent>
         </IonCard>
 
@@ -520,6 +581,7 @@ const User: React.FC = () => {
                   expand="block" 
                   color="danger"
                   onClick={() => handleFeedbackSubmit('hot')}
+                  disabled={isFeedbackDisabled}
                   style={{ height: '60px', fontSize: '18px' }}
                 >
                   더웠어요🔥
@@ -527,6 +589,7 @@ const User: React.FC = () => {
                 <IonButton 
                   expand="block" 
                   onClick={() => handleFeedbackSubmit('comfortable')}
+                  disabled={isFeedbackDisabled}
                   className="comfortable-feedback-button"
                   style={{ 
                     height: '60px', 
@@ -545,6 +608,7 @@ const User: React.FC = () => {
                 <IonButton 
                   expand="block" 
                   onClick={() => handleFeedbackSubmit('cold')}
+                  disabled={isFeedbackDisabled}
                   className="cold-feedback-button"
                   style={{ 
                     height: '60px', 
