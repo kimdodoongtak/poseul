@@ -229,17 +229,16 @@ def update_thresholds_in_db(
     """
     try:
         with engine.connect() as conn:
-            # 1. room_threshold 테이블 업데이트 (실내 온도 범위)
-            update_room_query = text("""
-                UPDATE room_threshold 
-                SET min_temp = :room_min,
-                    max_temp = :room_max
-                LIMIT 1
+            # 1. room_threshold 테이블에 순차적으로 저장 (실내 온도 범위)
+            insert_room_query = text("""
+                INSERT INTO room_threshold (min_temp, max_temp)
+                VALUES (:room_min, :room_max)
             """)
-            conn.execute(update_room_query, {
+            conn.execute(insert_room_query, {
                 'room_min': room_min_temp,
                 'room_max': room_max_temp
             })
+            logger.info(f"✅ room_threshold 테이블에 임계값 저장: {room_min_temp}~{room_max_temp}°C")
             
             # 2. new_skinthreshold 테이블 확인 및 업데이트 (피부온도 범위)
             table_check = text("""
@@ -251,33 +250,16 @@ def update_thresholds_in_db(
             has_new_table = conn.execute(table_check).fetchone().count > 0
             
             if has_new_table:
-                # new_skinthreshold 테이블이 있으면 레코드 확인
-                count_query = text("SELECT COUNT(*) as count FROM new_skinthreshold")
-                record_count = conn.execute(count_query).fetchone().count
-                
-                if record_count > 0:
-                    # 레코드가 있으면 업데이트
-                    update_skin_query = text("""
-                        UPDATE new_skinthreshold 
-                        SET min_skinthreshold = :skin_min,
-                            max_skinthreshold = :skin_max
-                        LIMIT 1
-                    """)
-                    conn.execute(update_skin_query, {
-                        'skin_min': skin_min_temp,
-                        'skin_max': skin_max_temp
-                    })
-                else:
-                    # 레코드가 없으면 기본값으로 삽입
-                    insert_skin_query = text("""
-                        INSERT INTO new_skinthreshold (min_skinthreshold, max_skinthreshold)
-                        VALUES (:skin_min, :skin_max)
-                    """)
-                    conn.execute(insert_skin_query, {
-                        'skin_min': skin_min_temp,
-                        'skin_max': skin_max_temp
-                    })
-                    logger.info(f"✅ new_skinthreshold 테이블에 기본값 삽입: {skin_min_temp}~{skin_max_temp}°C")
+                # new_skinthreshold 테이블이 있으면 순차적으로 저장 (INSERT)
+                insert_skin_query = text("""
+                    INSERT INTO new_skinthreshold (min_skinthreshold, max_skinthreshold)
+                    VALUES (:skin_min, :skin_max)
+                """)
+                conn.execute(insert_skin_query, {
+                    'skin_min': skin_min_temp,
+                    'skin_max': skin_max_temp
+                })
+                logger.info(f"✅ new_skinthreshold 테이블에 임계값 저장: {skin_min_temp}~{skin_max_temp}°C")
             else:
                 # new_skinthreshold 테이블이 없으면 생성하고 기본값 삽입
                 create_table_query = text("""
