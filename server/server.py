@@ -1173,41 +1173,47 @@ async def set_temperature_range(data: TemperatureRangeRequest):
 async def get_temperature_range():
     """
     DB에서 저장된 쾌적 온도 범위 조회
+    - 현재 사용 중인 값 (수동 조절 캐시 우선)
+    - 원래 설정된 값 (DB에서 직접)
     """
     try:
         logger.info("🌡️ 온도 범위 조회 요청")
         
+        # 현재 사용 중인 온도 범위 (캐시 우선, 없으면 DB)
         temperature_range = temperature_control_logic.get_temperature_range_from_db(engine)
+        
+        # 원래 설정된 온도 범위 (DB에서 직접 가져오기 - room_threshold 테이블의 min_temp, max_temp 컬럼)
+        original_min_temp = None
+        original_max_temp = None
+        try:
+            with engine.connect() as conn:
+                query = text("SELECT min_temp, max_temp FROM room_threshold LIMIT 1")
+                result = conn.execute(query).fetchone()
+                if result and result.min_temp is not None and result.max_temp is not None:
+                    original_min_temp = float(result.min_temp)
+                    original_max_temp = float(result.max_temp)
+        except Exception as e:
+            logger.warning(f"원래 온도 범위 조회 실패: {e}")
         
         if temperature_range is None:
             return {
                 "success": False,
                 "message": "온도 범위가 설정되어 있지 않습니다.",
                 "min_temp": None,
-                "max_temp": None
+                "max_temp": None,
+                "original_min_temp": original_min_temp,
+                "original_max_temp": original_max_temp
             }
         
         min_temp, max_temp = temperature_range
         
-        # DB에서 사용자 정보도 함께 조회
-        with engine.connect() as conn:
-            query = text("SELECT age, bmi, gender FROM room_threshold LIMIT 1")
-            result = conn.execute(query).fetchone()
-            
-            user_info = None
-            if result:
-                user_info = {
-                    "age": result.age,
-                    "bmi": float(result.bmi) if result.bmi else None,
-                    "gender": result.gender
-                }
-        
         return {
             "success": True,
-            "min_temp": min_temp,
-            "max_temp": max_temp,
-            "target_temp": (min_temp + max_temp) / 2.0,
-            "user_info": user_info
+            "min_temp": min_temp,  # 현재 사용 중인 값 (수동 조절 캐시 우선)
+            "max_temp": max_temp,  # 현재 사용 중인 값
+            "original_min_temp": original_min_temp,  # 원래 설정된 값 (room_threshold 테이블의 min_temp)
+            "original_max_temp": original_max_temp,  # 원래 설정된 값 (room_threshold 테이블의 max_temp)
+            "target_temp": (min_temp + max_temp) / 2.0
         }
         
     except Exception as e:

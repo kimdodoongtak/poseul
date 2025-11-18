@@ -85,11 +85,17 @@ const Iot: React.FC = () => {
               max: rangeData.max_temp,
             });
             
-            // 원래 설정된 온도 범위도 저장
+            // 원래 설정된 온도 범위도 저장 (있으면 저장, 없으면 null로 설정)
             if (rangeData.original_min_temp != null && rangeData.original_max_temp != null) {
               setOriginalTemperatureRange({
                 min: rangeData.original_min_temp,
                 max: rangeData.original_max_temp,
+              });
+            } else {
+              // 원래 설정이 없으면 null로 설정
+              setOriginalTemperatureRange({
+                min: null,
+                max: null,
               });
             }
           } else {
@@ -305,12 +311,7 @@ const Iot: React.FC = () => {
                       <p style={{ fontSize: '14px', color: '#666', marginBottom: '4px' }}>
                         <strong>수동 조절:</strong> {Math.round(temperatureRange.min)}°C ~ {Math.round(temperatureRange.max)}°C
                       </p>
-                      {originalTemperatureRange.min !== null && originalTemperatureRange.max !== null && 
-                       (originalTemperatureRange.min !== temperatureRange.min || originalTemperatureRange.max !== temperatureRange.max) ? (
-                        <p style={{ fontSize: '12px', color: '#999', fontStyle: 'italic' }}>
-                          원래 설정: {Math.round(originalTemperatureRange.min)}°C ~ {Math.round(originalTemperatureRange.max)}°C
-                        </p>
-                      ) : originalTemperatureRange.min !== null && originalTemperatureRange.max !== null ? (
+                      {originalTemperatureRange.min !== null && originalTemperatureRange.max !== null ? (
                         <p style={{ fontSize: '12px', color: '#999', fontStyle: 'italic' }}>
                           원래 설정: {Math.round(originalTemperatureRange.min)}°C ~ {Math.round(originalTemperatureRange.max)}°C
                         </p>
