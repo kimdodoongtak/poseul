@@ -11,8 +11,13 @@ from sqlalchemy import text
 from datetime import datetime, timedelta
 from typing import Optional, Tuple
 import logging
+import json
+import os
 
 logger = logging.getLogger(__name__)
+
+# 피드백 횟수 저장 파일 경로
+FEEDBACK_COUNT_FILE = os.path.join(os.path.dirname(__file__), 'feedback_count.json')
 
 
 def get_last_prediction(engine) -> Optional[Tuple[float, str]]:
@@ -296,49 +301,17 @@ def get_feedback_count(engine) -> int:
     현재 피드백 기간의 피드백 횟수 가져오기
     
     Args:
-        engine: SQLAlchemy 엔진
+        engine: SQLAlchemy 엔진 (호환성을 위해 유지, 실제로는 사용 안 함)
     
     Returns:
         피드백 횟수 (0부터 시작)
     """
     try:
-        with engine.connect() as conn:
-            # feedback_reset_date 테이블 확인 (재갱신 시점 저장용)
-            table_check = text("""
-                SELECT COUNT(*) as count
-                FROM information_schema.tables 
-                WHERE table_schema = 'main' 
-                AND table_name = 'feedback_reset_date'
-            """)
-            has_reset_table = conn.execute(table_check).fetchone().count > 0
-            
-            reset_date = None
-            if has_reset_table:
-                reset_query = text("SELECT reset_date FROM feedback_reset_date ORDER BY reset_date DESC LIMIT 1")
-                reset_result = conn.execute(reset_query).fetchone()
-                if reset_result and reset_result.reset_date:
-                    reset_date = reset_result.reset_date
-            
-            # reset_date 이후의 피드백 개수 세기
-            if reset_date:
-                query = text("""
-                    SELECT COUNT(*) as count
-                    FROM temperature_feedback
-                    WHERE created_at >= :reset_date
-                """)
-                result = conn.execute(query, {'reset_date': reset_date}).fetchone()
-            else:
-                # reset_date가 없으면 전체 피드백 개수
-                query = text("""
-                    SELECT COUNT(*) as count
-                    FROM temperature_feedback
-                """)
-                result = conn.execute(query).fetchone()
-            
-            if result:
-                return result.count or 0
-            
-            return 0
+        if os.path.exists(FEEDBACK_COUNT_FILE):
+            with open(FEEDBACK_COUNT_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                return data.get('feedback_count', 0)
+        return 0
     except Exception as e:
         logger.warning(f"⚠️ 피드백 횟수 조회 실패: {e}")
         return 0
@@ -349,43 +322,19 @@ def reset_feedback_period(engine) -> Tuple[bool, Optional[str]]:
     피드백 기반 조정 기간을 재시작 (피드백 횟수 리셋)
     
     Args:
-        engine: SQLAlchemy 엔진
+        engine: SQLAlchemy 엔진 (호환성을 위해 유지, 실제로는 사용 안 함)
     
     Returns:
         (성공 여부, 메시지)
     """
     try:
-        with engine.connect() as conn:
-            # feedback_reset_date 테이블 생성 또는 확인
-            table_check = text("""
-                SELECT COUNT(*) as count
-                FROM information_schema.tables 
-                WHERE table_schema = 'main' 
-                AND table_name = 'feedback_reset_date'
-            """)
-            has_table = conn.execute(table_check).fetchone().count > 0
-            
-            if not has_table:
-                create_table = text("""
-                    CREATE TABLE IF NOT EXISTS feedback_reset_date (
-                        id INT AUTO_INCREMENT PRIMARY KEY,
-                        reset_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    )
-                """)
-                conn.execute(create_table)
-                logger.info("✅ feedback_reset_date 테이블 생성 완료")
-            
-            # 현재 날짜로 재갱신 날짜 저장 (이후 피드백부터 카운트)
-            insert_query = text("""
-                INSERT INTO feedback_reset_date (reset_date, created_at)
-                VALUES (NOW(), NOW())
-            """)
-            conn.execute(insert_query)
-            conn.commit()
-            
-            logger.info("✅ 피드백 기반 조정 기간 재시작: 피드백 횟수 리셋")
-            return True, "피드백 기반 조정 기간이 재시작되었습니다. 다시 7번의 피드백을 받습니다."
+        # 피드백 횟수를 0으로 리셋
+        data = {'feedback_count': 0, 'updated_at': datetime.now().isoformat()}
+        with open(FEEDBACK_COUNT_FILE, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        
+        logger.info("✅ 피드백 기반 조정 기간 재시작: 피드백 횟수 리셋")
+        return True, "피드백 기반 조정 기간이 재시작되었습니다. 다시 7번의 피드백을 받습니다."
     except Exception as e:
         logger.error(f"❌ 피드백 기간 재시작 실패: {e}")
         return False, f"피드백 기간 재시작 실패: {str(e)}"
@@ -519,11 +468,24 @@ def process_daily_feedback(engine, feedback: str) -> Tuple[bool, Optional[str]]:
         )
         
         if success:
+            # 7. 피드백 횟수 증가
+            try:
+                current_count = get_feedback_count(engine)
+                data = {
+                    'feedback_count': current_count + 1,
+                    'updated_at': datetime.now().isoformat()
+                }
+                with open(FEEDBACK_COUNT_FILE, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                logger.warning(f"⚠️ 피드백 횟수 증가 실패: {e}")
+            
             message = (
                 f"✅ 임계값 조정 완료: "
                 f"실내온도 {room_min}~{room_max}°C → {new_room_min}~{new_room_max}°C, "
                 f"피부온도 {skin_min}~{skin_max}°C → {new_skin_min}~{skin_max}°C"
             )
+            logger.info(f"🎯 {message} (피드백: {feedback}, 예측: {prediction}, 조정량: 실내온도 {room_adjustment}°C, 피부온도 {skin_adjustment}°C)")
             return True, message
         else:
             return False, "임계값 업데이트 실패"

@@ -117,38 +117,78 @@ engine = sqlalchemy.create_engine(
 # 서버 디렉토리 기준으로 모델 파일 경로 설정
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BASE_DIR)  # server 디렉토리의 상위 디렉토리 (프로젝트 루트)
-MODEL_FILE = os.path.join(PROJECT_ROOT, 'android', 'plus', 'model', 'pycode', 'ai_thermal_model_final.pkl')
+# 사용자가 지정한 모델 파일 경로
+MODEL_FILE = os.path.join(PROJECT_ROOT, 'ai_thermal_model_final.pkl')
 
 model = None
 model_loaded = False
 
 def load_model():
-    """모델 로드"""
+    """모델/함수 로드 - pickle 파일에서 함수를 로드하거나 모듈에서 직접 가져오기"""
     global model, model_loaded
     if model is not None:
         model_loaded = True
         return model
     
+    # 먼저 모듈에서 직접 함수를 가져오기 시도
+    try:
+        import sys
+        import importlib.util
+        
+        model_pycode_path = os.path.join(PROJECT_ROOT, 'android', 'plus', 'model', 'pycode')
+        model_module_file = os.path.join(model_pycode_path, 'aI_service_model_with_age.py')
+        
+        if os.path.exists(model_module_file):
+            # 모듈을 동적으로 로드
+            spec = importlib.util.spec_from_file_location("ai_service_model", model_module_file)
+            if spec and spec.loader:
+                model_module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(model_module)
+                
+                # 함수가 모듈에 있는지 확인
+                if hasattr(model_module, 'predict_temperature_with_age'):
+                    model = model_module.predict_temperature_with_age
+                    model_loaded = True
+                    logger.info("✅ 예측 함수 로드 성공! (모듈에서 직접)")
+                    return model
+    except Exception as e:
+        logger.warning(f"⚠️ 모듈에서 함수 로드 실패: {e}")
+    
+    # pickle 파일에서 로드 시도
     if not os.path.exists(MODEL_FILE):
         logger.warning(f"⚠️ 모델 파일을 찾을 수 없습니다: {MODEL_FILE}")
         return None
     
     try:
-        model = joblib.load(MODEL_FILE)
-        model_loaded = True
-        logger.info("✅ 모델 로드 성공! (joblib)")
-        return model
-    except Exception as e1:
-        logger.error(f"❌ joblib 로드 실패: {e1}")
-        try:
-            import pickle
-            with open(MODEL_FILE, 'rb') as f:
-                model = pickle.load(f)
+        import pickle
+        
+        # pickle 파일에서 함수 로드 시도
+        with open(MODEL_FILE, 'rb') as f:
+            loaded_obj = pickle.load(f)
+        
+        # 함수인지 확인
+        if callable(loaded_obj) and not hasattr(loaded_obj, 'predict'):
+            # 함수를 모델로 사용
+            model = loaded_obj
+            model_loaded = True
+            logger.info("✅ 예측 함수 로드 성공! (pickle)")
+            return model
+        else:
+            # 모델 객체인 경우
+            model = loaded_obj
             model_loaded = True
             logger.info("✅ 모델 로드 성공! (pickle)")
             return model
+    except Exception as e1:
+        logger.error(f"❌ pickle 로드 실패: {e1}")
+        try:
+            # joblib로 시도
+            model = joblib.load(MODEL_FILE)
+            model_loaded = True
+            logger.info("✅ 모델 로드 성공! (joblib)")
+            return model
         except Exception as e2:
-            logger.error(f"❌ pickle 로드 실패: {e2}")
+            logger.error(f"❌ joblib 로드 실패: {e2}")
             return None
 
 # 서버 시작 시 모델 로드
@@ -232,7 +272,7 @@ def calculate_comfort_temperature(gender: str, age: int, bmi: float) -> tuple[fl
 
 def predict_temperature_with_model(hr_mean, hrv_sdnn, bmi, mean_sa02, gender, age):
     """
-    체온 예측 함수 (pandas DataFrame 기반)
+    체온 예측 함수 (pandas DataFrame 기반 또는 저장된 함수 사용)
     
     Parameters:
     - hr_mean: 평균 심박수
@@ -254,6 +294,17 @@ def predict_temperature_with_model(hr_mean, hrv_sdnn, bmi, mean_sa02, gender, ag
     else:
         gender_str = str(gender)
     
+    # 모델이 함수인 경우 (pickle로 저장된 함수)
+    if callable(model) and not hasattr(model, 'predict'):
+        try:
+            # 저장된 함수 직접 호출
+            temp_pred = model(hr_mean, hrv_sdnn, bmi, mean_sa02, gender_str, age)
+            return float(temp_pred)
+        except Exception as e:
+            logger.error(f"저장된 함수 호출 실패: {e}")
+            raise
+    
+    # 모델 객체인 경우 (기존 방식)
     # 파생 피처 계산
     hrv_hr_ratio = hrv_sdnn / hr_mean if hr_mean > 0 else 0
     bmi_hr_interaction = bmi * hr_mean
@@ -557,6 +608,7 @@ async def receive_health_data(data: HealthData):
                     predicted_skin_code = convert_predicted_temp_to_code(predicted_skin_temp, temp_min_threshold, temp_max_threshold)
                     logger.info(f"🔮 예측값 코드 변환: {predicted_skin_temp}°C → {predicted_skin_code} (임계값: {temp_min_threshold}~{temp_max_threshold}°C)")
                 
+                data_inserted = False
                 if has_predicted_skin_column and predicted_skin_code is not None:
                     # predicted_skin 컬럼이 있으면 함께 저장
                     insert_query = text("""
@@ -575,6 +627,7 @@ async def receive_health_data(data: HealthData):
                         'predicted_temp': predicted_skin_temp,
                         'predicted_skin': predicted_skin_code
                     })
+                    data_inserted = True
                 else:
                     # predicted_skin 컬럼이 없으면 기존 방식으로 저장
                     insert_query = text("""
@@ -592,36 +645,30 @@ async def receive_health_data(data: HealthData):
                         'gender': gender,
                         'predicted_temp': predicted_skin_temp
                     })
+                    data_inserted = True
             except Exception as e:
                 logger.warning(f"⚠️ predicted_skin 컬럼 확인 실패, 기존 방식으로 저장: {str(e)}")
-                # 예외 발생 시 기존 방식으로 저장
-            insert_query = text("""
-                INSERT INTO predicted_results 
-                (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp)
-                VALUES 
-                (:heart_rate, :hrv, :oxygen_sat, :bmi, :age, :gender, :predicted_temp)
-            """)
-            conn.execute(insert_query, {
-                'heart_rate': data.heartRate,
-                'hrv': data.HRV,
-                'oxygen_sat': data.oxygenSaturation,
-                'bmi': bmi,
-                'age': age,
-                'gender': gender,
-                'predicted_temp': predicted_skin_temp
-            })
+                # 예외 발생 시에만 기존 방식으로 저장 (중복 방지)
+                if not data_inserted:
+                    insert_query = text("""
+                        INSERT INTO predicted_results 
+                        (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp)
+                        VALUES 
+                        (:heart_rate, :hrv, :oxygen_sat, :bmi, :age, :gender, :predicted_temp)
+                    """)
+                    conn.execute(insert_query, {
+                        'heart_rate': data.heartRate,
+                        'hrv': data.HRV,
+                        'oxygen_sat': data.oxygenSaturation,
+                        'bmi': bmi,
+                        'age': age,
+                        'gender': gender,
+                        'predicted_temp': predicted_skin_temp
+                    })
             
             conn.commit()
             
-            # predicted_skin_temp가 들어올 때마다 분류하여 temp_change 테이블에 저장
-            air_conditioner_auto_control.classify_and_save_feedback(
-                engine=engine,
-                predicted_skin_temp=predicted_skin_temp,
-                air_conditioner_available=AIR_CONDITIONER_AVAILABLE,
-                get_air_conditioner_state_func=get_air_conditioner_state,
-                cold_threshold=COLD_THRESHOLD,
-                hot_threshold=HOT_THRESHOLD
-            )
+            # 온도 조절은 스케줄러가 2분마다 자동으로 처리합니다 (최근 3개 데이터 확인)
         
         logger.info(f"✅ 데이터가 DB에 저장되었습니다. (gender: {gender}, bmi: {bmi}, age: {age}, predicted_skin_temp: {predicted_skin_temp})")
         return {
@@ -1968,19 +2015,26 @@ def update_thresholds(new_cold: float, new_hot: float):
 
 def adjust_air_conditioner_wrapper():
     """스케줄러에서 호출할 래퍼 함수"""
-    air_conditioner_auto_control.adjust_air_conditioner(
-        engine=engine,
-        air_conditioner_available=AIR_CONDITIONER_AVAILABLE,
-        get_air_conditioner_state_func=get_air_conditioner_state,
-        set_temperature_func=set_temperature,
-        cold_threshold=COLD_THRESHOLD,
-        hot_threshold=HOT_THRESHOLD,
-        update_threshold_callback=update_thresholds
-    )
+    try:
+        logger.info("⏰ 스케줄러 실행: 에어컨 자동 조절 시작")
+        air_conditioner_auto_control.adjust_air_conditioner(
+            engine=engine,
+            air_conditioner_available=AIR_CONDITIONER_AVAILABLE,
+            get_air_conditioner_state_func=get_air_conditioner_state,
+            set_temperature_func=set_temperature,
+            cold_threshold=COLD_THRESHOLD,
+            hot_threshold=HOT_THRESHOLD,
+            update_threshold_callback=update_thresholds
+        )
+        logger.info("✅ 스케줄러 실행 완료: 에어컨 자동 조절 종료")
+    except Exception as e:
+        logger.error(f"❌ 스케줄러 실행 중 오류: {e}")
+        import traceback
+        logger.error(f"❌ 스케줄러 오류 상세: {traceback.format_exc()}")
 
 scheduler.add_job(
     adjust_air_conditioner_wrapper,
-    trigger=IntervalTrigger(minutes=30),
+    trigger=IntervalTrigger(minutes=2),  # 테스트용: 2분으로 변경
     id='air_conditioner_adjustment',
     name='에어컨 자동 온도 조절',
     replace_existing=True
@@ -2007,7 +2061,7 @@ async def startup_event():
         set_temperature_func=set_temperature
     )
     scheduler.start()
-    logger.info("✅ 스케줄러 시작 완료 (30분마다 자동 조절)")
+    logger.info("✅ 스케줄러 시작 완료 (2분마다 자동 조절 - 테스트 모드)")
 
 @app.on_event("shutdown")
 async def shutdown_event():

@@ -78,3 +78,18 @@ def clear_temperature_threshold():
     _temperature_threshold_cache = None
     logger.info("🗑️ 온도 임계값 캐시 삭제 완료")
 
+
+def check_and_cleanup_expired_cache():
+    """만료된 캐시 확인 및 정리 (스케줄러에서 주기적으로 호출)"""
+    global _temperature_threshold_cache
+    
+    if _temperature_threshold_cache is None:
+        return
+    
+    # 만료 시간 확인
+    expires_at = datetime.fromisoformat(_temperature_threshold_cache["expires_at"])
+    if datetime.now() > expires_at:
+        # 만료된 경우 캐시 삭제
+        _temperature_threshold_cache = None
+        logger.info("⏰ 저장된 온도 임계값이 만료되어 삭제되었습니다.")
+

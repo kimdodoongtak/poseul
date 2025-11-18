@@ -18,8 +18,11 @@ import {
   IonModal,
   IonButtons,
   IonButton as IonModalButton,
-  IonText
+  IonText,
+  IonAlert,
+  IonIcon
 } from '@ionic/react';
+import { refreshOutline } from 'ionicons/icons';
 import { LocalNotifications, ActionPerformed, LocalNotificationSchema } from '@capacitor/local-notifications';
 import { Capacitor } from '@capacitor/core';
 import SignIn from '../components/SignIn';
@@ -35,6 +38,7 @@ const User: React.FC = () => {
   const [platform, setPlatform] = useState<string>('web');
   const [showSignIn, setShowSignIn] = useState<boolean>(false);
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
+  const [showResetAlert, setShowResetAlert] = useState<boolean>(false);
 
   const requestNotificationPermission = async () => {
     try {
@@ -325,6 +329,67 @@ const User: React.FC = () => {
     }
   };
 
+  const handleResetFeedbackPeriod = async () => {
+    try {
+      // 플랫폼별 기본 URL 설정
+      const platform = Capacitor.getPlatform();
+      let apiBaseUrl: string;
+      if (import.meta.env.VITE_API_BASE_URL) {
+        apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
+      } else if (platform === 'android') {
+        apiBaseUrl = 'http://192.168.0.143:3000';
+      } else if (platform === 'ios') {
+        apiBaseUrl = 'http://192.168.68.74:3000';
+      } else {
+        apiBaseUrl = 'http://localhost:3000';
+      }
+      
+      console.log('📤 피드백 기간 재갱신 요청:', apiBaseUrl);
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      
+      try {
+        const response = await fetch(`${apiBaseUrl}/feedback/reset`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+        console.log('📡 서버 응답 상태:', response.status, response.statusText);
+
+        if (response.ok) {
+          const result = await response.json();
+          console.log('✅ 피드백 기간 재갱신 완료:', result);
+          alert(result.message || '✅ 피드백 기간이 재갱신되었습니다.');
+          
+          // 재갱신 후 알림 다시 스케줄
+          await scheduleDailyNotification();
+        } else {
+          const errorText = await response.text();
+          console.error('❌ 피드백 기간 재갱신 실패:', response.status, response.statusText, errorText);
+          alert(`피드백 기간 재갱신 실패: ${response.status} - ${errorText}`);
+        }
+      } catch (fetchError: any) {
+        clearTimeout(timeoutId);
+        
+        if (fetchError.name === 'AbortError') {
+          console.error('❌ 요청 타임아웃 (10초 초과)');
+          alert('요청 시간이 초과되었습니다. 서버가 실행 중인지 확인해주세요.');
+        } else {
+          console.error('❌ 피드백 기간 재갱신 중 오류:', fetchError);
+          alert(`피드백 기간 재갱신 중 오류 발생: ${fetchError.message || fetchError}`);
+        }
+      }
+    } catch (err: any) {
+      console.error('❌ 피드백 기간 재갱신 중 예외:', err);
+      alert(`피드백 기간 재갱신 중 예외 발생: ${err.message || err}`);
+    }
+  };
+
   return (
     <IonPage className="user-page">
       <IonHeader>
@@ -409,6 +474,22 @@ const User: React.FC = () => {
 
         <IonCard>
           <IonCardHeader>
+            <IonCardTitle>온도 범위 관리</IonCardTitle>
+          </IonCardHeader>
+          <IonCardContent>
+            <IonButton 
+              expand="block" 
+              className="reset-feedback-button"
+              onClick={() => setShowResetAlert(true)}
+            >
+              <IonIcon icon={refreshOutline} slot="start" />
+              온도 범위 재갱신
+            </IonButton>
+          </IonCardContent>
+        </IonCard>
+
+        <IonCard>
+          <IonCardHeader>
             <IonCardTitle>설정</IonCardTitle>
           </IonCardHeader>
           <IonCardContent>
@@ -483,6 +564,30 @@ const User: React.FC = () => {
             </div>
           </IonContent>
         </IonModal>
+
+        {/* 재갱신 확인 알림 */}
+        <IonAlert
+          isOpen={showResetAlert}
+          onDidDismiss={() => setShowResetAlert(false)}
+          header="온도 범위 재갱신"
+          message="재갱신을 하게되면 다시 7번의 피드백을 해주셔야 합니다. 현재 저장된 임계값부터 다시 7번의 피드백을 받아 조정합니다. 계속하시겠습니까?"
+          buttons={[
+            {
+              text: '취소',
+              role: 'cancel',
+              handler: () => {
+                setShowResetAlert(false);
+              }
+            },
+            {
+              text: '확인',
+              handler: () => {
+                handleResetFeedbackPeriod();
+                setShowResetAlert(false);
+              }
+            }
+          ]}
+        />
       </IonContent>
     </IonPage>
   );

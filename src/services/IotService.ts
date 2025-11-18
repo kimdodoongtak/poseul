@@ -129,12 +129,19 @@ class IotService {
       return result;
     } catch (error: any) {
       console.error('Failed to get IoT status:', error);
+      console.error('Error details:', {
+        name: error?.name,
+        message: error?.message,
+        stack: error?.stack,
+        toString: error?.toString()
+      });
       console.error('Request URL:', `${this.baseUrl}/air_conditioner/state`);
       // 네트워크 에러인지 확인
       if (error.name === 'AbortError') {
         throw new Error(`서버 응답 시간 초과 (10초). 서버가 실행 중인지 확인해주세요. (URL: ${this.baseUrl})`);
-      } else if (error.message?.includes('Failed to fetch') || error.message?.includes('Mixed Content')) {
-        throw new Error(`서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요. (URL: ${this.baseUrl})`);
+      } else if (error.message?.includes('Failed to fetch') || error.message?.includes('Mixed Content') || !error.message) {
+        const errorMsg = error?.message || error?.toString() || '알 수 없는 네트워크 오류';
+        throw new Error(`서버에 연결할 수 없습니다. (${errorMsg}) 서버가 실행 중인지 확인해주세요. (URL: ${this.baseUrl})`);
       }
       throw error;
     }
