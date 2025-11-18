@@ -5,6 +5,7 @@
  */
 
 import { Capacitor } from '@capacitor/core';
+import { getServerUrl } from './ServerConfig';
 
 export type AirConditionerMode = 'COOL' | 'AIR_DRY' | 'AIR_CLEAN' | 'AUTO';
 export type FanSpeed = 'HIGH' | 'MID' | 'LOW' | 'AUTO';
@@ -42,29 +43,17 @@ class IotService {
   constructor(baseUrl?: string) {
     if (baseUrl) {
       this.baseUrl = baseUrl;
-    } else if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE_URL) {
-      this.baseUrl = import.meta.env.VITE_API_BASE_URL;
     } else {
-      // 플랫폼별 기본 URL 설정
-      if (Capacitor.isNativePlatform()) {
-        // 안드로이드 에뮬레이터 또는 실제 기기
-        if (Capacitor.getPlatform() === 'android') {
-          // 실제 기기 사용 시: 컴퓨터 IP 주소 필요 (현재: 192.168.0.143)
-          // 에뮬레이터 사용 시: 10.0.2.2
-          // 환경 변수로 설정 가능하도록 개선
-          this.baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://192.168.0.143:3000';
-        } else if (Capacitor.getPlatform() === 'ios') {
-          // iOS 시뮬레이터: localhost, 실제 기기: 컴퓨터 IP 주소 필요
-          // 실제 기기에서는 환경 변수나 하드코딩된 IP 사용
-          this.baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://192.168.0.143:3000';
-        } else {
-          this.baseUrl = 'http://localhost:3000';
-        }
-      } else {
-        // 웹 개발 환경
-        this.baseUrl = 'http://localhost:3000';
-      }
+      // ServerConfig에서 URL 가져오기 (localStorage > 환경 변수 > 기본값)
+      this.baseUrl = getServerUrl();
     }
+  }
+  
+  /**
+   * 서버 URL 업데이트 (동적으로 변경 가능)
+   */
+  updateBaseUrl(newUrl: string): void {
+    this.baseUrl = newUrl;
   }
 
   /**

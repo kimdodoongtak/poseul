@@ -27,6 +27,10 @@ import { LocalNotifications, ActionPerformed, LocalNotificationSchema } from '@c
 import { Capacitor } from '@capacitor/core';
 import SignIn from '../components/SignIn';
 import './User.css';
+import { autoDetectServerUrl, getServerUrl } from '../services/ServerConfig';
+import IotService from '../services/IotService';
+import ModelService from '../services/ModelService';
+import HealthDataService from '../services/HealthDataService';
 
 const User: React.FC = () => {
   const [age, setAge] = useState<string>('');
@@ -118,6 +122,25 @@ const User: React.FC = () => {
       }
     };
     
+    // 서버 URL 자동 감지 (앱이 완전히 로드된 후 백그라운드에서 실행)
+    // 앱 시작 시 실행하지 않고, 나중에 필요할 때만 실행
+    setTimeout(() => {
+      const detectServerUrl = async () => {
+        try {
+          const serverUrl = await autoDetectServerUrl();
+          console.log('✅ 서버 URL 자동 감지 완료:', serverUrl);
+          // 모든 서비스의 baseUrl 업데이트
+          IotService.updateBaseUrl(serverUrl);
+          ModelService.updateBaseUrl(serverUrl);
+          HealthDataService.updateBaseUrl(serverUrl);
+        } catch (err) {
+          console.error('서버 URL 자동 감지 실패:', err);
+          // 오류가 발생해도 앱은 계속 작동하도록
+        }
+      };
+      detectServerUrl();
+    }, 3000); // 3초 후에 실행하여 앱이 먼저 완전히 로드되도록
+    
     setTimeout(() => {
       loadHealthData();
     }, 500);
@@ -207,21 +230,8 @@ const User: React.FC = () => {
 
   const handleFeedbackSubmit = async (feedback: 'hot' | 'cold' | 'comfortable') => {
     try {
-      // 플랫폼별 기본 URL 설정 (HTTP 사용 - 서버가 HTTP로 실행 중)
-      // IotService, ModelService와 동일한 URL 사용
-      const platform = Capacitor.getPlatform();
-      let apiBaseUrl: string;
-      if (import.meta.env.VITE_API_BASE_URL) {
-        apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
-      } else if (platform === 'android') {
-        // 실제 기기 사용 시: 컴퓨터 IP 주소 필요 (예: 192.168.0.143)
-        // 에뮬레이터 사용 시: 10.0.2.2
-        apiBaseUrl = 'http://192.168.0.143:3000';
-      } else if (platform === 'ios') {
-        apiBaseUrl = 'http://192.168.68.74:3000';
-      } else {
-        apiBaseUrl = 'http://localhost:3000';
-      }
+      // ServerConfig에서 URL 가져오기 (localStorage > 환경 변수 > 기본값)
+      const apiBaseUrl = getServerUrl();
       
       console.log('📤 피드백 전송 시작:', { feedback, apiBaseUrl });
       
@@ -331,18 +341,8 @@ const User: React.FC = () => {
 
   const handleResetFeedbackPeriod = async () => {
     try {
-      // 플랫폼별 기본 URL 설정
-      const platform = Capacitor.getPlatform();
-      let apiBaseUrl: string;
-      if (import.meta.env.VITE_API_BASE_URL) {
-        apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
-      } else if (platform === 'android') {
-        apiBaseUrl = 'http://192.168.0.143:3000';
-      } else if (platform === 'ios') {
-        apiBaseUrl = 'http://192.168.68.74:3000';
-      } else {
-        apiBaseUrl = 'http://localhost:3000';
-      }
+      // ServerConfig에서 URL 가져오기 (localStorage > 환경 변수 > 기본값)
+      const apiBaseUrl = getServerUrl();
       
       console.log('📤 피드백 기간 재갱신 요청:', apiBaseUrl);
       

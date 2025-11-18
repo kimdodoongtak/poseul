@@ -271,11 +271,39 @@ def adjust_air_conditioner(
                 
                 try:
                     state_response = get_air_conditioner_state_func()
-                    if not state_response or 'result' not in state_response or 'value' not in state_response['result']:
+                    
+                    # 응답 구조 확인 및 다양한 경로 지원
+                    state = None
+                    
+                    # 1. result.value 경로 확인
+                    if state_response and 'result' in state_response:
+                        result = state_response['result']
+                        if isinstance(result, dict) and 'value' in result:
+                            state = result['value']
+                    
+                    # 2. response.value 경로 확인
+                    if state is None and state_response and 'response' in state_response:
+                        response = state_response['response']
+                        if isinstance(response, dict):
+                            if 'value' in response:
+                                state = response['value']
+                            else:
+                                state = response
+                        elif isinstance(response, list) and len(response) > 0:
+                            state = response[0]
+                    
+                    # 3. 최상위 value 경로 확인
+                    if state is None and state_response and 'value' in state_response:
+                        state = state_response['value']
+                    
+                    if not state:
                         logger.warning("⚠️ 에어컨 상태를 가져올 수 없습니다.")
+                        logger.warning(f"응답 구조: {list(state_response.keys()) if state_response else 'None'}")
+                        if state_response:
+                            import json
+                            logger.warning(f"응답 내용 (일부): {json.dumps({k: str(v)[:100] for k, v in list(state_response.items())[:3]}, indent=2, ensure_ascii=False)}")
                         return
                     
-                    state = state_response['result']['value']
                     current_temp = state.get('temperature', {}).get('currentTemperature')
                     target_temp = state.get('temperature', {}).get('targetTemperature')
                     
@@ -346,27 +374,6 @@ def adjust_air_conditioner(
                         else:
                             logger.warning("⚠️ 목표 온도를 가져올 수 없습니다.")
                             print(f"⚠️ 목표 온도를 가져올 수 없습니다.")
-                    
-                    # 조절 결과를 DB에 기록
-                    try:
-                        # temp_change 테이블에 조절 결과 저장
-                        action_str = ", ".join(actions_taken) if actions_taken else "none"
-                        adjustment_query = text("""
-                            INSERT INTO temp_change 
-                            (classification, current_temperature, target_temperature, action_taken, created_at)
-                            VALUES 
-                            (:classification, :current_temp, :target_temp, :action_taken, NOW())
-                        """)
-                        conn.execute(adjustment_query, {
-                            'classification': majority_feedback,
-                            'current_temp': current_temp,
-                            'target_temp': target_temp,
-                            'action_taken': action_str
-                        })
-                        conn.commit()
-                        logger.info(f"✅ 조절 결과 DB 저장 완료: {action_str}")
-                    except Exception as e:
-                        logger.warning(f"⚠️ 조절 결과 DB 저장 실패: {e}")
                     
                     # 마지막 조절 시간 업데이트
                     last_adjustment_time = now

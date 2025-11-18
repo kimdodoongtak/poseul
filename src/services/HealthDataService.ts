@@ -4,6 +4,7 @@
  */
 
 import { Capacitor } from '@capacitor/core';
+import { getServerUrl } from './ServerConfig';
 
 export interface HealthData {
   heartRate: { value: number; date: string } | null;
@@ -27,24 +28,17 @@ class HealthDataService {
   constructor(baseUrl?: string) {
     if (baseUrl) {
       this.baseUrl = baseUrl;
-    } else if (import.meta.env.VITE_API_BASE_URL) {
-      this.baseUrl = import.meta.env.VITE_API_BASE_URL;
     } else {
-      // 플랫폼별 기본 URL 설정
-      if (Capacitor.isNativePlatform()) {
-        if (Capacitor.getPlatform() === 'android') {
-          this.baseUrl = 'http://10.0.2.2:3000';
-        } else if (Capacitor.getPlatform() === 'ios') {
-          // iOS 시뮬레이터: localhost, 실제 기기: 컴퓨터 IP 주소 필요
-          // 실제 기기에서는 환경 변수나 하드코딩된 IP 사용
-          this.baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://192.168.68.74:3000';
-        } else {
-          this.baseUrl = 'http://localhost:3000';
-        }
-      } else {
-        this.baseUrl = 'http://localhost:3000';
-      }
+      // ServerConfig에서 URL 가져오기 (localStorage > 환경 변수 > 기본값)
+      this.baseUrl = getServerUrl();
     }
+  }
+  
+  /**
+   * 서버 URL 업데이트 (동적으로 변경 가능)
+   */
+  updateBaseUrl(newUrl: string): void {
+    this.baseUrl = newUrl;
   }
 
   /**
