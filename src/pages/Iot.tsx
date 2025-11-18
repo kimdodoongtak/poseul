@@ -17,6 +17,7 @@ import {
   IonAlert,
 } from '@ionic/react';
 import { IotService, AirConditionerMode, FanSpeed, getIotServiceBaseUrl } from '../services';
+import { autoDetectServerUrl } from '../services/ServerConfig';
 import './Iot.css';
 
 const Iot: React.FC = () => {
@@ -37,8 +38,14 @@ const Iot: React.FC = () => {
     fanSpeed: 'AUTO',
   });
   
-  // 온도 범위 상태
+  // 온도 범위 상태 (현재 사용 중인 값)
   const [temperatureRange, setTemperatureRange] = useState<{ min: number | null; max: number | null }>({
+    min: null,
+    max: null,
+  });
+  
+  // 원래 설정된 온도 범위 상태
+  const [originalTemperatureRange, setOriginalTemperatureRange] = useState<{ min: number | null; max: number | null }>({
     min: null,
     max: null,
   });
@@ -77,6 +84,14 @@ const Iot: React.FC = () => {
               min: rangeData.min_temp,
               max: rangeData.max_temp,
             });
+            
+            // 원래 설정된 온도 범위도 저장
+            if (rangeData.original_min_temp != null && rangeData.original_max_temp != null) {
+              setOriginalTemperatureRange({
+                min: rangeData.original_min_temp,
+                max: rangeData.original_max_temp,
+              });
+            }
           } else {
             console.warn('⚠️ 온도 범위 데이터가 없거나 유효하지 않음:', rangeData);
           }
@@ -89,19 +104,33 @@ const Iot: React.FC = () => {
       }
     } catch (error: any) {
       console.error('Failed to load status:', error);
-      setError(error.message || '서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요.');
+      const errorMessage = error.message || '서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요.';
+      setError(errorMessage);
+      
+      // 연결 실패 시 자동 감지 재시도
+      if (errorMessage.includes('서버') || errorMessage.includes('timeout') || errorMessage.includes('연결')) {
+        console.log('🔄 연결 실패 - 서버 URL 자동 감지 재시도...');
+        try {
+          const serverUrl = await autoDetectServerUrl();
+          console.log('✅ 자동 감지된 서버 URL:', serverUrl);
+          IotService.updateBaseUrl(serverUrl);
+          // 재시도
+          setTimeout(() => {
+            loadStatus();
+          }, 1000);
+        } catch (detectError) {
+          console.error('❌ 서버 URL 자동 감지 실패:', detectError);
+        }
+      }
     }
   }, []);
 
   useEffect(() => {
-    // UI가 먼저 렌더링되도록 지연 후 상태 조회
-    const timeoutId = setTimeout(() => {
+    // UI를 먼저 렌더링하고, 그 다음에 상태 조회
+    // 자동 감지는 연결 실패 시에만 실행
+    setTimeout(() => {
       loadStatus();
-    }, 500); // 500ms 지연
-    
-    return () => {
-      clearTimeout(timeoutId);
-    };
+    }, 500);
   }, [loadStatus]);
 
   const handlePowerToggle = async (power: boolean) => {
@@ -272,9 +301,21 @@ const Iot: React.FC = () => {
                     {status.currentTemperature}°C
                   </p>
                   {temperatureRange.min !== null && temperatureRange.max !== null ? (
-                    <p style={{ fontSize: '14px', color: '#666', marginTop: '8px' }}>
-                      {Math.round(temperatureRange.min)}°C ~ {Math.round(temperatureRange.max)}°C
-                    </p>
+                    <div style={{ marginTop: '8px' }}>
+                      <p style={{ fontSize: '14px', color: '#666', marginBottom: '4px' }}>
+                        <strong>수동 조절:</strong> {Math.round(temperatureRange.min)}°C ~ {Math.round(temperatureRange.max)}°C
+                      </p>
+                      {originalTemperatureRange.min !== null && originalTemperatureRange.max !== null && 
+                       (originalTemperatureRange.min !== temperatureRange.min || originalTemperatureRange.max !== temperatureRange.max) ? (
+                        <p style={{ fontSize: '12px', color: '#999', fontStyle: 'italic' }}>
+                          원래 설정: {Math.round(originalTemperatureRange.min)}°C ~ {Math.round(originalTemperatureRange.max)}°C
+                        </p>
+                      ) : originalTemperatureRange.min !== null && originalTemperatureRange.max !== null ? (
+                        <p style={{ fontSize: '12px', color: '#999', fontStyle: 'italic' }}>
+                          원래 설정: {Math.round(originalTemperatureRange.min)}°C ~ {Math.round(originalTemperatureRange.max)}°C
+                        </p>
+                      ) : null}
+                    </div>
                   ) : (
                     <p style={{ fontSize: '12px', color: '#999', marginTop: '8px', fontStyle: 'italic' }}>
                       온도 범위 정보 없음

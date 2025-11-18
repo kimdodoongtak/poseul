@@ -137,22 +137,19 @@ def save_temperature_range_to_db(
             table_exists = conn.execute(table_check).fetchone().count > 0
             
             if not table_exists:
-                # 테이블이 없으면 생성
+                # 테이블이 없으면 생성 (min_temp, max_temp만)
                 create_table = text("""
                     CREATE TABLE IF NOT EXISTS room_threshold (
                         id INT AUTO_INCREMENT PRIMARY KEY,
                         min_temp DECIMAL(4,1) NOT NULL,
                         max_temp DECIMAL(4,1) NOT NULL,
-                        age INT,
-                        bmi DECIMAL(4,1),
-                        gender VARCHAR(10),
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
                     )
                 """)
                 conn.execute(create_table)
                 conn.commit()
-                logger.info("✅ room_threshold 테이블 생성 완료")
+                logger.info("✅ room_threshold 테이블 생성 완료 (min_temp, max_temp만)")
             
             # 기존 레코드 확인
             check_existing = text("SELECT COUNT(*) as count FROM room_threshold")
@@ -161,23 +158,17 @@ def save_temperature_range_to_db(
             if existing_count > 0:
                 # 이미 설정되어 있으면
                 if force_update:
-                    # 강제 업데이트 모드면 업데이트
+                    # 강제 업데이트 모드면 업데이트 (min_temp, max_temp만)
                     update_query = text("""
                         UPDATE room_threshold 
                         SET min_temp = :min_temp,
                             max_temp = :max_temp,
-                            age = :age,
-                            bmi = :bmi,
-                            gender = :gender,
                             updated_at = NOW()
                         LIMIT 1
                     """)
                     conn.execute(update_query, {
                         'min_temp': min_temp,
-                        'max_temp': max_temp,
-                        'age': age,
-                        'bmi': bmi,
-                        'gender': str(gender)
+                        'max_temp': max_temp
                     })
                     logger.info(f"✅ room_threshold 강제 업데이트: {min_temp}~{max_temp}°C")
                     conn.commit()
@@ -193,19 +184,16 @@ def save_temperature_range_to_db(
                     )
                     return True
             else:
-                # 새 레코드 삽입 (처음 한번만)
+                # 새 레코드 삽입 (처음 한번만, min_temp, max_temp만)
                 insert_query = text("""
                     INSERT INTO room_threshold 
-                    (min_temp, max_temp, age, bmi, gender)
+                    (min_temp, max_temp)
                     VALUES 
-                    (:min_temp, :max_temp, :age, :bmi, :gender)
+                    (:min_temp, :max_temp)
                 """)
                 conn.execute(insert_query, {
                     'min_temp': min_temp,
-                    'max_temp': max_temp,
-                    'age': age,
-                    'bmi': bmi,
-                    'gender': str(gender)
+                    'max_temp': max_temp
                 })
                 logger.info(f"✅ room_threshold 처음 저장: {min_temp}~{max_temp}°C")
                 conn.commit()
