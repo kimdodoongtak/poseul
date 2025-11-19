@@ -2426,6 +2426,141 @@ async def test_db_connection():
             "message": "DB 연결 실패"
         }
 
+# ==================== 차트 데이터 API ====================
+
+@app.get("/chart/heartrate")
+async def get_heartrate_chart_data(hours: int = 12):
+    """
+    심박수 차트 데이터 조회 (predicted_results 테이블에서)
+    
+    Args:
+        hours: 조회할 시간 수 (기본값: 12시간)
+    """
+    try:
+        with engine.connect() as conn:
+            # 최근 N개 데이터 조회 (no 기준으로 정렬)
+            query = text("""
+                SELECT 
+                    HR_mean as heartRate,
+                    no,
+                    predicted_skin_temp
+                FROM predicted_results
+                ORDER BY no DESC
+                LIMIT :limit
+            """)
+            
+            result = conn.execute(query, {"limit": hours})
+            rows = result.fetchall()
+            
+            if not rows:
+                return {
+                    "success": True,
+                    "data": [],
+                    "count": 0,
+                    "message": "데이터가 없습니다."
+                }
+            
+            # 시간 순서대로 정렬 (no 오름차순)
+            data = []
+            for row in rows:
+                data.append({
+                    "heartRate": float(row.heartRate) if row.heartRate else 0,
+                    "no": int(row.no) if row.no else 0,
+                    "predicted_skin_temp": float(row.predicted_skin_temp) if row.predicted_skin_temp else 0
+                })
+            
+            # no 기준 오름차순 정렬
+            data.sort(key=lambda x: x["no"])
+            
+            # 시간 포맷팅 (1시간 간격으로 가정, 현재 시간부터 역산)
+            chart_data = []
+            now = datetime.now()
+            for i, item in enumerate(data):
+                # 현재 시간부터 역산하여 시간 계산
+                hours_ago = len(data) - 1 - i
+                target_time = now - timedelta(hours=hours_ago)
+                
+                chart_data.append({
+                    "timestamp": target_time.isoformat(),
+                    "hour": target_time.hour,
+                    "minute": target_time.minute,
+                    "heartRate": item["heartRate"]
+                })
+            
+            return {
+                "success": True,
+                "data": chart_data,
+                "count": len(chart_data)
+            }
+    except Exception as e:
+        logger.error(f"❌ 심박수 차트 데이터 조회 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"심박수 차트 데이터 조회 실패: {str(e)}")
+
+@app.get("/chart/temperature")
+async def get_temperature_chart_data(hours: int = 12):
+    """
+    온도 차트 데이터 조회 (test_script_logs 테이블에서)
+    
+    Args:
+        hours: 조회할 시간 수 (기본값: 12시간)
+    """
+    try:
+        with engine.connect() as conn:
+            # 최근 N시간 데이터 조회 (created_at 기준)
+            cutoff_time = datetime.now() - timedelta(hours=hours)
+            
+            query = text("""
+                SELECT 
+                    classification_results,
+                    majority_result,
+                    temperature_action,
+                    previous_temperature,
+                    new_temperature,
+                    created_at
+                FROM test_script_logs
+                WHERE created_at >= :cutoff_time
+                ORDER BY created_at ASC
+            """)
+            
+            result = conn.execute(query, {"cutoff_time": cutoff_time})
+            rows = result.fetchall()
+            
+            chart_data = []
+            for row in rows:
+                # majority_result를 분류로 변환 (H=더움, C=추움, G=적정)
+                category_map = {
+                    'H': '더움',
+                    'C': '추움',
+                    'G': '적정'
+                }
+                category = category_map.get(row.majority_result, '적정')
+                
+                # created_at에서 시간 추출
+                created_at = row.created_at if row.created_at else datetime.now()
+                if isinstance(created_at, str):
+                    created_at = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                
+                chart_data.append({
+                    "timestamp": created_at.isoformat(),
+                    "hour": created_at.hour,
+                    "minute": created_at.minute,
+                    "predictedTemperature": float(row.new_temperature) if row.new_temperature else 0,
+                    "temperatureCategory": category,
+                    "currentTemperature": float(row.previous_temperature) if row.previous_temperature else None,
+                    "targetTemperature": float(row.new_temperature) if row.new_temperature else None,
+                    "classificationResults": row.classification_results,
+                    "temperatureAction": row.temperature_action
+                })
+            
+            return {
+                "success": True,
+                "data": chart_data,
+                "count": len(chart_data)
+            }
+    except Exception as e:
+        logger.error(f"❌ 온도 차트 데이터 조회 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"온도 차트 데이터 조회 실패: {str(e)}")
+
 # ==================== Android App Health Monitoring ====================
 
 # android_app_health_logs는 이미 파일 상단에서 초기화됨

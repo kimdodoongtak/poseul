@@ -24,3 +24,10 @@ export type {
   HealthDataResponse,
 } from './HealthDataService';
 
+export { default as ChartDataService } from './ChartDataService';
+export type {
+  NightChartData,
+  TemperatureDataPoint,
+  HeartRateDataPoint,
+} from './ChartDataService';
+
