@@ -25,6 +25,7 @@ import Home from './pages/Home';
 import Iot from './pages/Iot';
 import User from './pages/User';
 import Health_ios from './pages/Health_ios';
+import DeviceRegistration from './components/DeviceRegistration';
 
 /* Core CSS required for Ionic components to work properly */
 import '@ionic/react/css/core.css';
@@ -137,6 +138,9 @@ const AppContent: React.FC = () => {
           </Route>
           <Route exact path="/iot">
             <Iot />
+          </Route>
+          <Route exact path="/iot/register">
+            <DeviceRegistration />
           </Route>
           <Route exact path="/user">
             <User />

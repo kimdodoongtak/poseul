@@ -54,6 +54,16 @@ async def track_connectivity_errors(request: Request, call_next):
     global connectivity_error_count, last_connectivity_error, android_app_health_logs
     start_time = time.time()
     
+    # PAT 토큰 관련 요청 로깅 (요청 도달 확인)
+    if request.url.path == "/iot/auto-register":
+        logger.info(f"📥 PAT 토큰 등록 요청 수신: {request.method} {request.url.path}")
+        logger.info(f"   클라이언트 IP: {request.client.host if request.client else 'N/A'}")
+        logger.info(f"   User-Agent: {request.headers.get('user-agent', 'N/A')[:50]}")
+    elif request.url.path == "/iot/test-pat-token":
+        logger.info(f"🧪 PAT 토큰 연결 테스트 요청 수신: {request.method} {request.url.path}")
+        logger.info(f"   클라이언트 IP: {request.client.host if request.client else 'N/A'}")
+        logger.info(f"   User-Agent: {request.headers.get('user-agent', 'N/A')[:50]}")
+    
     try:
         response = await call_next(request)
         process_time = time.time() - start_time
@@ -192,11 +202,69 @@ try:
         set_timer,
         AIR_CONDITIONER_DEVICE_ID
     )
+    # test.py에서 get_devices 함수 import
+    from test import get_devices, generate_device_api_header
     AIR_CONDITIONER_AVAILABLE = True
-    logger.info("✅ 에어컨 모듈 로드 성공")
+    logger.info("✅ 에어컨 모듈 로드 성공 (PAT 토큰 등록과는 독립적으로 동작합니다)")
 except ImportError as e:
     logger.warning(f"⚠️  에어컨 모듈을 불러올 수 없습니다: {e}")
+    logger.info("ℹ️  PAT 토큰 등록 기능은 정상적으로 동작합니다 (에어컨 모듈과 독립적)")
     AIR_CONDITIONER_AVAILABLE = False
+
+# 사용자별 PAT 토큰과 디바이스 ID 저장소
+# 이전에는 메모리(딕셔너리)에만 저장되어 서버 재시작 시 사라졌지만,
+# 이제는 DB에 저장하여 영구 보존됩니다.
+# 메모리 캐시도 유지하여 빠른 접근을 위해 사용
+user_iot_devices = {}  # 메모리 캐시 (빠른 접근용)
+
+def init_iot_devices_table():
+    """IoT 디바이스 등록 테이블 초기화 (없으면 생성)"""
+    try:
+        with engine.connect() as conn:
+            # 테이블 존재 여부 확인
+            table_check = text("""
+                SELECT COUNT(*) as count
+                FROM information_schema.tables 
+                WHERE table_schema = 'main' 
+                AND TABLE_NAME = 'iot_devices'
+            """)
+            has_table = conn.execute(table_check).fetchone().count > 0
+            
+            if not has_table:
+                # 테이블 생성
+                create_table_query = text("""
+                    CREATE TABLE IF NOT EXISTS iot_devices (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        user_id VARCHAR(100) NOT NULL,
+                        pat_token TEXT NOT NULL,
+                        device_id VARCHAR(255) NOT NULL,
+                        device_name VARCHAR(255),
+                        model_name VARCHAR(255),
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        UNIQUE KEY unique_user_device (user_id, device_id)
+                    )
+                """)
+                conn.execute(create_table_query)
+                conn.commit()
+                logger.info("✅ iot_devices 테이블 생성 완료")
+            else:
+                logger.info("✅ iot_devices 테이블 이미 존재")
+    except Exception as e:
+        logger.error(f"❌ iot_devices 테이블 초기화 실패: {str(e)}")
+
+def load_iot_devices_from_db():
+    """DB에서 등록된 IoT 디바이스 정보를 메모리로 로드"""
+    global user_iot_devices
+    # 서버 재시작 시마다 등록 정보를 초기화하여 매번 새로 등록하도록 함
+    user_iot_devices = {}
+    logger.info("🔄 서버 재시작 - IoT 디바이스 등록 정보 초기화 (매번 새로 등록 필요)")
+
+def save_iot_device_to_db(user_id: str, pat_token: str, device_id: str, device_name: str, model_name: str = ''):
+    """IoT 디바이스 등록 정보를 메모리에만 저장 (서버 재시작 시 초기화됨)"""
+    # DB 저장 없이 메모리에만 저장 (서버 재시작 시 자동으로 초기화됨)
+    logger.info(f"✅ IoT 디바이스 등록 정보 메모리 저장 완료: {user_id} (디바이스: {device_name})")
+    logger.info(f"   ⚠️  서버 재시작 시 등록 정보가 초기화됩니다 (매번 새로 등록 필요)")
 
 # ==================== 쾌적 온도 계산 함수 ====================
 
@@ -974,15 +1042,107 @@ async def get_comfort_temperature():
 
 # ==================== 에어컨 제어 API ====================
 
+def get_device_state_with_pat_token(pat_token: str, device_id: str, country: str = "KR"):
+    """
+    PAT 토큰과 device_id를 사용하여 디바이스 상태를 조회합니다.
+    """
+    import base64
+    import uuid
+    import requests
+    
+    THINQ_API_BASE_URL = "https://api-kic.lgthinq.com"
+    THINQ_API_KEY = "v6GFvkweNo7DK7yD3ylIZ9w52aKBU0eJ7wLXkSR3"
+    CLIENT_ID = "poseul-app"
+    
+    def generate_message_id():
+        uuid_v4 = uuid.uuid4()
+        uuid_bytes = uuid_v4.bytes
+        encoded = base64.urlsafe_b64encode(uuid_bytes).decode('utf-8').rstrip('=')
+        return encoded[:22]
+    
+    url = f"{THINQ_API_BASE_URL}/devices/{device_id}/state"
+    headers = {
+        "Authorization": f"Bearer {pat_token}",
+        "x-message-id": generate_message_id(),
+        "x-country": country,
+        "x-client-id": CLIENT_ID,
+        "x-api-key": THINQ_API_KEY
+    }
+    
+    try:
+        # 타임아웃을 5초로 줄여서 더 빠른 응답
+        response = requests.get(url, headers=headers, timeout=5)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.Timeout:
+        logger.error(f"❌ 디바이스 상태 조회 타임아웃 (5초 초과)")
+        raise HTTPException(status_code=504, detail="LG ThinQ API 응답 시간 초과.")
+    except Exception as e:
+        logger.error(f"❌ 디바이스 상태 조회 실패: {str(e)}")
+        raise
+
+def send_device_command_with_pat_token(pat_token: str, device_id: str, command: dict, country: str = "KR"):
+    """
+    PAT 토큰과 device_id를 사용하여 디바이스에 명령을 전송합니다.
+    """
+    import base64
+    import uuid
+    import requests
+    
+    THINQ_API_BASE_URL = "https://api-kic.lgthinq.com"
+    THINQ_API_KEY = "v6GFvkweNo7DK7yD3ylIZ9w52aKBU0eJ7wLXkSR3"
+    CLIENT_ID = "poseul-app"
+    
+    def generate_message_id():
+        uuid_v4 = uuid.uuid4()
+        uuid_bytes = uuid_v4.bytes
+        encoded = base64.urlsafe_b64encode(uuid_bytes).decode('utf-8').rstrip('=')
+        return encoded[:22]
+    
+    url = f"{THINQ_API_BASE_URL}/devices/{device_id}/control"
+    headers = {
+        "Authorization": f"Bearer {pat_token}",
+        "x-message-id": generate_message_id(),
+        "x-country": country,
+        "x-client-id": CLIENT_ID,
+        "x-api-key": THINQ_API_KEY,
+        "Content-Type": "application/json"
+    }
+    
+    try:
+        # 타임아웃을 5초로 줄여서 더 빠른 응답
+        response = requests.post(url, headers=headers, json=command, timeout=5)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.Timeout:
+        logger.error(f"❌ 디바이스 제어 타임아웃 (5초 초과)")
+        raise HTTPException(status_code=504, detail="LG ThinQ API 응답 시간 초과.")
+    except Exception as e:
+        logger.error(f"❌ 디바이스 제어 실패: {str(e)}")
+        raise
+
 @app.get("/air_conditioner/state")
-async def get_air_conditioner_state_api():
-    """에어컨 상태 조회 API"""
+async def get_air_conditioner_state_api(request: Request):
+    """에어컨 상태 조회 API (사용자별 PAT 토큰 사용)"""
     if not AIR_CONDITIONER_AVAILABLE:
         raise HTTPException(status_code=500, detail="에어컨 모듈을 사용할 수 없습니다.")
     
     try:
-        logger.info("📱 앱에서 에어컨 상태 조회 요청")
-        state_response = get_air_conditioner_state()
+        # 쿼리 파라미터에서 user_id 가져오기 (없으면 기본값)
+        user_id = request.query_params.get('user_id', 'default')
+        
+        # 사용자별 등록 정보 확인
+        device_info = user_iot_devices.get(user_id)
+        if not device_info:
+            raise HTTPException(status_code=404, detail="등록된 디바이스가 없습니다. 먼저 PAT 토큰을 등록해주세요.")
+        
+        pat_token = device_info['pat_token']
+        device_id = device_info['device_id']
+        
+        logger.info(f"📱 앱에서 에어컨 상태 조회 요청 (사용자: {user_id}, 디바이스: {device_id[:20]}...)")
+        
+        # PAT 토큰으로 상태 조회
+        state_response = get_device_state_with_pat_token(pat_token, device_id)
         
         # 응답 구조 분석 및 상태 정보 추출
         state = None
@@ -1000,7 +1160,7 @@ async def get_air_conditioner_state_api():
             # 상태 정보를 앱에서 사용하기 쉬운 형태로 변환
             result = {
                 'success': True,
-                'device_id': AIR_CONDITIONER_DEVICE_ID,
+                'device_id': device_id,
                 'state': {
                     'power': state.get('operation', {}).get('airConOperationMode') == 'POWER_ON',
                     'currentTemperature': state.get('temperature', {}).get('currentTemperature'),
@@ -1024,39 +1184,72 @@ async def get_air_conditioner_state_api():
         raise HTTPException(status_code=500, detail=f'에어컨 상태 조회 실패: {str(e)}')
 
 @app.post("/air_conditioner/control")
-async def control_air_conditioner_api(data: AirConditionerControlRequest):
-    """에어컨 제어 API"""
+async def control_air_conditioner_api(data: AirConditionerControlRequest, request: Request):
+    """에어컨 제어 API (사용자별 PAT 토큰 사용)"""
     if not AIR_CONDITIONER_AVAILABLE:
         raise HTTPException(status_code=500, detail="에어컨 모듈을 사용할 수 없습니다.")
     
     try:
-        logger.info(f"📱 앱에서 에어컨 제어 요청: {data.dict()}")
+        # 쿼리 파라미터에서 user_id 가져오기 (없으면 기본값)
+        user_id = request.query_params.get('user_id', 'default')
+        
+        # 사용자별 등록 정보 확인
+        device_info = user_iot_devices.get(user_id)
+        if not device_info:
+            raise HTTPException(status_code=404, detail="등록된 디바이스가 없습니다. 먼저 PAT 토큰을 등록해주세요.")
+        
+        pat_token = device_info['pat_token']
+        device_id = device_info['device_id']
+        
+        logger.info(f"📱 앱에서 에어컨 제어 요청: {data.dict()} (사용자: {user_id})")
         
         if not data.action:
             raise HTTPException(status_code=400, detail="action 파라미터가 필요합니다.")
         
-        result = None
+        # 명령 생성
+        command = {}
         
         if data.action == 'set_temperature':
             if data.target_temperature is None:
                 raise HTTPException(status_code=400, detail="target_temperature 파라미터가 필요합니다.")
-            result = set_temperature(target_temp=float(data.target_temperature), unit=data.unit or 'C')
+            command = {
+                "temperature": {
+                    "targetTemperature": float(data.target_temperature),
+                    "unit": data.unit or 'C'
+                }
+            }
             
         elif data.action == 'set_mode':
             if not data.mode:
                 raise HTTPException(status_code=400, detail="mode 파라미터가 필요합니다.")
-            result = set_job_mode(mode=data.mode)
+            command = {
+                "airConJobMode": {
+                    "currentJobMode": data.mode
+                }
+            }
             
         elif data.action == 'set_wind_strength':
             if not data.strength:
                 raise HTTPException(status_code=400, detail="strength 파라미터가 필요합니다.")
-            result = set_wind_strength(strength=data.strength)
+            command = {
+                "airFlow": {
+                    "windStrength": data.strength
+                }
+            }
             
         elif data.action == 'set_power':
-            result = set_power(power_on=bool(data.power_on))
+            power_mode = "POWER_ON" if bool(data.power_on) else "POWER_OFF"
+            command = {
+                "operation": {
+                    "airConOperationMode": power_mode
+                }
+            }
             
         else:
             raise HTTPException(status_code=400, detail=f'지원하지 않는 action: {data.action}')
+        
+        # PAT 토큰으로 제어 명령 전송
+        result = send_device_command_with_pat_token(pat_token, device_id, command)
         
         logger.info(f"✅ 에어컨 제어 성공: {data.action}")
         
@@ -1121,6 +1314,438 @@ async def get_temperature_threshold_api():
     except Exception as e:
         logger.error(f"❌ 온도 임계값 조회 실패: {str(e)}")
         raise HTTPException(status_code=500, detail=f'온도 임계값 조회 실패: {str(e)}')
+
+# ==================== IoT 디바이스 등록 API ====================
+
+class PatTokenRequest(BaseModel):
+    """PAT 토큰 등록 요청"""
+    pat_token: str
+    user_id: Optional[str] = "default"  # 기본값, 나중에 실제 사용자 ID로 확장 가능
+
+def get_devices_with_pat_token(pat_token: str, country: str = "KR"):
+    """
+    PAT 토큰을 사용하여 디바이스 목록을 조회합니다.
+    test.py의 get_devices를 래핑하여 PAT 토큰을 동적으로 사용할 수 있게 합니다.
+    """
+    import base64
+    import uuid
+    import requests
+    
+    # test.py의 상수들
+    THINQ_API_BASE_URL = "https://api-kic.lgthinq.com"
+    THINQ_API_KEY = "v6GFvkweNo7DK7yD3ylIZ9w52aKBU0eJ7wLXkSR3"
+    CLIENT_ID = "poseul-app"
+    
+    def generate_message_id():
+        uuid_v4 = uuid.uuid4()
+        uuid_bytes = uuid_v4.bytes
+        encoded = base64.urlsafe_b64encode(uuid_bytes).decode('utf-8').rstrip('=')
+        return encoded[:22]
+    
+    url = f"{THINQ_API_BASE_URL}/devices"
+    headers = {
+        "Authorization": f"Bearer {pat_token}",
+        "x-message-id": generate_message_id(),
+        "x-country": country,
+        "x-client-id": CLIENT_ID,
+        "x-api-key": THINQ_API_KEY
+    }
+    
+    try:
+        # 타임아웃을 15초로 증가 (LG ThinQ API 응답이 느릴 수 있음)
+        logger.info(f"🔍 LG ThinQ API 호출 시작: {url}")
+        response = requests.get(url, headers=headers, timeout=15)
+        response.raise_for_status()
+        logger.info(f"✅ LG ThinQ API 응답 성공: {response.status_code}")
+        return response.json()
+    except requests.exceptions.Timeout:
+        logger.error(f"❌ 디바이스 목록 조회 타임아웃 (15초 초과)")
+        logger.error(f"   URL: {url}")
+        logger.error(f"   PAT 토큰 시작: {pat_token[:20]}...")
+        raise HTTPException(status_code=504, detail="LG ThinQ API 응답 시간 초과. 네트워크 연결을 확인해주세요.")
+    except requests.exceptions.HTTPError as e:
+        logger.error(f"❌ HTTP 에러 발생: {e.response.status_code if e.response else 'N/A'}")
+        if e.response:
+            logger.error(f"   응답 내용: {e.response.text[:200]}")
+        raise HTTPException(status_code=e.response.status_code if e.response else 500, detail=f"LG ThinQ API 오류: {str(e)}")
+    except Exception as e:
+        logger.error(f"❌ 디바이스 목록 조회 실패: {str(e)}")
+        logger.error(f"   에러 타입: {type(e).__name__}")
+        raise
+
+@app.post("/iot/auto-register")
+async def auto_register_device_api(data: PatTokenRequest):
+    """
+    PAT 토큰만 받아서 자동으로 에어컨을 찾아 등록합니다.
+    """
+    try:
+        pat_token = data.pat_token.strip()
+        user_id = data.user_id or "default"
+        
+        if not pat_token:
+            raise HTTPException(status_code=400, detail="PAT 토큰이 필요합니다.")
+        
+        if not pat_token.startswith("thinqpat_"):
+            raise HTTPException(status_code=400, detail="올바른 PAT 토큰 형식이 아닙니다. 'thinqpat_'로 시작해야 합니다.")
+        
+        logger.info(f"📱 PAT 토큰으로 디바이스 자동 등록 요청 (사용자: {user_id})")
+        logger.info(f"🔑 사용된 PAT 토큰: {pat_token[:20]}... (에어컨 모듈과 독립적으로 동작)")
+        logger.info(f"⏱️  요청 시작 시간: {datetime.now().isoformat()}")
+        
+        # 디바이스 목록 조회 (에어컨 모듈과 독립적으로 동작)
+        start_time = time.time()
+        devices_result = get_devices_with_pat_token(pat_token)
+        elapsed_time = time.time() - start_time
+        logger.info(f"⏱️  LG ThinQ API 응답 시간: {elapsed_time:.2f}초")
+        
+        # 디바이스 목록 추출
+        devices = []
+        if 'result' in devices_result and 'devices' in devices_result['result']:
+            devices = devices_result['result']['devices']
+        elif 'response' in devices_result:
+            if isinstance(devices_result['response'], list):
+                devices = devices_result['response']
+            elif isinstance(devices_result['response'], dict) and 'devices' in devices_result['response']:
+                devices = devices_result['response']['devices']
+        
+        if not devices:
+            return {
+                'success': False,
+                'message': '등록된 디바이스가 없습니다. ThinQ 앱에서 디바이스를 등록해주세요.'
+            }
+        
+        # 에어컨만 필터링
+        logger.info(f"📋 총 {len(devices)}개의 디바이스 발견, 에어컨 필터링 시작...")
+        air_conditioners = []
+        for idx, device in enumerate(devices):
+            device_info = device.get('deviceInfo', {})
+            device_type = device_info.get('type') or device.get('deviceType') or device.get('type', '')
+            alias = device_info.get('alias', device.get('alias', ''))
+            model_name = device_info.get('modelName', device.get('modelName', ''))
+            
+            # 디바이스 정보 로깅 (디버깅용)
+            logger.info(f"  디바이스 {idx + 1}:")
+            logger.info(f"    - deviceId: {device.get('deviceId', 'N/A')[:30]}...")
+            logger.info(f"    - alias: {alias}")
+            logger.info(f"    - modelName: {model_name}")
+            logger.info(f"    - deviceType (deviceInfo.type): {device_info.get('type', 'N/A')}")
+            logger.info(f"    - deviceType (root): {device.get('deviceType', 'N/A')}")
+            logger.info(f"    - deviceType (root.type): {device.get('type', 'N/A')}")
+            logger.info(f"    - 최종 device_type: {device_type}")
+            
+            # 에어컨 타입 체크 (다양한 형식 지원)
+            is_air_conditioner = False
+            device_type_upper = device_type.upper() if device_type else ''
+            alias_upper = alias.upper() if alias else ''
+            model_name_upper = model_name.upper() if model_name else ''
+            
+            # 1. deviceType으로 확인
+            if (device_type == 'DEVICE_AIR_CONDITIONER' or 
+                device_type_upper == 'DEVICE_AIR_CONDITIONER' or
+                device_type_upper == 'AIR_CONDITIONER' or
+                device_type_upper == 'AIRCONDITIONER' or
+                ('AIR' in device_type_upper and 'CONDITIONER' in device_type_upper) or
+                'AIRCON' in device_type_upper):
+                is_air_conditioner = True
+                logger.info(f"    ✅ deviceType으로 에어컨 인식됨")
+            
+            # 2. alias로 확인 (가장 확실한 방법)
+            if not is_air_conditioner:
+                if any(keyword in alias_upper for keyword in ['에어컨', 'AIR', 'AIRCON', 'AC', 'AIRCONDITIONER']):
+                    is_air_conditioner = True
+                    logger.info(f"    ✅ alias로 에어컨 인식됨: {alias}")
+            
+            # 3. modelName으로 확인
+            if not is_air_conditioner:
+                if any(keyword in model_name_upper for keyword in ['AC', 'AIR', 'AIRCON', '에어컨', 'AIRCONDITIONER']):
+                    is_air_conditioner = True
+                    logger.info(f"    ✅ modelName으로 에어컨 인식됨: {model_name}")
+            
+            if is_air_conditioner:
+                air_conditioners.append({
+                    'deviceId': device.get('deviceId'),
+                    'alias': alias,
+                    'modelName': model_name,
+                    'online': device.get('online', False),
+                    'deviceType': device_type
+                })
+                logger.info(f"    ✅ 에어컨 목록에 추가됨")
+            else:
+                logger.info(f"    ❌ 에어컨이 아님 (스킵)")
+        
+        logger.info(f"🔍 에어컨 필터링 결과: {len(air_conditioners)}개의 에어컨 발견")
+        
+        if len(air_conditioners) == 0:
+            return {
+                'success': False,
+                'message': '등록된 에어컨이 없습니다. ThinQ 앱에서 에어컨을 등록해주세요.'
+            }
+        elif len(air_conditioners) == 1:
+            # 에어컨이 1개면 자동 등록
+            device = air_conditioners[0]
+            device_id = device['deviceId']
+            device_name = device['alias']
+            
+            # 사용자별로 저장 (DB + 메모리 캐시)
+            save_iot_device_to_db(user_id, pat_token, device_id, device_name, device['modelName'])
+            # 메모리 캐시도 업데이트
+            user_iot_devices[user_id] = {
+                'pat_token': pat_token,
+                'device_id': device_id,
+                'device_name': device_name,
+                'model_name': device['modelName']
+            }
+            
+            logger.info(f"✅ 에어컨 자동 등록 완료: {device_name} (ID: {device_id[:20]}...)")
+            
+            return {
+                'success': True,
+                'deviceId': device_id,
+                'deviceName': device_name,
+                'modelName': device['modelName'],
+                'autoRegistered': True,
+                'message': f'{device_name}이(가) 등록되었습니다.'
+            }
+        else:
+            # 에어컨이 여러 개면 목록 반환
+            return {
+                'success': False,
+                'needsSelection': True,
+                'devices': air_conditioners,
+                'message': '등록된 에어컨이 여러 개입니다. 하나를 선택해주세요.'
+            }
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 디바이스 자동 등록 실패: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f'디바이스 등록 실패: {str(e)}')
+
+@app.post("/iot/register-device")
+async def register_selected_device_api(data: dict):
+    """
+    사용자가 선택한 디바이스를 등록합니다.
+    """
+    try:
+        pat_token = data.get('patToken', '').strip()
+        device_id = data.get('deviceId', '').strip()
+        user_id = data.get('userId', 'default')
+        
+        if not pat_token or not device_id:
+            raise HTTPException(status_code=400, detail="PAT 토큰과 디바이스 ID가 필요합니다.")
+        
+        # 디바이스 정보 조회
+        devices_result = get_devices_with_pat_token(pat_token)
+        devices = []
+        if 'result' in devices_result and 'devices' in devices_result['result']:
+            devices = devices_result['result']['devices']
+        elif 'response' in devices_result:
+            if isinstance(devices_result['response'], list):
+                devices = devices_result['response']
+        
+        # 선택한 디바이스 찾기
+        selected_device = None
+        for device in devices:
+            if device.get('deviceId') == device_id:
+                selected_device = device
+                break
+        
+        if not selected_device:
+            raise HTTPException(status_code=404, detail="선택한 디바이스를 찾을 수 없습니다.")
+        
+        device_info = selected_device.get('deviceInfo', {})
+        device_name = device_info.get('alias', '에어컨')
+        
+        # 저장 (DB + 메모리 캐시)
+        save_iot_device_to_db(user_id, pat_token, device_id, device_name, device_info.get('modelName', ''))
+        # 메모리 캐시도 업데이트
+        user_iot_devices[user_id] = {
+            'pat_token': pat_token,
+            'device_id': device_id,
+            'device_name': device_name,
+            'model_name': device_info.get('modelName', '')
+        }
+        
+        logger.info(f"✅ 디바이스 등록 완료: {device_name} (ID: {device_id[:20]}...)")
+        
+        return {
+            'success': True,
+            'deviceId': device_id,
+            'deviceName': device_name,
+            'message': f'{device_name}이(가) 등록되었습니다.'
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 디바이스 등록 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f'디바이스 등록 실패: {str(e)}')
+
+@app.get("/iot/device-status")
+async def get_device_registration_status_api(user_id: Optional[str] = "default"):
+    """
+    사용자의 디바이스 등록 상태를 조회합니다.
+    """
+    device_info = user_iot_devices.get(user_id)
+    
+    if not device_info:
+        return {
+            'success': False,
+            'registered': False,
+            'message': '등록된 디바이스가 없습니다.'
+        }
+    
+    return {
+        'success': True,
+        'registered': True,
+        'deviceId': device_info['device_id'],
+        'deviceName': device_info['device_name'],
+        'modelName': device_info.get('model_name', '')
+    }
+
+@app.get("/iot/device-status/db")
+async def get_device_registration_status_from_db_api(user_id: Optional[str] = "default"):
+    """
+    DB에서 사용자의 디바이스 등록 상태를 조회합니다 (디버깅용)
+    """
+    try:
+        with engine.connect() as conn:
+            query = text("""
+                SELECT user_id, pat_token, device_id, device_name, model_name, created_at, updated_at
+                FROM iot_devices
+                WHERE user_id = :user_id
+                ORDER BY updated_at DESC
+                LIMIT 1
+            """)
+            result = conn.execute(query, {'user_id': user_id})
+            row = result.fetchone()
+            
+            if not row:
+                return {
+                    'success': False,
+                    'registered': False,
+                    'message': 'DB에 등록된 디바이스가 없습니다.',
+                    'storage_type': 'database',
+                    'memory_cache': user_iot_devices.get(user_id) is not None
+                }
+            
+            return {
+                'success': True,
+                'registered': True,
+                'deviceId': row.device_id,
+                'deviceName': row.device_name,
+                'modelName': row.model_name or '',
+                'createdAt': row.created_at.isoformat() if row.created_at else None,
+                'updatedAt': row.updated_at.isoformat() if row.updated_at else None,
+                'storage_type': 'database',
+                'memory_cache': user_iot_devices.get(user_id) is not None
+            }
+    except Exception as e:
+        logger.error(f"❌ DB에서 디바이스 등록 상태 조회 실패: {str(e)}")
+        return {
+            'success': False,
+            'error': str(e),
+            'storage_type': 'database',
+            'memory_cache': user_iot_devices.get(user_id) is not None
+        }
+
+@app.post("/iot/test-pat-token")
+async def test_pat_token_connection(data: PatTokenRequest):
+    """
+    PAT 토큰 연결 테스트 (타임아웃 전에 빠르게 확인)
+    """
+    try:
+        pat_token = data.pat_token.strip()
+        
+        if not pat_token:
+            raise HTTPException(status_code=400, detail="PAT 토큰이 필요합니다.")
+        
+        if not pat_token.startswith("thinqpat_"):
+            raise HTTPException(status_code=400, detail="올바른 PAT 토큰 형식이 아닙니다.")
+        
+        logger.info(f"🧪 PAT 토큰 연결 테스트 시작: {pat_token[:20]}...")
+        
+        # 짧은 타임아웃으로 빠른 테스트 (5초)
+        import requests
+        THINQ_API_BASE_URL = "https://api-kic.lgthinq.com"
+        THINQ_API_KEY = "v6GFvkweNo7DK7yD3ylIZ9w52aKBU0eJ7wLXkSR3"
+        CLIENT_ID = "poseul-app"
+        import base64
+        import uuid
+        
+        def generate_message_id():
+            uuid_v4 = uuid.uuid4()
+            uuid_bytes = uuid_v4.bytes
+            encoded = base64.urlsafe_b64encode(uuid_bytes).decode('utf-8').rstrip('=')
+            return encoded[:22]
+        
+        url = f"{THINQ_API_BASE_URL}/devices"
+        headers = {
+            "Authorization": f"Bearer {pat_token}",
+            "x-message-id": generate_message_id(),
+            "x-country": "KR",
+            "x-client-id": CLIENT_ID,
+            "x-api-key": THINQ_API_KEY
+        }
+        
+        try:
+            logger.info(f"🔍 LG ThinQ API 테스트 호출: {url}")
+            response = requests.get(url, headers=headers, timeout=5)
+            response.raise_for_status()
+            logger.info(f"✅ PAT 토큰 연결 테스트 성공: {response.status_code}")
+            
+            # 응답 데이터 파싱
+            result = response.json()
+            device_count = 0
+            if 'result' in result and 'devices' in result['result']:
+                device_count = len(result['result']['devices'])
+            elif 'response' in result:
+                if isinstance(result['response'], list):
+                    device_count = len(result['response'])
+                elif isinstance(result['response'], dict) and 'devices' in result['response']:
+                    device_count = len(result['response']['devices'])
+            
+            return {
+                'success': True,
+                'connected': True,
+                'deviceCount': device_count,
+                'message': f'PAT 토큰 연결 성공! 등록된 디바이스: {device_count}개'
+            }
+        except requests.exceptions.Timeout:
+            logger.error(f"❌ PAT 토큰 연결 테스트 타임아웃 (5초 초과)")
+            return {
+                'success': False,
+                'connected': False,
+                'error': 'timeout',
+                'message': 'LG ThinQ API 응답 시간 초과 (5초). 네트워크 연결을 확인해주세요.'
+            }
+        except requests.exceptions.HTTPError as e:
+            status_code = e.response.status_code if e.response else 500
+            logger.error(f"❌ PAT 토큰 연결 테스트 HTTP 에러: {status_code}")
+            error_text = e.response.text[:200] if e.response else str(e)
+            return {
+                'success': False,
+                'connected': False,
+                'error': 'http_error',
+                'statusCode': status_code,
+                'message': f'LG ThinQ API 오류 ({status_code}): {error_text}'
+            }
+        except Exception as e:
+            logger.error(f"❌ PAT 토큰 연결 테스트 실패: {str(e)}")
+            return {
+                'success': False,
+                'connected': False,
+                'error': 'unknown',
+                'message': f'연결 테스트 실패: {str(e)}'
+            }
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ PAT 토큰 테스트 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f'테스트 실패: {str(e)}')
 
 # ==================== 온도 범위 설정 API ====================
 
@@ -2070,6 +2695,10 @@ scheduler.add_job(
 async def startup_event():
     """서버 시작 시 초기 세팅 및 스케줄러 시작"""
     logger.info("🚀 서버 시작 중...")
+    
+    # IoT 디바이스 등록 정보 초기화 (서버 재시작 시마다 매번 새로 등록하도록)
+    load_iot_devices_from_db()  # 이 함수는 이제 등록 정보를 초기화만 함
+    
     air_conditioner_auto_control.initialize_air_conditioner_settings(
         engine=engine,
         air_conditioner_available=AIR_CONDITIONER_AVAILABLE,
