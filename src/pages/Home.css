@@ -1,28 +1,28 @@
-/* Home 페이지 스타일 */
+/* Home 페이지 스타일 - 밝고 깔끔한 Silver Mist & Lavender 무드 */
 
-/* Home 페이지의 IonContent 배경 - 보라색 그라데이션 */
+/* Home 페이지의 IonContent 배경 - 밝아진 Silver Mist 그라데이션 */
 .home-page ion-content {
-  --background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-  background-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  --background: linear-gradient(180deg, #D5D7E3 0%, #D0B5CE 50%, #B2BECF 100%) !important;
+  background: linear-gradient(180deg, #D5D7E3 0%, #D0B5CE 50%, #B2BECF 100%) !important;
+  background-image: linear-gradient(180deg, #D5D7E3 0%, #D0B5CE 50%, #B2BECF 100%) !important;
   --padding-start: 16px;
   --padding-end: 16px;
   --padding-top: 16px;
   --padding-bottom: 16px;
-  color: #ffffff !important;
+  color: #66748D !important;
   overflow-y: auto !important;
   -webkit-overflow-scrolling: touch !important;
 }
 
 /* Home 페이지의 Shadow DOM 내부 스타일 */
 .home-page ion-content::part(scroll) {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-  background-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  background: linear-gradient(180deg, #D5D7E3 0%, #D0B5CE 50%, #B2BECF 100%) !important;
+  background-image: linear-gradient(180deg, #D5D7E3 0%, #D0B5CE 50%, #B2BECF 100%) !important;
 }
 
 .home-page ion-content .scroll-content {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-  background-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  background: linear-gradient(180deg, #D5D7E3 0%, #D0B5CE 50%, #B2BECF 100%) !important;
+  background-image: linear-gradient(180deg, #D5D7E3 0%, #D0B5CE 50%, #B2BECF 100%) !important;
 }
 
 /* IonContent 안의 헤더 제거 (중복 방지) */
@@ -30,34 +30,35 @@
   display: none !important;
 }
 
-/* 모바일 헤더 보라색 그라데이션 배경 */
+/* 모바일 헤더 - 부드러운 분홍~보라와 Dusk Blue 블렌드 그라데이션 */
 @media (max-width: 767px) {
   .home-page ion-header {
-    --background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-    background-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    --background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+    background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+    background-image: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+    box-shadow: 0 4px 12px rgba(152, 136, 168, 0.4);
   }
 
   .home-page ion-header::part(native) {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-    background-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+    background-image: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
   }
 
   .home-page ion-toolbar {
-    --background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    --background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
     --border-color: transparent !important;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-    background-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+    background-image: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
   }
 
   .home-page ion-toolbar::part(native) {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-    background-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+    background-image: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
   }
 }
 
 .home-page ion-title {
-  --color: white;
+  --color: #ffffff;
   background: transparent !important;
 }
 
@@ -76,19 +77,20 @@
   margin: 0 !important;
 }
 
-/* 카드 스타일 - Home 페이지에만 적용 */
+/* 카드 스타일 - Home 페이지에만 적용 (밝아진 Silver Mist & Lavender 톤) */
 .home-page ion-card {
   margin: 20px 0;
   margin-left: 0 !important;
   margin-right: 0 !important;
-  border-radius: 20px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  border-radius: 24px;
+  box-shadow: 0 12px 40px rgba(196, 161, 194, 0.4), 0 4px 16px rgba(102, 116, 141, 0.3), 0 2px 8px rgba(0, 0, 0, 0.15);
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
-  background: white !important;
+  background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%) !important;
   width: 100% !important;
   max-width: 100% !important;
   box-sizing: border-box;
+  border: 1px solid rgba(196, 161, 194, 0.35);
 }
 
 /* iOS에서도 전체 너비 적용 */
@@ -101,78 +103,112 @@
 }
 
 .home-page ion-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  transform: translateY(-6px) scale(1.01);
+  box-shadow: 0 20px 60px rgba(196, 161, 194, 0.5), 0 8px 24px rgba(102, 116, 141, 0.4), 0 4px 12px rgba(0, 0, 0, 0.2);
+  border-color: rgba(196, 161, 194, 0.5);
 }
 
 .home-page ion-card-header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-  color: white;
+  background: linear-gradient(135deg, #C4A1C2 0%, #7C88A9 100%) !important;
+  color: #ffffff;
   padding: 24px;
+  box-shadow: 0 4px 16px rgba(124, 136, 169, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.3);
 }
 
 .home-page ion-card-title {
   font-size: 1.4rem;
   font-weight: 600;
-  color: white;
+  color: #ffffff;
   margin: 0;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .home-page ion-card-content {
   padding: 24px;
-  background: white !important;
-  background-color: white !important;
-  color: #000000 !important;
+  background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%) !important;
+  background-color: transparent !important;
+  color: #66748D !important;
 }
 
-/* 입력 폼 스타일 */
-ion-item {
-  --border-radius: 12px;
+/* 입력 폼 스타일 - Home 페이지에만 적용 */
+.home-page ion-item {
+  --border-radius: 14px;
   --padding-start: 16px;
   --padding-end: 16px;
   margin: 16px 0;
-  border-radius: 12px;
-  background: #f8f9fa;
-  transition: all 0.2s ease;
-  border: 2px solid transparent;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.7) !important;
+  background-color: rgba(255, 255, 255, 0.7) !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 2px solid rgba(196, 161, 194, 0.2);
+  backdrop-filter: blur(10px);
 }
 
-ion-item:focus-within {
-  background: white;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+.home-page ion-item::part(native) {
+  background: rgba(255, 255, 255, 0.7) !important;
+  background-color: rgba(255, 255, 255, 0.7) !important;
 }
 
-ion-item ion-label {
+.home-page ion-item:focus-within {
+  background: rgba(255, 255, 255, 0.9) !important;
+  background-color: rgba(255, 255, 255, 0.9) !important;
+  border-color: #C4A1C2;
+  box-shadow: 0 0 0 4px rgba(196, 161, 194, 0.2), 0 4px 12px rgba(102, 116, 141, 0.2);
+  transform: translateY(-2px);
+}
+
+.home-page ion-item:focus-within::part(native) {
+  background: rgba(255, 255, 255, 0.9) !important;
+  background-color: rgba(255, 255, 255, 0.9) !important;
+}
+
+.home-page ion-item ion-label {
   font-weight: 600;
-  color: #333;
+  color: #66748D !important;
+  --color: #66748D !important;
   margin-bottom: 8px;
 }
 
-ion-item ion-input,
-ion-item ion-select {
+.home-page ion-item ion-input,
+.home-page ion-item ion-select {
   --padding-start: 0;
   --padding-end: 0;
-  color: #333;
+  color: #66748D !important;
+  --color: #66748D !important;
 }
 
-/* 예측 결과 스타일 */
-.prediction-result {
+/* 예측 결과 스타일 - Home 페이지에만 적용 */
+.home-page .prediction-result {
   text-align: center;
   padding: 40px 20px;
-  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-  border-radius: 20px;
+  background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%);
+  border-radius: 24px;
   margin: 20px 0;
-  box-shadow: 0 8px 24px rgba(245, 87, 108, 0.3);
+  box-shadow: 0 12px 40px rgba(196, 161, 194, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(196, 161, 194, 0.3);
+  position: relative;
+  overflow: hidden;
 }
 
-.prediction-result h1 {
+.home-page .prediction-result::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #C4A1C2 0%, #8A96B5 100%);
+}
+
+.home-page .prediction-result h1 {
   font-size: 4rem;
   margin: 0;
-  color: white;
+  color: #66748D;
   font-weight: 700;
-  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  text-shadow: 0 4px 16px rgba(196, 161, 194, 0.3), 0 2px 8px rgba(102, 116, 141, 0.2);
   animation: pulse 2s ease-in-out infinite;
+  letter-spacing: 4px;
 }
 
 @keyframes pulse {
@@ -184,33 +220,125 @@ ion-item ion-select {
   }
 }
 
-.status-text {
+.home-page .status-text {
   font-size: 1.8rem;
   font-weight: 600;
-  color: white;
+  color: #66748D;
   margin-top: 16px;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  text-shadow: 0 2px 8px rgba(196, 161, 194, 0.3), 0 1px 4px rgba(102, 116, 141, 0.15);
+  letter-spacing: 1px;
 }
 
-/* 버튼 스타일 */
-ion-button {
-  --border-radius: 12px;
-  --box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+/* 버튼 스타일 - Home 페이지에만 적용 (부드러운 분홍~보라 블렌드) */
+.home-page ion-button {
+  --background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%);
+  --background-hover: linear-gradient(135deg, #B0A0C0 0%, #A898B8 50%, #A090B0 100%);
+  --background-activated: linear-gradient(135deg, #B0A0C0 0%, #A898B8 50%, #A090B0 100%);
+  --color: #ffffff;
+  --border-radius: 14px;
+  --box-shadow: 0 6px 20px rgba(152, 136, 168, 0.4), 0 2px 8px rgba(144, 128, 176, 0.3);
   margin: 20px 0;
   font-weight: 600;
   font-size: 1rem;
   text-transform: none;
-  height: 50px;
-  transition: all 0.3s ease;
+  height: 52px;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  position: relative;
+  overflow: hidden;
 }
 
-ion-button:hover {
-  transform: translateY(-2px);
-  --box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+.home-page ion-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+  transition: left 0.5s ease;
 }
 
-ion-button:active {
+.home-page ion-button:hover::before {
+  left: 100%;
+}
+
+.home-page ion-button:hover {
+  transform: translateY(-3px) scale(1.02);
+  --box-shadow: 0 10px 28px rgba(152, 136, 168, 0.5), 0 4px 12px rgba(144, 128, 176, 0.35);
+}
+
+.home-page ion-button:active {
   transform: translateY(0);
+}
+
+/* 수면 시작 버튼 - 중요한 버튼, 눈에 띄는 부드러운 분홍-보라 그라데이션 */
+.home-page .sleep-start-button {
+  --background: linear-gradient(135deg, #D4A5D2 0%, #C4A1C2 50%, #B895B6 100%) !important;
+  --background-hover: linear-gradient(135deg, #E4B5E2 0%, #D4A5D2 50%, #C4A1C2 100%) !important;
+  --background-activated: linear-gradient(135deg, #E4B5E2 0%, #D4A5D2 50%, #C4A1C2 100%) !important;
+  --color: #ffffff !important;
+  --border-radius: 16px !important;
+  --box-shadow: 0 8px 24px rgba(196, 161, 194, 0.6), 0 4px 12px rgba(184, 149, 182, 0.4), 0 0 0 2px rgba(212, 165, 210, 0.3), inset 0 2px 4px rgba(0, 0, 0, 0.15), inset 0 -2px 4px rgba(0, 0, 0, 0.1) !important;
+  border-radius: 16px !important;
+  font-weight: 700 !important;
+  font-size: 1.1rem !important;
+  height: 56px !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+.home-page .sleep-start-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.25) 0%, transparent 50%, rgba(255, 255, 255, 0.15) 100%);
+  pointer-events: none;
+  z-index: 1;
+  border-radius: 16px;
+}
+
+.home-page .sleep-start-button::part(native) {
+  background: linear-gradient(135deg, #D4A5D2 0%, #C4A1C2 50%, #B895B6 100%) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 8px 24px rgba(196, 161, 194, 0.6), 0 4px 12px rgba(184, 149, 182, 0.4), 0 0 0 2px rgba(212, 165, 210, 0.3), inset 0 2px 4px rgba(0, 0, 0, 0.15), inset 0 -2px 4px rgba(0, 0, 0, 0.1) !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2) !important;
+  position: relative !important;
+}
+
+.home-page .sleep-start-button:hover {
+  --box-shadow: 0 12px 32px rgba(196, 161, 194, 0.7), 0 6px 16px rgba(184, 149, 182, 0.5), 0 0 0 3px rgba(212, 165, 210, 0.4), inset 0 2px 4px rgba(0, 0, 0, 0.2), inset 0 -2px 4px rgba(0, 0, 0, 0.15) !important;
+  transform: translateY(-2px) scale(1.02) !important;
+}
+
+.home-page .sleep-start-button:hover::part(native) {
+  box-shadow: 0 12px 32px rgba(196, 161, 194, 0.7), 0 6px 16px rgba(184, 149, 182, 0.5), 0 0 0 3px rgba(212, 165, 210, 0.4), inset 0 2px 4px rgba(0, 0, 0, 0.2), inset 0 -2px 4px rgba(0, 0, 0, 0.15) !important;
+}
+
+/* 모델 테스트 버튼 - 연보라 살짝 & Dusk Blue 그라데이션 */
+.home-page .model-test-button {
+  --background: linear-gradient(135deg, #A4B0C1 0%, #8C98B9 50%, #7C88A9 100%) !important;
+  --background-hover: linear-gradient(135deg, #B4C0D1 0%, #9CA8C9 50%, #8C98B9 100%) !important;
+  --background-activated: linear-gradient(135deg, #B4C0D1 0%, #9CA8C9 50%, #8C98B9 100%) !important;
+  --color: #ffffff !important;
+  --border-radius: 14px !important;
+  --box-shadow: 0 6px 20px rgba(124, 136, 169, 0.35), 0 2px 8px rgba(102, 116, 141, 0.2) !important;
+}
+
+.home-page .model-test-button::part(native) {
+  background: linear-gradient(135deg, #A4B0C1 0%, #8C98B9 50%, #7C88A9 100%) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 6px 20px rgba(124, 136, 169, 0.35), 0 2px 8px rgba(102, 116, 141, 0.2) !important;
+  color: #ffffff !important;
+}
+
+.home-page .model-test-button:hover {
+  --box-shadow: 0 10px 28px rgba(124, 136, 169, 0.45), 0 4px 12px rgba(102, 116, 141, 0.25) !important;
 }
 
 /* 차트 영역 */
@@ -224,44 +352,44 @@ ion-button:active {
   border: 2px dashed #ddd;
 }
 
-/* 로딩 스피너 */
-ion-spinner {
-  --color: #667eea;
+/* 로딩 스피너 - Home 페이지에만 적용 */
+.home-page ion-spinner {
+  --color: #66748D;
 }
 
-/* 다크모드 지원 */
+/* 다크모드 지원 - Home 페이지에만 적용 (밝은 톤 유지) */
 @media (prefers-color-scheme: dark) {
-  ion-card {
-    background: #1e1e1e;
+  .home-page ion-card {
+    background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%) !important;
   }
 
-  ion-card-content {
-    background: #1e1e1e;
-    color: white;
+  .home-page ion-card-content {
+    background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%) !important;
+    color: #66748D !important;
   }
 
-  ion-item {
-    background: #2a2a2a;
-    color: white;
+  .home-page ion-item {
+    background: rgba(255, 255, 255, 0.7) !important;
+    color: #66748D !important;
   }
 
-  ion-item:focus-within {
-    background: #333;
-    border-color: #667eea;
+  .home-page ion-item:focus-within {
+    background: rgba(255, 255, 255, 0.9) !important;
+    border-color: #C4A1C2;
   }
 
-  ion-item ion-label {
-    color: #e0e0e0;
+  .home-page ion-item ion-label {
+    color: #66748D !important;
   }
 
-  ion-item ion-input,
-  ion-item ion-select {
-    color: white;
+  .home-page ion-item ion-input,
+  .home-page ion-item ion-select {
+    color: #66748D !important;
   }
 
-  .chart-placeholder {
-    background: #2a2a2a;
-    border-color: #444;
-    color: #999;
+  .home-page .chart-placeholder {
+    background: #E8E9F0;
+    border-color: #C4A1C2;
+    color: #66748D;
   }
 }

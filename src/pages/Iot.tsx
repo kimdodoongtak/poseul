@@ -339,7 +339,7 @@ const Iot: React.FC = () => {
                     <div style={{ marginTop: '8px' }}>
                       <p style={{ fontSize: '14px', color: '#666', marginBottom: '4px' }}>
                         <strong>
-                          {isCachedRange ? '수동 조절:' : isAutoRange ? '자동 조절:' : '온도 범위:'}
+                          {isCachedRange ? '수동 온도 범위:' : isAutoRange ? '자동 온도 범위:' : '온도 범위:'}
                         </strong> {temperatureRange.min?.toFixed(1)}°C ~ {temperatureRange.max?.toFixed(1)}°C
                       </p>
                       {originalTemperatureRange.min !== null && originalTemperatureRange.max !== null && 
@@ -463,6 +463,7 @@ const Iot: React.FC = () => {
                 <IonButton
                   expand="block"
                   color="primary"
+                  className="temperature-confirm-button"
                   onClick={handleConfirmTemperature}
                   disabled={loading}
                   style={{ 

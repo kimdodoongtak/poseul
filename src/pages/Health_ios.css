@@ -1,28 +1,29 @@
 /* Health_ios 페이지 스타일 */
 
-/* 모바일 헤더 보라색 그라데이션 배경 */
+/* 모바일 헤더 - Home과 동일한 부드러운 분홍~보라 그라데이션 */
 @media (max-width: 767px) {
-  ion-header {
-    --background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-    background-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  .health-ios-page ion-header {
+    --background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+    background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+    background-image: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+    box-shadow: 0 4px 12px rgba(152, 136, 168, 0.4);
   }
 
-  ion-header::part(native) {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-    background-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  .health-ios-page ion-header::part(native) {
+    background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+    background-image: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
   }
 
-  ion-toolbar {
-    --background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  .health-ios-page ion-toolbar {
+    --background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
     --border-color: transparent !important;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-    background-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+    background-image: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
   }
 
-  ion-toolbar::part(native) {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-    background-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  .health-ios-page ion-toolbar::part(native) {
+    background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+    background-image: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
   }
 }
 
@@ -52,8 +53,8 @@
   }
 }
 
-ion-title {
-  --color: white;
+.health-ios-page ion-title {
+  --color: #ffffff;
   background: transparent !important;
 }
 
@@ -69,49 +70,50 @@ ion-content ion-header {
   display: none !important;
 }
 
-/* Health_ios 페이지의 IonContent 배경 - 클래스 기반 선택자 사용 */
+/* Health_ios 페이지의 IonContent 배경 - Home과 동일한 Silver Mist 그라데이션 */
 .health-ios-page ion-content {
-  --background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-  background-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  --background: linear-gradient(180deg, #D5D7E3 0%, #D0B5CE 50%, #B2BECF 100%) !important;
+  background: linear-gradient(180deg, #D5D7E3 0%, #D0B5CE 50%, #B2BECF 100%) !important;
+  background-image: linear-gradient(180deg, #D5D7E3 0%, #D0B5CE 50%, #B2BECF 100%) !important;
   --padding-start: 16px !important;
   --padding-end: 16px !important;
   --padding-top: 16px !important;
   --padding-bottom: 16px !important;
-  color: #ffffff !important;
+  color: #66748D !important;
   overflow-y: auto !important;
   -webkit-overflow-scrolling: touch !important;
 }
 
 /* Health_ios 페이지의 Shadow DOM 내부 스타일 */
 .health-ios-page ion-content::part(scroll) {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-  background-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  background: linear-gradient(180deg, #D5D7E3 0%, #D0B5CE 50%, #B2BECF 100%) !important;
+  background-image: linear-gradient(180deg, #D5D7E3 0%, #D0B5CE 50%, #B2BECF 100%) !important;
 }
 
 .health-ios-page ion-content .scroll-content {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-  background-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  background: linear-gradient(180deg, #D5D7E3 0%, #D0B5CE 50%, #B2BECF 100%) !important;
+  background-image: linear-gradient(180deg, #D5D7E3 0%, #D0B5CE 50%, #B2BECF 100%) !important;
 }
 
-/* 카드 스타일 - Health_ios 페이지에만 적용 */
+/* 카드 스타일 - Home과 동일한 Silver Mist & Lavender 톤 */
 .health-ios-page ion-card {
-  margin: 16px 0;
+  margin: 20px 0;
   margin-left: 0 !important;
   margin-right: 0 !important;
-  border-radius: 20px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  border-radius: 24px;
+  box-shadow: 0 12px 40px rgba(196, 161, 194, 0.4), 0 4px 16px rgba(102, 116, 141, 0.3), 0 2px 8px rgba(0, 0, 0, 0.15);
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
-  background: white !important;
+  background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%) !important;
   width: 100% !important;
   max-width: 100% !important;
   box-sizing: border-box;
+  border: 1px solid rgba(196, 161, 194, 0.35);
 }
 
 /* iOS에서도 전체 너비 적용 */
 .platform-ios .health-ios-page ion-card {
-  margin: 16px 0 !important;
+  margin: 20px 0 !important;
   margin-left: 0 !important;
   margin-right: 0 !important;
   width: 100% !important;
@@ -119,39 +121,45 @@ ion-content ion-header {
 }
 
 .health-ios-page ion-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
+  transform: translateY(-6px) scale(1.01);
+  box-shadow: 0 20px 60px rgba(196, 161, 194, 0.5), 0 8px 24px rgba(102, 116, 141, 0.4), 0 4px 12px rgba(0, 0, 0, 0.2);
+  border-color: rgba(196, 161, 194, 0.5);
 }
 
 .health-ios-page ion-card-header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-  color: white;
-  padding: 20px;
+  background: linear-gradient(135deg, #C4A1C2 0%, #7C88A9 100%) !important;
+  color: #ffffff;
+  padding: 24px;
+  box-shadow: 0 4px 16px rgba(124, 136, 169, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.3);
 }
 
 .health-ios-page ion-card-title {
-  font-size: 1.3rem;
+  font-size: 1.4rem;
   font-weight: 600;
-  color: white;
+  color: #ffffff;
+  margin: 0;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .health-ios-page ion-card-content {
-  padding: 20px;
-  background: white !important;
-  background-color: white !important;
-  color: #000000 !important;
+  padding: 24px;
+  background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%) !important;
+  background-color: transparent !important;
+  color: #66748D !important;
   width: 100%;
   box-sizing: border-box;
 }
 
-/* 건강 데이터 카드 */
+/* 건강 데이터 카드 - Home과 동일 */
 .health-data-card {
-  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-  color: white;
-  border-radius: 20px;
+  background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%);
+  color: #66748D;
+  border-radius: 24px;
   padding: 24px;
   margin: 16px 0;
-  box-shadow: 0 8px 24px rgba(245, 87, 108, 0.3);
+  box-shadow: 0 12px 40px rgba(196, 161, 194, 0.4), 0 4px 16px rgba(102, 116, 141, 0.3), 0 2px 8px rgba(0, 0, 0, 0.15);
+  border: 1px solid rgba(196, 161, 194, 0.35);
 }
 
 .health-data-card h2 {
@@ -166,25 +174,27 @@ ion-content ion-header {
   font-weight: bold;
 }
 
-/* 초기 설정 카드 */
+/* 초기 설정 카드 - Home과 동일 */
 .setup-card {
-  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-  border-radius: 20px;
+  background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%);
+  border-radius: 24px;
   margin: 16px 0;
-  box-shadow: 0 8px 24px rgba(79, 172, 254, 0.3);
+  box-shadow: 0 12px 40px rgba(196, 161, 194, 0.4), 0 4px 16px rgba(102, 116, 141, 0.3), 0 2px 8px rgba(0, 0, 0, 0.15);
+  border: 1px solid rgba(196, 161, 194, 0.35);
 }
 
-/* 입력 필드 - Health_ios 페이지에만 적용 */
+/* 입력 필드 - Home과 동일한 스타일 */
 .health-ios-page ion-item {
-  --border-radius: 12px;
+  --border-radius: 14px;
   --padding-start: 16px;
   --padding-end: 16px;
-  --background: #f5f5f5;
-  --background-hover: #eeeeee;
-  margin: 12px 0;
-  border-radius: 12px;
-  background: #f5f5f5 !important;
-  transition: background 0.2s ease;
+  margin: 16px 0;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.7) !important;
+  background-color: rgba(255, 255, 255, 0.7) !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 2px solid rgba(196, 161, 194, 0.2);
+  backdrop-filter: blur(10px);
   --min-height: 56px;
   display: flex;
   align-items: center;
@@ -192,12 +202,13 @@ ion-content ion-header {
 }
 
 .health-ios-page ion-item:hover {
-  background: #eeeeee !important;
+  background: rgba(255, 255, 255, 0.9) !important;
 }
 
 .health-ios-page ion-item ion-label {
-  font-weight: 500;
-  color: #333;
+  font-weight: 600;
+  color: #66748D !important;
+  --color: #66748D !important;
   white-space: nowrap;
   overflow: visible;
   text-overflow: clip;
@@ -215,65 +226,93 @@ ion-item ion-input {
   background: transparent !important;
 }
 
-/* 버튼 스타일 */
-ion-button {
-  --border-radius: 12px;
-  --box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  margin: 12px 0;
+/* 버튼 스타일 - Home과 동일한 부드러운 분홍~보라 블렌드 */
+.health-ios-page ion-button {
+  --background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%);
+  --background-hover: linear-gradient(135deg, #B0A0C0 0%, #A898B8 50%, #A090B0 100%);
+  --background-activated: linear-gradient(135deg, #B0A0C0 0%, #A898B8 50%, #A090B0 100%);
+  --color: #ffffff;
+  --border-radius: 14px;
+  --box-shadow: 0 6px 20px rgba(152, 136, 168, 0.4), 0 2px 8px rgba(144, 128, 176, 0.3);
+  margin: 20px 0;
   font-weight: 600;
+  font-size: 1rem;
   text-transform: none;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  height: 52px;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  position: relative;
+  overflow: hidden;
 }
 
-ion-button:hover {
-  transform: translateY(-2px);
-  --box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+.health-ios-page ion-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+  transition: left 0.5s ease;
 }
 
-/* 설정 버튼 스타일 (로그인 버튼과 동일한 색상) - 더 구체적인 선택자 사용 */
+.health-ios-page ion-button:hover::before {
+  left: 100%;
+}
+
+.health-ios-page ion-button:hover {
+  transform: translateY(-3px) scale(1.02);
+  --box-shadow: 0 10px 28px rgba(152, 136, 168, 0.5), 0 4px 12px rgba(144, 128, 176, 0.35);
+}
+
+.health-ios-page ion-button:active {
+  transform: translateY(0);
+}
+
+/* 설정 버튼 스타일 - Home과 동일 */
 .health-ios-page ion-button[color="primary"],
-ion-button[color="primary"] {
-  --background: linear-gradient(135deg, #80a0df 0%, #9080df 100%) !important;
-  --background-hover: linear-gradient(135deg, #7090cf 0%, #8070cf 100%) !important;
-  --background-activated: linear-gradient(135deg, #7090cf 0%, #8070cf 100%) !important;
-  --background-focused: linear-gradient(135deg, #7090cf 0%, #8070cf 100%) !important;
-  --color: white !important;
-  --box-shadow: 0 4px 12px rgba(128, 160, 223, 0.3) !important;
-  background: linear-gradient(135deg, #80a0df 0%, #9080df 100%) !important;
-  color: white !important;
+.health-ios-page ion-button[color="primary"] {
+  --background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+  --background-hover: linear-gradient(135deg, #B0A0C0 0%, #A898B8 50%, #A090B0 100%) !important;
+  --background-activated: linear-gradient(135deg, #B0A0C0 0%, #A898B8 50%, #A090B0 100%) !important;
+  --background-focused: linear-gradient(135deg, #B0A0C0 0%, #A898B8 50%, #A090B0 100%) !important;
+  --color: #ffffff !important;
+  --box-shadow: 0 6px 20px rgba(152, 136, 168, 0.4), 0 2px 8px rgba(144, 128, 176, 0.3) !important;
+  background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+  color: #ffffff !important;
 }
 
 .health-ios-page ion-button[color="primary"]:hover,
-ion-button[color="primary"]:hover {
-  --box-shadow: 0 6px 16px rgba(128, 160, 223, 0.4) !important;
-  background: linear-gradient(135deg, #7090cf 0%, #8070cf 100%) !important;
+.health-ios-page ion-button[color="primary"]:hover {
+  --box-shadow: 0 10px 28px rgba(152, 136, 168, 0.5), 0 4px 12px rgba(144, 128, 176, 0.35) !important;
+  background: linear-gradient(135deg, #B0A0C0 0%, #A898B8 50%, #A090B0 100%) !important;
 }
 
 .health-ios-page ion-button[color="primary"]:active,
-ion-button[color="primary"]:active {
-  background: linear-gradient(135deg, #7090cf 0%, #8070cf 100%) !important;
+.health-ios-page ion-button[color="primary"]:active {
+  background: linear-gradient(135deg, #B0A0C0 0%, #A898B8 50%, #A090B0 100%) !important;
 }
 
 .health-ios-page ion-button[color="primary"]::part(native),
-ion-button[color="primary"]::part(native) {
-  background: linear-gradient(135deg, #80a0df 0%, #9080df 100%) !important;
+.health-ios-page ion-button[color="primary"]::part(native) {
+  background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
 }
 
-/* 설정 텍스트 색상 (매우 밝은 연하늘색) */
+/* 설정 텍스트 색상 - Home과 동일 */
 .setup-title {
-  color: #e8f4ff !important;
+  color: #66748D !important;
   font-weight: 600;
-  text-shadow: 0 2px 8px rgba(232, 244, 255, 0.6);
+  text-shadow: 0 2px 8px rgba(196, 161, 194, 0.3);
 }
 
 .setup-title h2 {
-  color: #e8f4ff !important;
+  color: #66748D !important;
   margin: 0;
 }
 
-/* 토글 스타일 */
+/* 토글 스타일 - 페이지 색상 톤 적용 */
 .health-ios-page ion-item ion-toggle {
-  --background-checked: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  --background-checked: linear-gradient(135deg, #C4A1C2 0%, #7C88A9 100%);
   --handle-background-checked: white;
   flex-shrink: 0 !important;
   flex-grow: 0 !important;
@@ -345,24 +384,24 @@ ion-button[color="primary"]::part(native) {
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
 }
 
-/* 심박수 박스 - 가장 밝고 진한 버전 */
+/* 심박수 박스 - 산소포화도 박스와 동일한 색상 */
 .heart-rate-box {
-  background: linear-gradient(135deg, rgba(140, 160, 220, 0.85) 0%, rgba(150, 140, 220, 0.85) 100%);
-  color: white;
-  box-shadow: 0 4px 12px rgba(140, 160, 220, 0.3);
+  background: linear-gradient(135deg, rgba(100, 120, 180, 0.65) 0%, rgba(110, 100, 180, 0.65) 100%);
+  color: #f8efde;
+  box-shadow: 0 4px 12px rgba(100, 120, 180, 0.2);
 }
 
 /* 심박변이 박스 - 중간 밝기 */
 .hrv-box {
   background: linear-gradient(135deg, rgba(120, 140, 200, 0.75) 0%, rgba(130, 120, 200, 0.75) 100%);
-  color: white;
+  color: #f8efde;
   box-shadow: 0 4px 12px rgba(120, 140, 200, 0.25);
 }
 
 /* 산소포화도 박스 - 가장 밝은 버전 */
 .oxygen-box {
   background: linear-gradient(135deg, rgba(100, 120, 180, 0.65) 0%, rgba(110, 100, 180, 0.65) 100%);
-  color: white;
+  color: #f8efde;
   box-shadow: 0 4px 12px rgba(100, 120, 180, 0.2);
 }
 
@@ -463,14 +502,14 @@ ion-col {
 @media (prefers-color-scheme: dark) {
   ion-card-content {
     background: #1e1e1e;
-    color: white;
+    color: #f8efde;
   }
 
   ion-item {
     --background: #2a2a2a;
     --background-hover: #333;
     background: #2a2a2a !important;
-    color: white;
+    color: #f8efde;
   }
 
   ion-item:hover {

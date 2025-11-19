@@ -1,60 +1,61 @@
-/* User 페이지 스타일 */
+/* User 페이지 스타일 - 꿈속세상 같은 포근한 따뜻한 연보라 톤 */
 
-/* User 페이지의 IonContent 배경 - 보라색 그라데이션 */
+/* User 페이지의 IonContent 배경 - Home과 동일한 Silver Mist 그라데이션 */
 .user-page ion-content {
-  --background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-  background-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  --background: linear-gradient(180deg, #D5D7E3 0%, #D0B5CE 50%, #B2BECF 100%) !important;
+  background: linear-gradient(180deg, #D5D7E3 0%, #D0B5CE 50%, #B2BECF 100%) !important;
+  background-image: linear-gradient(180deg, #D5D7E3 0%, #D0B5CE 50%, #B2BECF 100%) !important;
   --padding-start: 16px;
   --padding-end: 16px;
   --padding-top: 16px;
   --padding-bottom: calc(16px + 56px + env(safe-area-inset-bottom, 0px)) !important;
   padding-bottom: calc(16px + 56px + env(safe-area-inset-bottom, 0px)) !important;
-  color: #ffffff !important;
+  color: #66748D !important;
   overflow-y: auto !important;
   -webkit-overflow-scrolling: touch !important;
 }
 
 /* User 페이지의 Shadow DOM 내부 스타일 */
 .user-page ion-content::part(scroll) {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-  background-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  background: linear-gradient(180deg, #D5D7E3 0%, #D0B5CE 50%, #B2BECF 100%) !important;
+  background-image: linear-gradient(180deg, #D5D7E3 0%, #D0B5CE 50%, #B2BECF 100%) !important;
 }
 
 .user-page ion-content .scroll-content {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-  background-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  background: linear-gradient(180deg, #D5D7E3 0%, #D0B5CE 50%, #B2BECF 100%) !important;
+  background-image: linear-gradient(180deg, #D5D7E3 0%, #D0B5CE 50%, #B2BECF 100%) !important;
   padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px)) !important;
 }
 
-/* 모바일 헤더 보라색 그라데이션 배경 */
+/* 모바일 헤더 - Home과 동일한 부드러운 분홍~보라 그라데이션 */
 @media (max-width: 767px) {
   .user-page ion-header {
-    --background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-    background-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    --background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+    background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+    background-image: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+    box-shadow: 0 4px 12px rgba(152, 136, 168, 0.4);
   }
 
   .user-page ion-header::part(native) {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-    background-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+    background-image: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
   }
 
   .user-page ion-toolbar {
-    --background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    --background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
     --border-color: transparent !important;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-    background-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+    background-image: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
   }
 
   .user-page ion-toolbar::part(native) {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-    background-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+    background-image: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
   }
 }
 
 .user-page ion-title {
-  --color: white;
+  --color: #ffffff;
   background: transparent !important;
 }
 
@@ -65,80 +66,82 @@
   margin: 0 auto;
 }
 
-/* 카드 스타일 - User 페이지에만 적용 */
+/* 카드 스타일 - Home과 동일한 Silver Mist & Lavender 톤 */
 .user-page ion-card {
   margin: 20px 0;
-  border-radius: 20px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  border-radius: 24px;
+  box-shadow: 0 12px 40px rgba(196, 161, 194, 0.4), 0 4px 16px rgba(102, 116, 141, 0.3), 0 2px 8px rgba(0, 0, 0, 0.15);
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
-  background: white !important;
+  background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%) !important;
+  border: 1px solid rgba(196, 161, 194, 0.35);
 }
 
 .user-page ion-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  transform: translateY(-6px) scale(1.01);
+  box-shadow: 0 20px 60px rgba(196, 161, 194, 0.5), 0 8px 24px rgba(102, 116, 141, 0.4), 0 4px 12px rgba(0, 0, 0, 0.2);
+  border-color: rgba(196, 161, 194, 0.5);
 }
 
 .user-page ion-card-header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-  color: white;
+  background: linear-gradient(135deg, #C4A1C2 0%, #7C88A9 100%) !important;
+  color: #ffffff;
   padding: 24px;
+  box-shadow: 0 4px 16px rgba(124, 136, 169, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.3);
 }
 
 .user-page ion-card-title {
   font-size: 1.4rem;
   font-weight: 600;
-  color: white;
+  color: #ffffff;
   margin: 0;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .user-page ion-card-content {
   padding: 24px;
-  background: white !important;
-  background-color: white !important;
-  color: #000000 !important;
+  background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%) !important;
+  background-color: transparent !important;
+  color: #66748D !important;
 }
 
-/* 입력 필드 스타일 - User 페이지에만 적용 */
+/* 입력 필드 스타일 - Home과 동일한 스타일 */
 .user-page ion-item {
-  --border-radius: 12px;
+  --border-radius: 14px;
   --padding-start: 16px;
   --padding-end: 16px;
-  --background: #f8f9fa !important;
-  --background-hover: #eeeeee !important;
-  --background-activated: #eeeeee !important;
-  --background-focused: #eeeeee !important;
   margin: 16px 0;
-  border-radius: 12px;
-  background: #f8f9fa !important;
-  background-color: #f8f9fa !important;
-  transition: all 0.2s ease;
-  border: 2px solid transparent;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.7) !important;
+  background-color: rgba(255, 255, 255, 0.7) !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 2px solid rgba(196, 161, 194, 0.2);
+  backdrop-filter: blur(10px);
 }
 
 .user-page ion-item::part(native) {
-  background: #f8f9fa !important;
-  background-color: #f8f9fa !important;
+  background: rgba(255, 255, 255, 0.7) !important;
+  background-color: rgba(255, 255, 255, 0.7) !important;
 }
 
 .user-page ion-item:focus-within {
-  --background: white !important;
-  background: white !important;
-  background-color: white !important;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  background: rgba(255, 255, 255, 0.9) !important;
+  background-color: rgba(255, 255, 255, 0.9) !important;
+  border-color: #C4A1C2;
+  box-shadow: 0 0 0 4px rgba(196, 161, 194, 0.2), 0 4px 12px rgba(102, 116, 141, 0.2);
+  transform: translateY(-2px);
 }
 
 .user-page ion-item:focus-within::part(native) {
-  background: white !important;
-  background-color: white !important;
+  background: rgba(255, 255, 255, 0.9) !important;
+  background-color: rgba(255, 255, 255, 0.9) !important;
 }
 
 .user-page ion-item ion-label {
   font-weight: 600;
-  color: #333 !important;
-  --color: #333 !important;
+  color: #66748D !important;
+  --color: #66748D !important;
   margin-bottom: 8px;
 }
 
@@ -146,180 +149,198 @@
   --padding-start: 0;
   --padding-end: 0;
   --background: transparent !important;
-  --color: #333 !important;
-  color: #333 !important;
+  --color: #66748D !important;
+  color: #66748D !important;
   font-size: 1rem;
 }
 
 .user-page ion-item ion-input::part(native) {
   background: transparent !important;
-  color: #333 !important;
+  color: #66748D !important;
 }
 
 .user-page ion-item ion-select {
   --padding-start: 0;
   --padding-end: 0;
   --background: transparent !important;
-  --color: #333 !important;
-  color: #333 !important;
+  --color: #66748D !important;
+  color: #66748D !important;
 }
 
 .user-page ion-item ion-select::part(icon) {
-  color: #333 !important;
+  color: #7C88A9 !important;
 }
 
-/* 버튼 스타일 */
-ion-button {
-  --background: linear-gradient(135deg, #80a0df 0%, #9080df 100%);
-  --background-hover: linear-gradient(135deg, #7090cf 0%, #8070cf 100%);
-  --background-activated: linear-gradient(135deg, #7090cf 0%, #8070cf 100%);
-  --color: white;
-  --border-radius: 12px;
-  --box-shadow: 0 4px 12px rgba(128, 160, 223, 0.3);
-  margin: 16px 0;
+/* 버튼 스타일 - Home과 동일한 부드러운 분홍~보라 블렌드 */
+.user-page ion-button {
+  --background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%);
+  --background-hover: linear-gradient(135deg, #B0A0C0 0%, #A898B8 50%, #A090B0 100%);
+  --background-activated: linear-gradient(135deg, #B0A0C0 0%, #A898B8 50%, #A090B0 100%);
+  --color: #ffffff;
+  --border-radius: 14px;
+  --box-shadow: 0 6px 20px rgba(152, 136, 168, 0.4), 0 2px 8px rgba(144, 128, 176, 0.3);
+  margin: 20px 0;
   font-weight: 600;
   font-size: 1rem;
   text-transform: none;
-  height: 50px;
-  transition: all 0.3s ease;
+  height: 52px;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  position: relative;
+  overflow: hidden;
 }
 
-ion-button:hover {
-  transform: translateY(-2px);
-  --box-shadow: 0 6px 16px rgba(128, 160, 223, 0.4);
+.user-page ion-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+  transition: left 0.5s ease;
 }
 
-ion-button:active {
+.user-page ion-button:hover::before {
+  left: 100%;
+}
+
+.user-page ion-button:hover {
+  transform: translateY(-3px) scale(1.02);
+  --box-shadow: 0 10px 28px rgba(152, 136, 168, 0.5), 0 4px 12px rgba(144, 128, 176, 0.35);
+}
+
+.user-page ion-button:active {
   transform: translateY(0);
 }
 
-/* 사용자 정보 카드 특별 스타일 */
+/* 사용자 정보 카드 특별 스타일 - Home과 동일 */
 .user-info-card {
-  background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+  background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%);
 }
 
 .user-info-card ion-card-content {
-  background: white;
+  background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%);
 }
 
-/* 설정 카드 스타일 */
+/* 설정 카드 스타일 - Home과 동일 */
 .settings-card {
-  background: linear-gradient(135deg, #30cfd0 0%, #330867 100%);
+  background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%);
 }
 
 .settings-card ion-card-content {
-  background: white;
+  background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%);
 }
 
-/* 플레이스홀더 스타일 - User 페이지에만 적용 */
+/* 플레이스홀더 스타일 - Home과 동일 */
 .user-page ion-input::placeholder {
-  color: #999 !important;
-  opacity: 0.7;
+  color: #7C88A9 !important;
+  opacity: 0.6;
 }
 
 .user-page ion-select::part(placeholder) {
-  color: #999 !important;
-  opacity: 0.7;
+  color: #7C88A9 !important;
+  opacity: 0.6;
 }
 
-/* 다크모드 지원 - User 페이지에만 적용 */
+/* 다크모드 지원 - Home과 동일한 톤 유지 */
 @media (prefers-color-scheme: dark) {
   .user-page ion-card {
-    background: white !important;
+    background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%) !important;
   }
 
   .user-page ion-card-content {
-    background: white !important;
-    color: #000000 !important;
+    background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%) !important;
+    color: #66748D !important;
   }
 
   .user-page ion-item {
-    background: #f8f9fa !important;
-    color: #333 !important;
+    background: rgba(255, 255, 255, 0.7) !important;
+    color: #66748D !important;
   }
 
   .user-page ion-item:focus-within {
-    background: white !important;
-    background-color: white !important;
-    border-color: #667eea;
+    background: rgba(255, 255, 255, 0.9) !important;
+    background-color: rgba(255, 255, 255, 0.9) !important;
+    border-color: #C4A1C2;
   }
 
   .user-page ion-item ion-label {
-    color: #333 !important;
+    color: #66748D !important;
   }
 
   .user-page ion-item ion-input {
-    color: #333 !important;
+    color: #66748D !important;
   }
 
   .user-page ion-item ion-select {
-    color: #333 !important;
+    color: #66748D !important;
   }
 
   .user-page ion-input::placeholder {
-    color: #999;
+    color: #7C88A9;
   }
 }
 
-/* 피드백 모달 스타일 */
-/* 피드백 모달 헤더 - 보라색 그라데이션 */
+/* 피드백 모달 스타일 - 따뜻한 톤 */
+/* 피드백 모달 헤더 - Home과 동일한 스타일 */
 ion-modal ion-header {
-  --background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-  background-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  --background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+  background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+  background-image: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
 }
 
 ion-modal ion-header::part(native) {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-  background-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+  background-image: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
 }
 
 ion-modal ion-toolbar {
-  --background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  --background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
   --border-color: transparent !important;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-  background-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+  background-image: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
 }
 
 ion-modal ion-toolbar::part(native) {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-  background-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+  background-image: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
 }
 
 ion-modal ion-title {
-  --color: white !important;
-  color: white !important;
+  --color: #ffffff !important;
+  color: #ffffff !important;
 }
 
 ion-modal ion-button {
-  --color: white !important;
-  color: white !important;
+  --color: #ffffff !important;
+  color: #ffffff !important;
 }
 
-/* 피드백 모달 콘텐츠 - 보라색 그라데이션 배경 */
+/* 피드백 모달 콘텐츠 - Home과 동일한 Silver Mist 배경 */
 .feedback-modal-content {
-  --background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-  background-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-  color: #ffffff !important;
+  --background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%) !important;
+  background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%) !important;
+  background-image: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%) !important;
+  color: #66748D !important;
 }
 
 .feedback-modal-content::part(scroll) {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-  background-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%) !important;
+  background-image: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%) !important;
 }
 
 .feedback-modal-content .scroll-content {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-  background-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%) !important;
+  background-image: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%) !important;
 }
 
 .feedback-title {
-  color: #ffffff !important;
+  color: #66748D !important;
   font-size: 1.5rem;
   font-weight: 600;
   margin: 0;
-  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  text-shadow: 0 2px 8px rgba(196, 161, 194, 0.3);
 }
 
 /* 쾌적했어요 버튼 스타일 (연두 그라데이션 - 채도 약간 낮춤) */
@@ -398,13 +419,13 @@ ion-button.cold-feedback-button::part(native) {
   color: white !important;
 }
 
-/* 온도 범위 재갱신 버튼 스타일 */
+/* 온도 범위 재갱신 버튼 스타일 - 부드러운 청록-파랑 그라데이션 (Dusk Blue 기반) */
 .reset-feedback-button {
-  --background: linear-gradient(135deg, #ff6b6b 0%, #ffa500 50%, #ffd700 100%) !important;
-  --background-hover: linear-gradient(135deg, #ff5252 0%, #ff9800 50%, #ffc700 100%) !important;
-  --background-activated: linear-gradient(135deg, #ff5252 0%, #ff9800 50%, #ffc700 100%) !important;
-  --color: white !important;
-  --box-shadow: 0 4px 16px rgba(255, 107, 107, 0.4) !important;
+  --background: linear-gradient(135deg, #8CA5C9 0%, #7C88A9 50%, #6C7899 100%) !important;
+  --background-hover: linear-gradient(135deg, #9CB5D9 0%, #8CA5C9 50%, #7C88A9 100%) !important;
+  --background-activated: linear-gradient(135deg, #9CB5D9 0%, #8CA5C9 50%, #7C88A9 100%) !important;
+  --color: #ffffff !important;
+  --box-shadow: 0 6px 20px rgba(124, 136, 169, 0.5), 0 2px 8px rgba(108, 120, 153, 0.35) !important;
   --border-radius: 16px !important;
   font-weight: 600 !important;
   font-size: 1.1rem !important;
@@ -432,7 +453,7 @@ ion-button.cold-feedback-button::part(native) {
 }
 
 .reset-feedback-button:hover {
-  --box-shadow: 0 6px 24px rgba(255, 107, 107, 0.5) !important;
+  --box-shadow: 0 10px 28px rgba(124, 136, 169, 0.6), 0 4px 12px rgba(108, 120, 153, 0.4) !important;
   transform: translateY(-3px) scale(1.02) !important;
 }
 
@@ -441,19 +462,19 @@ ion-button.cold-feedback-button::part(native) {
 }
 
 .reset-feedback-button::part(native) {
-  background: linear-gradient(135deg, #ff6b6b 0%, #ffa500 50%, #ffd700 100%) !important;
+  background: linear-gradient(135deg, #8CA5C9 0%, #7C88A9 50%, #6C7899 100%) !important;
   border-radius: 16px !important;
-  box-shadow: 0 4px 16px rgba(255, 107, 107, 0.4) !important;
-  color: white !important;
+  box-shadow: 0 6px 20px rgba(124, 136, 169, 0.5), 0 2px 8px rgba(108, 120, 153, 0.35) !important;
+  color: #ffffff !important;
   font-weight: 600 !important;
   padding: 0 24px !important;
 }
 
 ion-button.reset-feedback-button {
-  background: linear-gradient(135deg, #ff6b6b 0%, #ffa500 50%, #ffd700 100%) !important;
+  background: linear-gradient(135deg, #8CA5C9 0%, #7C88A9 50%, #6C7899 100%) !important;
   border-radius: 16px !important;
-  box-shadow: 0 4px 16px rgba(255, 107, 107, 0.4) !important;
-  color: white !important;
+  box-shadow: 0 6px 20px rgba(124, 136, 169, 0.5), 0 2px 8px rgba(108, 120, 153, 0.35) !important;
+  color: #ffffff !important;
 }
 
 ion-button.reset-feedback-button ion-icon {
@@ -461,15 +482,15 @@ ion-button.reset-feedback-button ion-icon {
   margin-right: 8px !important;
 }
 
-/* 피드백 버튼 비활성화 스타일 */
+/* 피드백 버튼 비활성화 스타일 - 뮤트한 보라 톤 */
 ion-button[disabled].comfortable-feedback-button,
 ion-button[disabled].cold-feedback-button,
 ion-button[disabled][color="danger"] {
-  --background: #9e9e9e !important;
-  --background-hover: #9e9e9e !important;
-  --background-activated: #9e9e9e !important;
-  --color: #ffffff !important;
-  --opacity: 0.6 !important;
+  --background: #7a6b95 !important;
+  --background-hover: #7a6b95 !important;
+  --background-activated: #7a6b95 !important;
+  --color: #f5f0ff !important;
+  --opacity: 0.5 !important;
   cursor: not-allowed !important;
   pointer-events: none !important;
 }
@@ -477,31 +498,103 @@ ion-button[disabled][color="danger"] {
 ion-button[disabled].comfortable-feedback-button::part(native),
 ion-button[disabled].cold-feedback-button::part(native),
 ion-button[disabled][color="danger"]::part(native) {
-  background: #9e9e9e !important;
-  color: #ffffff !important;
-  opacity: 0.6 !important;
+  background: #7a6b95 !important;
+  color: #f5f0ff !important;
+  opacity: 0.5 !important;
 }
 
 ion-button.comfortable-feedback-button[disabled],
 ion-button.cold-feedback-button[disabled],
 ion-button[color="danger"][disabled] {
-  background: #9e9e9e !important;
-  color: #ffffff !important;
-  opacity: 0.6 !important;
+  background: #7a6b95 !important;
+  color: #f5f0ff !important;
+  opacity: 0.5 !important;
 }
 
 /* "지금 피드백 남기기" 버튼 비활성화 스타일 */
 ion-button[disabled] {
-  --background: #9e9e9e !important;
-  --background-hover: #9e9e9e !important;
-  --background-activated: #9e9e9e !important;
-  --color: #ffffff !important;
-  --opacity: 0.6 !important;
+  --background: #7a6b95 !important;
+  --background-hover: #7a6b95 !important;
+  --background-activated: #7a6b95 !important;
+  --color: #f5f0ff !important;
+  --opacity: 0.5 !important;
   cursor: not-allowed !important;
 }
 
 ion-button[disabled]::part(native) {
-  background: #9e9e9e !important;
+  background: #987585 !important;
+  color: #fff5f8 !important;
+  opacity: 0.5 !important;
+}
+
+/* 지금 피드백 남기기 버튼 - 부드러운 분홍-보라 그라데이션 (Soft Lavender 기반, 입체감) */
+.feedback-submit-button {
+  --background: linear-gradient(135deg, #D4A5D2 0%, #C4A1C2 50%, #B895B6 100%) !important;
+  --background-hover: linear-gradient(135deg, #E4B5E2 0%, #D4A5D2 50%, #C4A1C2 100%) !important;
+  --background-activated: linear-gradient(135deg, #E4B5E2 0%, #D4A5D2 50%, #C4A1C2 100%) !important;
+  --color: #ffffff !important;
+  --box-shadow: 0 6px 20px rgba(196, 161, 194, 0.5), 0 2px 8px rgba(184, 149, 182, 0.35), inset 0 2px 4px rgba(0, 0, 0, 0.15), inset 0 -2px 4px rgba(0, 0, 0, 0.1) !important;
+  --border-radius: 14px !important;
+  font-weight: 600 !important;
+  font-size: 1rem !important;
+  text-transform: none !important;
+  height: 52px !important;
+  margin: 16px 0 !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+.feedback-submit-button:hover {
+  --box-shadow: 0 10px 28px rgba(196, 161, 194, 0.6), 0 4px 12px rgba(184, 149, 182, 0.4), inset 0 2px 4px rgba(0, 0, 0, 0.2), inset 0 -2px 4px rgba(0, 0, 0, 0.15) !important;
+  transform: translateY(-3px) scale(1.02) !important;
+}
+
+.feedback-submit-button::part(native) {
+  background: linear-gradient(135deg, #D4A5D2 0%, #C4A1C2 50%, #B895B6 100%) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 6px 20px rgba(196, 161, 194, 0.5), 0 2px 8px rgba(184, 149, 182, 0.35), inset 0 2px 4px rgba(0, 0, 0, 0.15), inset 0 -2px 4px rgba(0, 0, 0, 0.1) !important;
   color: #ffffff !important;
-  opacity: 0.6 !important;
+  font-weight: 600 !important;
+}
+
+ion-button.feedback-submit-button {
+  background: linear-gradient(135deg, #D4A5D2 0%, #C4A1C2 50%, #B895B6 100%) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 6px 20px rgba(196, 161, 194, 0.5), 0 2px 8px rgba(184, 149, 182, 0.35), inset 0 2px 4px rgba(0, 0, 0, 0.15), inset 0 -2px 4px rgba(0, 0, 0, 0.1) !important;
+  color: #ffffff !important;
+}
+
+.feedback-submit-button[disabled] {
+  --background: #987585 !important;
+  --background-hover: #987585 !important;
+  --background-activated: #987585 !important;
+  --color: #fff5f8 !important;
+  --opacity: 0.5 !important;
+  cursor: not-allowed !important;
+}
+
+.feedback-submit-button[disabled]::part(native) {
+  background: #987585 !important;
+  color: #fff5f8 !important;
+  opacity: 0.5 !important;
+}
+
+ion-button.feedback-submit-button[disabled] {
+  background: #987585 !important;
+  color: #fff5f8 !important;
+  opacity: 0.5 !important;
+}
+
+/* 텍스트 색상 - Home과 동일 */
+.user-page ion-text {
+  color: #66748D !important;
+}
+
+.user-page ion-text[color="medium"] {
+  color: #7C88A9 !important;
+}
+
+.user-page ion-text[color="primary"] {
+  color: #C4A1C2 !important;
 }

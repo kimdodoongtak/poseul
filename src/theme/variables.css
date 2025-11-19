@@ -158,7 +158,7 @@ ion-tabs {
   height: 100% !important;
 }
 
-/* 탭 바를 하단에 고정 */
+/* 탭 바를 하단에 고정 - 페이지 색상 톤 적용 */
 ion-tab-bar {
   position: fixed !important;
   bottom: 0 !important;
@@ -166,8 +166,34 @@ ion-tab-bar {
   right: 0 !important;
   width: 100% !important;
   z-index: 1000 !important;
-  background-color: #ffffff !important;
-  border-top: 1px solid #e0e0e0 !important;
+  background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%) !important;
+  background-color: #E8E9F0 !important;
+  border-top: 1px solid rgba(196, 161, 194, 0.3) !important;
+  box-shadow: 0 -4px 12px rgba(196, 161, 194, 0.2) !important;
+}
+
+/* 탭 버튼 색상 - 페이지 톤에 맞춤 */
+ion-tab-button {
+  --color: #7C88A9 !important;
+  --color-selected: #C4A1C2 !important;
+}
+
+ion-tab-button ion-label {
+  color: #7C88A9 !important;
+  font-size: 0.75rem !important;
+}
+
+ion-tab-button.tab-selected ion-label {
+  color: #C4A1C2 !important;
+  font-weight: 600 !important;
+}
+
+ion-tab-button ion-icon {
+  color: #7C88A9 !important;
+}
+
+ion-tab-button.tab-selected ion-icon {
+  color: #C4A1C2 !important;
 }
 
 /* Android (갤럭시 S24 플러스) - Safe area 처리 */

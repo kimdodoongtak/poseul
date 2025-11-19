@@ -507,6 +507,7 @@ const User: React.FC = () => {
             </IonItem>
             <IonButton 
               expand="block" 
+              className="feedback-submit-button"
               onClick={() => {
                 fetchFeedbackCount(); // 모달 열 때 카운트 다시 확인
                 setShowFeedbackModal(true);

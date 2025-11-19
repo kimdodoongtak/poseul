@@ -1,0 +1,149 @@
+/* 면책사항 모달 스타일 */
+.disclaimer-modal {
+  --width: 100%;
+  --height: 100%;
+  --border-radius: 0;
+  --box-shadow: none;
+  --backdrop-opacity: 0;
+  --background: transparent;
+}
+
+.disclaimer-modal::part(backdrop) {
+  background: transparent !important;
+}
+
+.disclaimer-modal::part(wrapper) {
+  background: transparent !important;
+}
+
+.disclaimer-modal .disclaimer-content-wrapper {
+  --background: transparent !important;
+  --padding-start: 0;
+  --padding-end: 0;
+  --padding-top: 0;
+  --padding-bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  height: 100vh;
+  background: transparent !important;
+  background-color: transparent !important;
+  overflow: hidden;
+}
+
+.disclaimer-modal .disclaimer-content-wrapper::part(scroll) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+.disclaimer-modal .disclaimer-card {
+  background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%);
+  border-radius: 28px;
+  width: 95%;
+  max-width: 800px;
+  margin: auto;
+  overflow: hidden;
+  box-shadow: 0 16px 56px rgba(196, 161, 194, 0.4), 0 4px 16px rgba(102, 116, 141, 0.3), 0 2px 8px rgba(0, 0, 0, 0.15);
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+  border: 1px solid rgba(196, 161, 194, 0.35);
+  transform: scale(1);
+  animation: popIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes popIn {
+  0% {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.disclaimer-modal .disclaimer-header {
+  background: linear-gradient(135deg, #C4A1C2 0%, #7C88A9 100%);
+  color: #ffffff;
+  padding: 24px 28px;
+  text-align: center;
+  border-radius: 28px 28px 0 0;
+  box-shadow: 0 4px 16px rgba(124, 136, 169, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.disclaimer-modal .disclaimer-header h1 {
+  margin: 0;
+  padding: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #ffffff;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.disclaimer-modal .disclaimer-body {
+  padding: 32px 28px;
+  padding-bottom: 28px;
+  background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%);
+}
+
+.disclaimer-modal .disclaimer-text {
+  font-size: 17px;
+  line-height: 1.7;
+  color: #4A5568;
+  text-align: center;
+  margin: 0;
+  font-weight: 500;
+}
+
+.disclaimer-modal .disclaimer-text p {
+  margin: 0;
+  margin-bottom: 16px;
+  font-weight: 500;
+  color: #4A5568;
+  padding: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.disclaimer-modal .disclaimer-text p:last-child {
+  margin-bottom: 0;
+}
+
+.disclaimer-modal .disclaimer-button-container {
+  padding: 0 28px 28px 28px;
+}
+
+.disclaimer-modal .disclaimer-button {
+  --background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%);
+  --background-hover: linear-gradient(135deg, #B0A0C0 0%, #A898B8 50%, #A090B0 100%);
+  --background-activated: linear-gradient(135deg, #B0A0C0 0%, #A898B8 50%, #A090B0 100%);
+  --color: #ffffff;
+  --border-radius: 14px;
+  --box-shadow: 0 6px 20px rgba(152, 136, 168, 0.4), 0 2px 8px rgba(144, 128, 176, 0.3);
+  font-weight: 600;
+  font-size: 16px;
+  height: 48px;
+  margin: 0;
+  width: 100%;
+  transition: all 0.3s ease;
+}
+
+.disclaimer-modal .disclaimer-button:hover {
+  --box-shadow: 0 10px 28px rgba(152, 136, 168, 0.5), 0 4px 12px rgba(144, 128, 176, 0.35);
+  transform: translateY(-2px);
+}
+
+.disclaimer-modal .disclaimer-button:active {
+  transform: translateY(0);
+}
+
