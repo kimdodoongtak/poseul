@@ -108,9 +108,9 @@ def get_last_prediction(engine) -> Optional[Tuple[float, str]]:
 
 def get_current_thresholds(engine) -> Optional[Tuple[float, float, float, float]]:
     """
-    현재 임계값 가져오기
-    - room_threshold 테이블: 실내 온도 범위
-    - new_skinthreshold 테이블: 피부온도 범위
+    현재 임계값 가져오기 (가장 최신 값)
+    - room_threshold 테이블: 실내 온도 범위 (no 컬럼 기준 최신)
+    - new_skinthreshold 테이블: 피부온도 범위 (no 컬럼 기준 최신)
     
     Args:
         engine: SQLAlchemy 엔진
@@ -120,10 +120,31 @@ def get_current_thresholds(engine) -> Optional[Tuple[float, float, float, float]
     """
     try:
         with engine.connect() as conn:
-            # 1. room_threshold 테이블에서 실내 온도 범위 가져오기
-            room_query = text("""
+            # 1. room_threshold 테이블에서 실내 온도 범위 가져오기 (no 컬럼 기준 최신)
+            # 컬럼 확인
+            room_columns_query = text("""
+                SELECT COLUMN_NAME 
+                FROM information_schema.COLUMNS 
+                WHERE TABLE_SCHEMA = 'main' 
+                AND TABLE_NAME = 'room_threshold'
+            """)
+            room_columns = [row.COLUMN_NAME for row in conn.execute(room_columns_query).fetchall()]
+            
+            # 정렬 컬럼 결정 (no 컬럼 우선 사용)
+            room_order_by = ""
+            if 'no' in room_columns:
+                room_order_by = "ORDER BY no DESC"
+            elif 'id' in room_columns:
+                room_order_by = "ORDER BY id DESC"
+            elif 'created_at' in room_columns:
+                room_order_by = "ORDER BY created_at DESC"
+            else:
+                logger.warning("⚠️ room_threshold 테이블에 정렬 컬럼을 찾을 수 없습니다. 최신 데이터가 아닐 수 있습니다.")
+            
+            room_query = text(f"""
                 SELECT min_temp, max_temp 
                 FROM room_threshold 
+                {room_order_by}
                 LIMIT 1
             """)
             room_result = conn.execute(room_query).fetchone()
@@ -147,10 +168,31 @@ def get_current_thresholds(engine) -> Optional[Tuple[float, float, float, float]
             skin_max = 35.6  # 기본값
             
             if has_new_table:
-                # new_skinthreshold 테이블에서 피부온도 범위 가져오기
-                skin_query = text("""
+                # new_skinthreshold 테이블에서 피부온도 범위 가져오기 (no 컬럼 기준 최신)
+                # 컬럼 확인
+                skin_columns_query = text("""
+                    SELECT COLUMN_NAME 
+                    FROM information_schema.COLUMNS 
+                    WHERE TABLE_SCHEMA = 'main' 
+                    AND TABLE_NAME = 'new_skinthreshold'
+                """)
+                skin_columns = [row.COLUMN_NAME for row in conn.execute(skin_columns_query).fetchall()]
+                
+                # 정렬 컬럼 결정 (no 컬럼 우선 사용)
+                skin_order_by = ""
+                if 'no' in skin_columns:
+                    skin_order_by = "ORDER BY no DESC"
+                elif 'id' in skin_columns:
+                    skin_order_by = "ORDER BY id DESC"
+                elif 'created_at' in skin_columns:
+                    skin_order_by = "ORDER BY created_at DESC"
+                else:
+                    logger.warning("⚠️ new_skinthreshold 테이블에 정렬 컬럼을 찾을 수 없습니다. 최신 데이터가 아닐 수 있습니다.")
+                
+                skin_query = text(f"""
                     SELECT min_skinthreshold, max_skinthreshold 
                     FROM new_skinthreshold 
+                    {skin_order_by}
                     LIMIT 1
                 """)
                 skin_result = conn.execute(skin_query).fetchone()
@@ -230,6 +272,19 @@ def update_thresholds_in_db(
     try:
         with engine.connect() as conn:
             # 1. room_threshold 테이블에 순차적으로 저장 (실내 온도 범위)
+            # 테이블이 비어있으면 AUTO_INCREMENT 리셋
+            count_query = text("SELECT COUNT(*) as count FROM room_threshold")
+            record_count = conn.execute(count_query).fetchone().count
+            
+            if record_count == 0:
+                # 테이블이 비어있으면 AUTO_INCREMENT를 1로 리셋
+                try:
+                    reset_query = text("ALTER TABLE room_threshold AUTO_INCREMENT = 1")
+                    conn.execute(reset_query)
+                    logger.info("✅ room_threshold 테이블 AUTO_INCREMENT 리셋 완료")
+                except Exception as e:
+                    logger.warning(f"⚠️ AUTO_INCREMENT 리셋 실패 (무시): {e}")
+            
             insert_room_query = text("""
                 INSERT INTO room_threshold (min_temp, max_temp)
                 VALUES (:room_min, :room_max)
@@ -479,7 +534,7 @@ def process_daily_feedback(engine, feedback: str) -> Tuple[bool, Optional[str]]:
             message = (
                 f"✅ 임계값 조정 완료: "
                 f"실내온도 {room_min}~{room_max}°C → {new_room_min}~{new_room_max}°C, "
-                f"피부온도 {skin_min}~{skin_max}°C → {new_skin_min}~{skin_max}°C"
+                f"피부온도 {skin_min}~{skin_max}°C → {new_skin_min}~{new_skin_max}°C"
             )
             logger.info(f"🎯 {message} (피드백: {feedback}, 예측: {prediction}, 조정량: 실내온도 {room_adjustment}°C, 피부온도 {skin_adjustment}°C)")
             return True, message

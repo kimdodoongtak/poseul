@@ -3,7 +3,7 @@
 
 주요 기능:
 1. 초기 세팅: room_threshold에서 min_temp, max_temp 가져와서 목표 온도(중간값) 설정
-2. 자동 조절: 30분마다 최근 3개 피드백을 다수결로 판단하여 에어컨 조절
+2. 자동 조절: 2분마다 최근 3개 피드백을 다수결로 판단하여 에어컨 조절 (테스트 모드)
 """
 
 from sqlalchemy import text
@@ -43,7 +43,33 @@ def initialize_air_conditioner_settings(engine, air_conditioner_available: bool,
                     logger.warning("⚠️ room_threshold 테이블이 존재하지 않습니다.")
                     return
                 
-                threshold_query = text("SELECT min_temp, max_temp FROM room_threshold LIMIT 1")
+                # 최신 값 가져오기 (no 컬럼 기준)
+                # 컬럼 확인
+                room_columns_check = text("""
+                    SELECT COLUMN_NAME 
+                    FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_SCHEMA = 'main' 
+                    AND TABLE_NAME = 'room_threshold'
+                """)
+                room_columns = [row.COLUMN_NAME for row in conn.execute(room_columns_check).fetchall()]
+                
+                # 정렬 컬럼 결정 (no 컬럼 우선 사용)
+                room_order_by = ""
+                if 'no' in room_columns:
+                    room_order_by = "ORDER BY no DESC"
+                elif 'id' in room_columns:
+                    room_order_by = "ORDER BY id DESC"
+                elif 'created_at' in room_columns:
+                    room_order_by = "ORDER BY created_at DESC"
+                else:
+                    logger.warning("⚠️ room_threshold 테이블에 정렬 컬럼을 찾을 수 없습니다. 최신 데이터가 아닐 수 있습니다.")
+                
+                threshold_query = text(f"""
+                    SELECT min_temp, max_temp 
+                    FROM room_threshold 
+                    {room_order_by}
+                    LIMIT 1
+                """)
                 threshold_result = conn.execute(threshold_query).fetchone()
                 
                 if threshold_result and threshold_result.min_temp is not None and threshold_result.max_temp is not None:
@@ -109,7 +135,7 @@ def adjust_air_conditioner(
     update_threshold_callback=None
 ):
     """
-    30분마다 predicted_results에서 최근 3개 predicted_skin_temp를 분류하여 다수결로 판단하고 조절
+    2분마다 predicted_results에서 최근 3개 predicted_skin_temp를 분류하여 다수결로 판단하고 조절 (테스트 모드)
     
     Args:
         engine: SQLAlchemy 엔진
@@ -145,8 +171,33 @@ def adjust_air_conditioner(
                 threshold_table_exists = conn.execute(threshold_table_check).fetchone().count > 0
                 
                 if threshold_table_exists:
-                    # min_skinthreshold, max_skinthreshold 값 가져오기
-                    skin_threshold_query = text("SELECT min_skinthreshold, max_skinthreshold FROM new_skinthreshold LIMIT 1")
+                    # min_skinthreshold, max_skinthreshold 값 가져오기 (최신 값, no 컬럼 기준)
+                    # 컬럼 확인
+                    skin_columns_check = text("""
+                        SELECT COLUMN_NAME 
+                        FROM INFORMATION_SCHEMA.COLUMNS 
+                        WHERE TABLE_SCHEMA = 'main' 
+                        AND TABLE_NAME = 'new_skinthreshold'
+                    """)
+                    skin_columns = [row.COLUMN_NAME for row in conn.execute(skin_columns_check).fetchall()]
+                    
+                    # 정렬 컬럼 결정 (no 컬럼 우선 사용)
+                    skin_order_by = ""
+                    if 'no' in skin_columns:
+                        skin_order_by = "ORDER BY no DESC"
+                    elif 'id' in skin_columns:
+                        skin_order_by = "ORDER BY id DESC"
+                    elif 'created_at' in skin_columns:
+                        skin_order_by = "ORDER BY created_at DESC"
+                    else:
+                        logger.warning("⚠️ new_skinthreshold 테이블에 정렬 컬럼을 찾을 수 없습니다. 최신 데이터가 아닐 수 있습니다.")
+                    
+                    skin_threshold_query = text(f"""
+                        SELECT min_skinthreshold, max_skinthreshold 
+                        FROM new_skinthreshold 
+                        {skin_order_by}
+                        LIMIT 1
+                    """)
                     skin_threshold_result = conn.execute(skin_threshold_query).fetchone()
                     
                     if skin_threshold_result and skin_threshold_result.min_skinthreshold is not None and skin_threshold_result.max_skinthreshold is not None:
@@ -387,8 +438,33 @@ def adjust_air_conditioner(
                         max_temp = float(cached_threshold['max_temp'])
                         logger.info(f"📦 수동 조절 범위 캐시 사용: {min_temp}~{max_temp}°C")
                     else:
-                        # 캐시가 없거나 만료되었으면 DB에서 가져오기
-                        threshold_query = text("SELECT min_temp, max_temp FROM room_threshold LIMIT 1")
+                        # 캐시가 없거나 만료되었으면 DB에서 가져오기 (최신 값, no 컬럼 기준)
+                        # 컬럼 확인
+                        room_columns_check = text("""
+                            SELECT COLUMN_NAME 
+                            FROM INFORMATION_SCHEMA.COLUMNS 
+                            WHERE TABLE_SCHEMA = 'main' 
+                            AND TABLE_NAME = 'room_threshold'
+                        """)
+                        room_columns = [row.COLUMN_NAME for row in conn.execute(room_columns_check).fetchall()]
+                        
+                        # 정렬 컬럼 결정 (no 컬럼 우선 사용)
+                        room_order_by = ""
+                        if 'no' in room_columns:
+                            room_order_by = "ORDER BY no DESC"
+                        elif 'id' in room_columns:
+                            room_order_by = "ORDER BY id DESC"
+                        elif 'created_at' in room_columns:
+                            room_order_by = "ORDER BY created_at DESC"
+                        else:
+                            logger.warning("⚠️ room_threshold 테이블에 정렬 컬럼을 찾을 수 없습니다. 최신 데이터가 아닐 수 있습니다.")
+                        
+                        threshold_query = text(f"""
+                            SELECT min_temp, max_temp 
+                            FROM room_threshold 
+                            {room_order_by}
+                            LIMIT 1
+                        """)
                         threshold_result = conn.execute(threshold_query).fetchone()
                         
                         if not threshold_result or threshold_result.min_temp is None or threshold_result.max_temp is None:
@@ -426,23 +502,29 @@ def adjust_air_conditioner(
                                 actions_taken.append("temp_up")
                                 print(f"❄️ 추움 감지 → 목표 온도 높임: {target_temp}°C → {new_target_temp}°C")
                             
-                            # 조절 후 목표 온도가 범위 내인지 확인
-                            if min_temp <= new_target_temp <= max_temp:
-                                try:
-                                    set_temperature_func(target_temp=new_target_temp, unit='C')
-                                    logger.info(f"🌡️ 온도 조절 완료: {target_temp}°C → {new_target_temp}°C (다수결: {majority_feedback}, 범위: {min_temp}~{max_temp}°C)")
-                                    print(f"✅ 온도 조절 완료: {target_temp}°C → {new_target_temp}°C (조절 범위: {min_temp}~{max_temp}°C)")
-                                    target_temp = new_target_temp
-                                    temperature_adjusted = True
-                                    actual_new_temp = new_target_temp
-                                except Exception as e:
-                                    logger.error(f"❌ 목표 온도 조절 실패: {e}")
-                                    print(f"❌ 목표 온도 조절 실패: {e}")
-                                    actual_new_temp = original_target_temp
-                            else:
-                                logger.warning(f"⚠️ 조절 후 온도 {new_target_temp}°C가 범위({min_temp}~{max_temp}°C)를 벗어남. 조절 취소")
-                                print(f"⚠️ 조절 후 온도 {new_target_temp}°C가 범위({min_temp}~{max_temp}°C)를 벗어남. 조절 취소")
-                                actions_taken.append("temp_adjustment_cancelled")
+                            # 조절 후 목표 온도가 범위 내인지 확인하고, 범위를 벗어나면 최소값/최대값으로 조정
+                            if new_target_temp < min_temp:
+                                # 최소값보다 낮으면 최소값으로 조정
+                                new_target_temp = min_temp
+                                logger.info(f"📈 조절 후 온도가 최소값({min_temp}°C)보다 낮아 최소값으로 조정: {new_target_temp}°C")
+                                print(f"📈 조절 후 온도가 최소값({min_temp}°C)보다 낮아 최소값으로 조정: {new_target_temp}°C")
+                            elif new_target_temp > max_temp:
+                                # 최대값보다 높으면 최대값까지 내림
+                                new_target_temp = max_temp
+                                logger.info(f"📉 조절 후 온도가 최대값({max_temp}°C)보다 높아 최대값까지 내림: {new_target_temp}°C")
+                                print(f"📉 조절 후 온도가 최대값({max_temp}°C)보다 높아 최대값까지 내림: {new_target_temp}°C")
+                            
+                            # 조정된 온도로 설정
+                            try:
+                                set_temperature_func(target_temp=new_target_temp, unit='C')
+                                logger.info(f"🌡️ 온도 조절 완료: {target_temp}°C → {new_target_temp}°C (다수결: {majority_feedback}, 범위: {min_temp}~{max_temp}°C)")
+                                print(f"✅ 온도 조절 완료: {target_temp}°C → {new_target_temp}°C (조절 범위: {min_temp}~{max_temp}°C)")
+                                target_temp = new_target_temp
+                                temperature_adjusted = True
+                                actual_new_temp = new_target_temp
+                            except Exception as e:
+                                logger.error(f"❌ 목표 온도 조절 실패: {e}")
+                                print(f"❌ 목표 온도 조절 실패: {e}")
                                 actual_new_temp = original_target_temp
                         else:
                             logger.warning("⚠️ 목표 온도를 가져올 수 없습니다.")

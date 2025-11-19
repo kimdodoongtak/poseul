@@ -64,22 +64,44 @@
 /* IonContent 스크롤 활성화 */
 
 /* 컨테이너 */
-.container {
+.iot-page .container {
   padding: 16px;
   padding-bottom: 100px; /* 하단 여백 추가로 스크롤 가능하게 */
-  max-width: 600px;
-  margin: 0 auto;
+  width: 100%;
+  margin: 0;
   min-height: calc(100vh - 200px); /* 최소 높이 설정으로 스크롤 가능하게 */
+  box-sizing: border-box;
+}
+
+/* iOS에서도 전체 너비 적용 */
+.platform-ios .iot-page .container {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 !important;
 }
 
 /* 카드 스타일 - IoT 페이지에만 적용 */
 .iot-page ion-card {
   margin: 20px 0;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
   border-radius: 20px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
   transition: transform 0.3s ease, box-shadow 0.3s ease;
   overflow: hidden;
   background: white !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box;
+}
+
+/* iOS에서도 전체 너비 적용 */
+.platform-ios .iot-page ion-card {
+  margin: 20px 0 !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  width: 100% !important;
+  max-width: 100% !important;
 }
 
 .iot-page ion-card:hover {
