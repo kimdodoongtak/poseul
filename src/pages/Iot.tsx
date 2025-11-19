@@ -49,6 +49,12 @@ const Iot: React.FC = () => {
     max: null,
   });
   
+  // 캐시 여부 상태
+  const [isCachedRange, setIsCachedRange] = useState<boolean>(false);
+  
+  // 자동 조절 범위 여부 상태
+  const [isAutoRange, setIsAutoRange] = useState<boolean>(false);
+  
   // 원래 설정된 온도 범위 상태
   const [originalTemperatureRange, setOriginalTemperatureRange] = useState<{ min: number | null; max: number | null }>({
     min: null,
@@ -90,17 +96,17 @@ const Iot: React.FC = () => {
               max: rangeData.max_temp,
             });
             
-            // 원래 설정된 온도 범위도 저장 (있으면 저장, 없으면 null로 설정)
+            // 캐시 여부 저장 (수동 조절 캐시)
+            setIsCachedRange(rangeData.is_cached === true);
+            
+            // 자동 조절 범위 여부 저장 (수동 조절 캐시가 없고 DB에도 없을 때)
+            setIsAutoRange(rangeData.is_auto === true);
+            
+            // 원래 설정된 온도 범위도 저장
             if (rangeData.original_min_temp != null && rangeData.original_max_temp != null) {
               setOriginalTemperatureRange({
                 min: rangeData.original_min_temp,
                 max: rangeData.original_max_temp,
-              });
-            } else {
-              // 원래 설정이 없으면 null로 설정
-              setOriginalTemperatureRange({
-                min: null,
-                max: null,
               });
             }
           } else {
@@ -132,20 +138,25 @@ const Iot: React.FC = () => {
         console.log('🔄 연결 실패 - 서버 URL 자동 감지 재시도...');
         try {
           const serverUrl = await autoDetectServerUrl();
+          if (!serverUrl || serverUrl === '') {
+            throw new Error('서버 URL 자동 감지 실패: 빈 URL 반환');
+          }
           console.log('✅ 자동 감지된 서버 URL:', serverUrl);
           IotService.updateBaseUrl(serverUrl);
           // 재시도
           setTimeout(() => {
             loadStatus();
           }, 1000);
-        } catch (detectError) {
+        } catch (detectError: any) {
           console.error('❌ 서버 URL 자동 감지 실패:', detectError);
+          setError(detectError.message || '서버를 찾을 수 없습니다. 서버가 실행 중인지 확인해주세요.');
         }
       }
     }
   }, []);
 
   useEffect(() => {
+
     // 등록 여부 확인
     const isRegistered = localStorage.getItem('iot_device_registered') === 'true';
     if (!isRegistered) {
@@ -153,6 +164,7 @@ const Iot: React.FC = () => {
       history.replace('/iot/register');
       return;
     }
+
 
     // UI를 먼저 렌더링하고, 그 다음에 상태 조회
     // 자동 감지는 연결 실패 시에만 실행
@@ -320,7 +332,7 @@ const Iot: React.FC = () => {
       </IonHeader>
       <IonContent fullscreen>
 
-        <div className="container" style={{ padding: '16px', display: 'block', visibility: 'visible', opacity: 1 }}>
+        <div className="container" style={{ display: 'block', visibility: 'visible', opacity: 1 }}>
           {/* 에러 메시지 */}
           {error && (
             <IonCard>
@@ -347,11 +359,18 @@ const Iot: React.FC = () => {
                   {temperatureRange.min !== null && temperatureRange.max !== null ? (
                     <div style={{ marginTop: '8px' }}>
                       <p style={{ fontSize: '14px', color: '#666', marginBottom: '4px' }}>
-                        <strong>수동 조절:</strong> {Math.round(temperatureRange.min)}°C ~ {Math.round(temperatureRange.max)}°C
+                        <strong>
+                          {isCachedRange ? '수동 조절:' : isAutoRange ? '자동 조절:' : '온도 범위:'}
+                        </strong> {temperatureRange.min?.toFixed(1)}°C ~ {temperatureRange.max?.toFixed(1)}°C
                       </p>
-                      {originalTemperatureRange.min !== null && originalTemperatureRange.max !== null ? (
+                      {originalTemperatureRange.min !== null && originalTemperatureRange.max !== null && 
+                       (originalTemperatureRange.min !== temperatureRange.min || originalTemperatureRange.max !== temperatureRange.max) ? (
                         <p style={{ fontSize: '12px', color: '#999', fontStyle: 'italic' }}>
-                          원래 설정: {Math.round(originalTemperatureRange.min)}°C ~ {Math.round(originalTemperatureRange.max)}°C
+                          원래 설정: {originalTemperatureRange.min.toFixed(1)}°C ~ {originalTemperatureRange.max.toFixed(1)}°C
+                        </p>
+                      ) : originalTemperatureRange.min !== null && originalTemperatureRange.max !== null ? (
+                        <p style={{ fontSize: '12px', color: '#999', fontStyle: 'italic' }}>
+                          원래 설정: {originalTemperatureRange.min.toFixed(1)}°C ~ {originalTemperatureRange.max.toFixed(1)}°C
                         </p>
                       ) : null}
                     </div>
@@ -584,11 +603,12 @@ const Iot: React.FC = () => {
           isOpen={showThresholdAlert}
           onDidDismiss={handleThresholdCancel}
           header="온도 범위 설정"
-          message={
+          subHeader={
             pendingTemperature !== null
-              ? `오늘 하루는 현재 설정하신 온도로 진행할까요?\n\n오늘 임계값: ${pendingTemperature - 1}도 ~ ${pendingTemperature + 1}도`
-              : `오늘 하루는 현재 설정하신 온도로 진행할까요?\n\n오늘 임계값: ${status.targetTemperature - 1}도 ~ ${status.targetTemperature + 1}도`
+              ? `오늘밤 온도 범위: ${pendingTemperature - 1}도 ~ ${pendingTemperature + 1}도`
+              : `오늘밤 온도 범위: ${status.targetTemperature - 1}도 ~ ${status.targetTemperature + 1}도`
           }
+          message="오늘 하루는 현재 설정하신 온도로 진행할까요?"
           buttons={[
             {
               text: '취소',

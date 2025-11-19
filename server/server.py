@@ -298,14 +298,15 @@ def calculate_comfort_temperature(gender: str, age: int, bmi: float) -> tuple[fl
         delta_age = 0.0
     
     # 3️⃣ BMI 조정
+    # BMI 분류: 저체중(<18.5), 정상(18.5-23), 과체중(23-25), 비만(>=25)
     if bmi < 18.5:
-        delta_bmi = 1.0
-    elif 18.5 <= bmi < 25:
-        delta_bmi = 0.0
-    elif 25 <= bmi < 30:
-        delta_bmi = -0.5
-    else:  # bmi >= 30
-        delta_bmi = -1.0
+        delta_bmi = 1.0  # 저체중 +1도
+    elif 18.5 <= bmi < 23.0:
+        delta_bmi = 0.0  # 정상체중 +0도
+    elif 23.0 <= bmi < 25.0:
+        delta_bmi = -0.5  # 과체중 -0.5도
+    else:  # bmi >= 25.0
+        delta_bmi = -1.0  # 비만 -1도
     
     # 최종 온도 계산
     min_temp = base_min + delta_gender + delta_age + delta_bmi
@@ -1798,48 +1799,105 @@ async def set_temperature_range(data: TemperatureRangeRequest):
 async def get_temperature_range():
     """
     DB에서 저장된 쾌적 온도 범위 조회
-    - 현재 사용 중인 값 (수동 조절 캐시 우선)
-    - 원래 설정된 값 (DB에서 직접)
     """
     try:
         logger.info("🌡️ 온도 범위 조회 요청")
         
-        # 현재 사용 중인 온도 범위 (캐시 우선, 없으면 DB)
+        # 1. 먼저 수동 조절 캐시 확인
+        is_cached = False
+        cached_min_temp = None
+        cached_max_temp = None
+        try:
+            from temperature_threshold_cache import get_temperature_threshold
+            cached_threshold = get_temperature_threshold()
+            
+            if cached_threshold is not None:
+                cached_min_temp = cached_threshold.get("min_temp")
+                cached_max_temp = cached_threshold.get("max_temp")
+                
+                if cached_min_temp is not None and cached_max_temp is not None:
+                    is_cached = True
+                    logger.info(f"✅ 수동 조절 캐시 발견: {cached_min_temp}~{cached_max_temp}°C")
+        except ImportError as e:
+            logger.debug(f"temperature_threshold_cache 모듈 없음: {e}")
+        except Exception as e:
+            logger.debug(f"캐시 조회 중 오류 (무시): {e}")
+        
+        # 2. 수동 조절 캐시가 있으면 반환
+        if is_cached:
+            return {
+                "success": True,
+                "min_temp": float(cached_min_temp),
+                "max_temp": float(cached_max_temp),
+                "target_temp": (float(cached_min_temp) + float(cached_max_temp)) / 2.0,
+                "is_cached": True,
+                "is_auto": False
+            }
+        
+        # 3. 캐시가 없으면 DB에서 가져오기 (room_threshold = 자동 조절 범위)
         temperature_range = temperature_control_logic.get_temperature_range_from_db(engine)
         
-        # 원래 설정된 온도 범위 (DB에서 직접 가져오기 - room_threshold 테이블의 min_temp, max_temp 컬럼)
-        original_min_temp = None
-        original_max_temp = None
+        if temperature_range is not None:
+            min_temp, max_temp = temperature_range
+            return {
+                "success": True,
+                "min_temp": min_temp,
+                "max_temp": max_temp,
+                "target_temp": (min_temp + max_temp) / 2.0,
+                "is_cached": False,
+                "is_auto": True  # room_threshold에서 가져온 값 = 자동 조절 범위
+            }
+        
+        # 4. DB에도 없으면 predicted_results에서 사용자 정보를 가져와서 자동 조절 범위 계산
+        logger.info("📋 room_threshold에 값이 없음. 사용자 정보로 자동 조절 범위 계산 시도...")
         try:
             with engine.connect() as conn:
-                query = text("SELECT min_temp, max_temp FROM room_threshold LIMIT 1")
+                # predicted_results 테이블에서 최신 사용자 정보 가져오기
+                query = text("""
+                    SELECT age, bmi, gender 
+                    FROM predicted_results 
+                    WHERE age IS NOT NULL 
+                      AND bmi IS NOT NULL 
+                      AND gender IS NOT NULL
+                    ORDER BY timestamp DESC
+                    LIMIT 1
+                """)
                 result = conn.execute(query).fetchone()
-                if result and result.min_temp is not None and result.max_temp is not None:
-                    original_min_temp = float(result.min_temp)
-                    original_max_temp = float(result.max_temp)
+                
+                if result:
+                    age = int(result.age) if result.age else 30
+                    bmi = float(result.bmi) if result.bmi else 22.0
+                    gender = result.gender
+                    
+                    # 자동 조절 범위 계산
+                    min_temp, max_temp = calculate_comfort_temperature(gender, age, bmi)
+                    logger.info(f"🌡️ 자동 조절 범위 계산: {min_temp}~{max_temp}°C (gender: {gender}, age: {age}, bmi: {bmi})")
+                    
+                    return {
+                        "success": True,
+                        "min_temp": min_temp,
+                        "max_temp": max_temp,
+                        "target_temp": (min_temp + max_temp) / 2.0,
+                        "is_cached": False,
+                        "is_auto": True  # 자동 계산된 값임을 표시
+                    }
+                else:
+                    # 사용자 정보도 없으면 기본값 반환
+                    logger.warning("⚠️ 사용자 정보도 없음. 기본값 사용")
+                    return {
+                        "success": False,
+                        "message": "온도 범위가 설정되어 있지 않습니다.",
+                        "min_temp": None,
+                        "max_temp": None
+                    }
         except Exception as e:
-            logger.warning(f"원래 온도 범위 조회 실패: {e}")
-        
-        if temperature_range is None:
+            logger.error(f"❌ 자동 조절 범위 계산 실패: {e}")
             return {
                 "success": False,
                 "message": "온도 범위가 설정되어 있지 않습니다.",
                 "min_temp": None,
-                "max_temp": None,
-                "original_min_temp": original_min_temp,
-                "original_max_temp": original_max_temp
+                "max_temp": None
             }
-        
-        min_temp, max_temp = temperature_range
-        
-        return {
-            "success": True,
-            "min_temp": min_temp,  # 현재 사용 중인 값 (수동 조절 캐시 우선)
-            "max_temp": max_temp,  # 현재 사용 중인 값
-            "original_min_temp": original_min_temp,  # 원래 설정된 값 (room_threshold 테이블의 min_temp)
-            "original_max_temp": original_max_temp,  # 원래 설정된 값 (room_threshold 테이블의 max_temp)
-            "target_temp": (min_temp + max_temp) / 2.0
-        }
         
     except Exception as e:
         logger.error(f"온도 범위 조회 실패: {str(e)}")
@@ -2230,8 +2288,42 @@ async def get_thresholds_api():
         }
 
 @app.get("/health")
-async def health_check():
+async def health_check(request: Request):
     """서버 상태 확인 (모델, 에어컨, DB 연결 상태 포함)"""
+    # 서버의 실제 IP 주소 가져오기
+    server_url = None
+    try:
+        # 요청에서 호스트 정보 가져오기
+        host = request.headers.get("host", "localhost:3000")
+        # X-Forwarded-Host 헤더 확인 (프록시 환경)
+        forwarded_host = request.headers.get("x-forwarded-host")
+        if forwarded_host:
+            host = forwarded_host
+        
+        # 프로토콜 확인 (HTTPS 또는 HTTP)
+        scheme = 'http'
+        forwarded_proto = request.headers.get("x-forwarded-proto")
+        if forwarded_proto:
+            scheme = forwarded_proto
+        elif hasattr(request, 'url') and hasattr(request.url, 'scheme'):
+            scheme = request.url.scheme
+        
+        # 서버 URL 구성
+        server_url = f"{scheme}://{host}"
+    except Exception as e:
+        logger.warning(f"서버 URL 구성 실패: {e}")
+        # 실패 시 기본값 사용
+        try:
+            import socket
+            # 로컬 IP 주소 가져오기
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            local_ip = s.getsockname()[0]
+            s.close()
+            server_url = f"http://{local_ip}:3000"
+        except:
+            server_url = "http://localhost:3000"
+    
     # DB 연결 테스트
     db_connected = False
     db_error = None
@@ -2283,6 +2375,7 @@ async def health_check():
     
     return {
         "status": overall_status,
+        "server_url": server_url,  # 서버 URL 추가
         "model_loaded": model_loaded,
         "air_conditioner_available": AIR_CONDITIONER_AVAILABLE,
         "database_connected": db_connected,

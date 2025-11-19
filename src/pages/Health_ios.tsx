@@ -25,6 +25,7 @@ import {
 import { personOutline } from 'ionicons/icons';
 import SignIn from '../components/SignIn';
 import './Health_ios.css';
+import { getServerUrl, autoDetectServerUrl } from '../services/ServerConfig';
 
 interface HealthData {
   heartRate: { value: number; date: string } | null;
@@ -135,6 +136,24 @@ const Health_ios: React.FC = () => {
     setTimeout(() => {
       loadHealthData();
     }, 500);
+    
+    // 서버 URL 자동 감지 (앱 시작 시 백그라운드에서 실행)
+    setTimeout(() => {
+      const detectServerUrl = async () => {
+        try {
+          // iOS에서 localhost인 경우 제거하고 자동 감지
+          const currentUrl = getServerUrl();
+          if (!currentUrl || currentUrl.includes('localhost')) {
+            console.log('🔄 서버 URL 자동 감지 시작...');
+            const serverUrl = await autoDetectServerUrl();
+            console.log('✅ 서버 URL 자동 감지 완료:', serverUrl);
+          }
+        } catch (err) {
+          console.error('서버 URL 자동 감지 실패:', err);
+        }
+      };
+      detectServerUrl();
+    }, 1000); // 1초 후에 실행
   }, []);
 
   // 10분마다 자동으로 최신 데이터 가져오기 (iOS는 HealthKit, 안드로이드는 서버에서)
@@ -146,10 +165,13 @@ const Health_ios: React.FC = () => {
         fetchHealthData(healthDataPlugin);
       }, 1000); // 1초 후 첫 데이터 가져오기
       
-      // 10분마다 자동으로 데이터 가져오기
+      // 2분마다 자동으로 데이터 가져오기 (테스트용)
       const interval = setInterval(() => {
+        console.log('⏰ 2분 주기 - HealthData 가져오기 시작...');
         fetchHealthData(healthDataPlugin);
-      }, 10 * 60 * 1000); // 10분 = 600000ms
+      }, 2 * 60 * 1000); // 2분 = 120000ms
+      
+      console.log('✅ 2분마다 HealthData 자동 수집 시작');
 
       return () => {
         clearTimeout(initialTimeout);
@@ -164,10 +186,13 @@ const Health_ios: React.FC = () => {
         fetchHealthDataFromServer();
       }, 500); // 500ms 지연으로 UI 먼저 렌더링
       
-      // 10분마다 자동으로 데이터 가져오기
+      // 2분마다 자동으로 데이터 가져오기 (테스트용)
       const interval = setInterval(() => {
+        console.log('⏰ 2분 주기 - 서버에서 HealthData 가져오기 시작...');
         fetchHealthDataFromServer();
-      }, 10 * 60 * 1000); // 10분 = 600000ms
+      }, 2 * 60 * 1000); // 2분 = 120000ms
+      
+      console.log('✅ 2분마다 HealthData 자동 수집 시작 (Android)');
 
       return () => {
         clearTimeout(initialTimeout);
@@ -177,8 +202,8 @@ const Health_ios: React.FC = () => {
   }, [healthDataPlugin, platform]);
 
 
-  // 백그라운드 모니터링 이벤트 리스너는 제거 (10분마다만 가져오기)
-  // 실시간 업데이트 대신 10분마다만 데이터를 가져오도록 함
+  // 백그라운드 모니터링 이벤트 리스너는 제거 (2분마다만 가져오기)
+  // 실시간 업데이트 대신 2분마다만 데이터를 가져오도록 함
   // useEffect(() => {
   //   if (!healthDataPlugin || platform !== 'ios' || !backgroundMonitoring) return;
   //   const listener = healthDataPlugin.addListener('healthDataUpdated', async () => {
@@ -271,6 +296,7 @@ const Health_ios: React.FC = () => {
 
       // 서버로 데이터 전송은 완전히 백그라운드로 처리 (로딩 상태와 무관)
       if (normalizedHeartRate || normalizedHrv || normalizedOxygen) {
+        console.log('📤 서버로 데이터 전송 시작 (2분 주기)...');
         // Promise를 반환하지 않도록 void로 처리하여 완전히 백그라운드로 실행
         void sendToServer({
           heartRate: normalizedHeartRate?.value || null,
@@ -279,9 +305,13 @@ const Health_ios: React.FC = () => {
           bmi: bmi ? parseFloat(bmi) : null,
           age: age ? parseFloat(age) : null,
           gender: gender && gender !== '' ? parseFloat(gender) : 0.0,
+        }).then(() => {
+          console.log('✅ 서버 전송 성공 (2분 주기)');
         }).catch((err) => {
-          console.error('서버 전송 실패 (백그라운드):', err);
+          console.error('❌ 서버 전송 실패 (백그라운드):', err);
         });
+      } else {
+        console.log('⚠️ 전송할 데이터가 없습니다 (모든 값이 null)');
       }
     } catch (err: any) {
       console.error('HealthData 데이터 가져오기 실패:', err);
@@ -353,13 +383,34 @@ const Health_ios: React.FC = () => {
       // 서버 URL 설정 (플랫폼별로 자동 설정)
       const { Capacitor } = await import('@capacitor/core');
       const currentPlatform = Capacitor.getPlatform();
-      let serverURL = 'http://localhost:3000/healthdata/latest';
-      
-      if (currentPlatform === 'android') {
-        // 안드로이드 에뮬레이터: 10.0.2.2, 실제 기기: 컴퓨터 IP 주소 필요
-        serverURL = 'http://10.0.2.2:3000/healthdata/latest';
-      } else if (currentPlatform === 'ios') {
-        serverURL = 'http://localhost:3000/healthdata/latest';
+      // 서버 URL 자동 감지
+      let serverURL: string;
+      try {
+        const baseUrl = getServerUrl();
+        // iOS에서 localhost이거나 빈 문자열인 경우 자동 감지
+        if (!baseUrl || baseUrl === '' || baseUrl.includes('localhost')) {
+          console.log('⚠️ localhost 감지 또는 URL 없음, 자동 감지 시도');
+          const detectedUrl = await autoDetectServerUrl();
+          if (!detectedUrl || detectedUrl === '') {
+            throw new Error('서버 URL 자동 감지 실패');
+          }
+          serverURL = `${detectedUrl}/healthdata/latest`;
+        } else {
+          serverURL = `${baseUrl}/healthdata/latest`;
+        }
+      } catch (error) {
+        console.log('⚠️ 서버 URL 가져오기 실패, 자동 감지 시도:', error);
+        try {
+          const detectedUrl = await autoDetectServerUrl();
+          if (!detectedUrl || detectedUrl === '') {
+            throw new Error('서버 URL 자동 감지 실패');
+          }
+          serverURL = `${detectedUrl}/healthdata/latest`;
+        } catch (detectError) {
+          console.error('❌ 서버 자동 감지 실패:', detectError);
+          // iOS에서는 localhost를 사용하지 않음
+          throw new Error('서버를 찾을 수 없습니다. 서버가 실행 중인지 확인해주세요.');
+        }
       }
       
       console.log('📱 서버에서 건강 데이터 가져오기 시작:', serverURL);
@@ -426,10 +477,59 @@ const Health_ios: React.FC = () => {
     age: number | null;
     gender: number | null;
   }) => {
-    // 서버 URL 설정 (환경 변수나 설정에서 가져올 수 있음)
-    const serverURL = 'http://192.168.68.74:3000/healthdata'; // 현재 컴퓨터 IP 주소
-    // 또는 UserDefaults에서 가져오기 (iOS)
-    // const serverURL = localStorage.getItem('serverURL') || 'http://192.168.68.74:3000/healthdata';
+    // 서버 URL 자동 감지 (실패 시 자동으로 다른 IP 시도)
+    let serverURL: string;
+    try {
+      // 먼저 저장된 URL 시도
+      const baseUrl = getServerUrl();
+      // iOS에서 localhost이거나 빈 문자열인 경우 자동 감지
+      if (!baseUrl || baseUrl === '' || baseUrl.includes('localhost')) {
+        console.log('⚠️ localhost 감지 또는 URL 없음, 자동 감지 시도');
+        try {
+          const detectedUrl = await autoDetectServerUrl();
+          if (!detectedUrl || detectedUrl === '') {
+            throw new Error('서버 URL 자동 감지 실패');
+          }
+          serverURL = `${detectedUrl}/healthdata`;
+          console.log('✅ 서버 자동 감지 성공:', serverURL);
+        } catch (detectError) {
+          console.error('❌ 서버 자동 감지 실패:', detectError);
+          throw new Error('서버를 찾을 수 없습니다. 서버가 실행 중인지 확인해주세요.');
+        }
+      } else {
+        // /healthdata 엔드포인트 추가
+        if (!baseUrl.endsWith('/healthdata')) {
+          serverURL = `${baseUrl}/healthdata`;
+        } else {
+          serverURL = baseUrl;
+        }
+      }
+    } catch (error) {
+      console.log('⚠️ 서버 URL 가져오기 실패, 자동 감지 시도:', error);
+      // 자동 감지 시도
+      try {
+        const detectedUrl = await autoDetectServerUrl();
+        serverURL = `${detectedUrl}/healthdata`;
+        console.log('✅ 서버 자동 감지 성공:', serverURL);
+      } catch (detectError) {
+        console.error('❌ 서버 자동 감지 실패:', detectError);
+        // iOS에서는 localhost를 사용하지 않음
+        serverURL = ''; // 빈 문자열로 설정하여 에러 발생
+      }
+    }
+
+    // 서버 URL이 없으면 에러
+    if (!serverURL || serverURL === '') {
+      console.error('❌ 서버 URL이 없습니다. 자동 감지를 다시 시도합니다.');
+      try {
+        const detectedUrl = await autoDetectServerUrl();
+        serverURL = `${detectedUrl}/healthdata`;
+        console.log('✅ 서버 자동 감지 성공:', serverURL);
+      } catch (detectError) {
+        console.error('❌ 서버 자동 감지 최종 실패:', detectError);
+        throw new Error('서버를 찾을 수 없습니다. 서버가 실행 중인지 확인해주세요.');
+      }
+    }
 
     try {
       console.log('📤 서버로 데이터 전송 시작:', data);
@@ -466,6 +566,37 @@ const Health_ios: React.FC = () => {
         clearTimeout(timeoutId);
         if (fetchError.name === 'AbortError') {
           console.error('❌ 서버 전송 타임아웃 (10초) - 서버가 응답하지 않습니다');
+          // 타임아웃 시 자동 감지 재시도
+          try {
+            console.log('🔄 서버 자동 감지 재시도...');
+            const detectedUrl = await autoDetectServerUrl();
+            const newServerURL = `${detectedUrl}/healthdata`;
+            console.log('✅ 새로운 서버 URL 감지:', newServerURL);
+            // 새로운 URL로 재시도
+            const retryController = new AbortController();
+            const retryTimeoutId = setTimeout(() => retryController.abort(), 10000);
+            try {
+              const retryResponse = await fetch(newServerURL, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data),
+                signal: retryController.signal,
+              });
+              clearTimeout(retryTimeoutId);
+              if (retryResponse.ok) {
+                const result = await retryResponse.json();
+                console.log('✅ 재시도 성공:', result);
+                return result;
+              }
+            } catch (retryError) {
+              clearTimeout(retryTimeoutId);
+              throw retryError;
+            }
+          } catch (detectError) {
+            console.error('❌ 자동 감지 재시도 실패:', detectError);
+          }
           throw new Error('서버 전송 타임아웃: 서버가 응답하지 않습니다. 서버가 실행 중인지 확인해주세요.');
         }
         // 더 자세한 에러 정보 로깅
@@ -478,10 +609,39 @@ const Health_ios: React.FC = () => {
         };
         console.error('❌ fetch 에러 상세:', errorDetails);
         
-        // 네트워크 에러인 경우 더 명확한 메시지
+        // 네트워크 에러인 경우 자동 감지 재시도
         if (fetchError.message?.includes('Failed to fetch') || 
             fetchError.message?.includes('NetworkError') ||
             fetchError.name === 'TypeError') {
+          try {
+            console.log('🔄 네트워크 에러 - 서버 자동 감지 재시도...');
+            const detectedUrl = await autoDetectServerUrl();
+            const newServerURL = `${detectedUrl}/healthdata`;
+            console.log('✅ 새로운 서버 URL 감지:', newServerURL);
+            // 새로운 URL로 재시도
+            const retryController = new AbortController();
+            const retryTimeoutId = setTimeout(() => retryController.abort(), 10000);
+            try {
+              const retryResponse = await fetch(newServerURL, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data),
+                signal: retryController.signal,
+              });
+              clearTimeout(retryTimeoutId);
+              if (retryResponse.ok) {
+                const result = await retryResponse.json();
+                console.log('✅ 재시도 성공:', result);
+                return result;
+              }
+            } catch (retryError) {
+              clearTimeout(retryTimeoutId);
+            }
+          } catch (detectError) {
+            console.error('❌ 자동 감지 재시도 실패:', detectError);
+          }
           throw new Error(`네트워크 연결 실패: ${serverURL}에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요.`);
         }
         throw fetchError;
@@ -651,7 +811,7 @@ const Health_ios: React.FC = () => {
               borderRadius: '18px',
               background: 'white',
               position: 'fixed',
-              top: 'calc(var(--safe-area-inset-top) + 20px)',
+              top: 'calc(var(--safe-area-inset-top, 0px) + 44px + 12px)',
               right: '16px',
               display: 'flex',
               alignItems: 'center',

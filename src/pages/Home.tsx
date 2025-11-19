@@ -73,7 +73,7 @@ const Home: React.FC = () => {
       </IonHeader>
       <IonContent fullscreen>
 
-        <div className="container" style={{ padding: '16px' }}>
+        <div className="container">
           {/* 예측 결과 */}
           {prediction && (
             <IonCard>

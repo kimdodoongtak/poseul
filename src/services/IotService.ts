@@ -41,11 +41,17 @@ class IotService {
   }
 
   constructor(baseUrl?: string) {
-    if (baseUrl) {
+    if (baseUrl && baseUrl !== '') {
       this.baseUrl = baseUrl;
     } else {
       // ServerConfig에서 URL 가져오기 (localStorage > 환경 변수 > 기본값)
-      this.baseUrl = getServerUrl();
+      const url = getServerUrl();
+      if (url && url !== '') {
+        this.baseUrl = url;
+      } else {
+        // 빈 URL인 경우 기본값 설정 (나중에 autoDetectServerUrl로 업데이트됨)
+        this.baseUrl = '';
+      }
     }
   }
   
@@ -62,6 +68,11 @@ class IotService {
    */
   async getStatus(): Promise<AirConditionerStatusResponse> {
     try {
+      // baseUrl이 비어있으면 에러
+      if (!this.baseUrl || this.baseUrl === '') {
+        throw new Error('서버 URL이 설정되지 않았습니다. 서버 URL을 자동 감지하거나 수동으로 설정해주세요.');
+      }
+      
       console.log(`IoT 상태 조회 요청: ${this.baseUrl}/air_conditioner/state`);
       
       // 타임아웃 설정 (10초로 증가하여 서버 시작 시간 고려)

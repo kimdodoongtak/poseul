@@ -327,20 +327,44 @@ def get_temperature_range_from_db(engine) -> Optional[Tuple[float, float]]:
         # 2. 캐시가 없거나 만료되었으면 DB에서 가져오기
         logger.debug("ℹ️ 캐시된 임계값이 없어 DB에서 가져옵니다.")
         with engine.connect() as conn:
-            query = text("SELECT min_temp, max_temp FROM room_threshold LIMIT 1")
-            result = conn.execute(query).fetchone()
-            
-            if result and result.min_temp is not None and result.max_temp is not None:
-                min_temp = float(result.min_temp)
-                max_temp = float(result.max_temp)
-                logger.info("=" * 60)
-                logger.info(f"📋 [자동 조절] DB에서 기본 온도 범위 사용")
-                logger.info(f"   임계값 범위: {min_temp}~{max_temp}°C")
-                logger.info(f"   (캐시된 수동 조절 임계값이 없거나 만료됨)")
-                logger.info("=" * 60)
-                return min_temp, max_temp
-            else:
-                logger.warning("⚠️ room_threshold 테이블에 온도 범위가 없습니다.")
+            # 컬럼 확인하여 최신 데이터 가져오기
+            try:
+                columns_check = text("""
+                    SELECT COLUMN_NAME 
+                    FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_SCHEMA = 'main' 
+                    AND TABLE_NAME = 'room_threshold'
+                """)
+                columns = [row.COLUMN_NAME for row in conn.execute(columns_check).fetchall()]
+                
+                # 정렬 컬럼 결정 (no 컬럼 우선 사용)
+                order_by = ""
+                if 'no' in columns:
+                    order_by = "ORDER BY no DESC"
+                elif 'id' in columns:
+                    order_by = "ORDER BY id DESC"
+                elif 'created_at' in columns:
+                    order_by = "ORDER BY created_at DESC"
+                else:
+                    logger.debug("ℹ️ room_threshold 테이블에 정렬 컬럼을 찾을 수 없습니다. 첫 번째 행을 사용합니다.")
+                
+                query = text(f"SELECT min_temp, max_temp FROM room_threshold {order_by} LIMIT 1")
+                result = conn.execute(query).fetchone()
+                
+                if result and result.min_temp is not None and result.max_temp is not None:
+                    min_temp = float(result.min_temp)
+                    max_temp = float(result.max_temp)
+                    logger.info("=" * 60)
+                    logger.info(f"📋 [자동 조절] DB에서 기본 온도 범위 사용")
+                    logger.info(f"   임계값 범위: {min_temp}~{max_temp}°C")
+                    logger.info(f"   (캐시된 수동 조절 임계값이 없거나 만료됨)")
+                    logger.info("=" * 60)
+                    return min_temp, max_temp
+                else:
+                    logger.warning("⚠️ room_threshold 테이블에 온도 범위가 없습니다.")
+                    return None
+            except Exception as e:
+                logger.error(f"❌ room_threshold 테이블 조회 중 오류: {e}")
                 return None
                 
     except Exception as e:
