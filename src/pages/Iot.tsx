@@ -15,12 +15,17 @@ import {
   IonSpinner,
   IonText,
   IonAlert,
+  IonIcon,
+  IonButtons,
 } from '@ionic/react';
+import { refreshOutline } from 'ionicons/icons';
+import { useHistory } from 'react-router-dom';
 import { IotService, AirConditionerMode, FanSpeed, getIotServiceBaseUrl } from '../services';
 import { autoDetectServerUrl } from '../services/ServerConfig';
 import './Iot.css';
 
 const Iot: React.FC = () => {
+  const history = useHistory();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // 기본 상태 설정 - 서버 연결 실패 시에도 UI가 보이도록
@@ -113,6 +118,15 @@ const Iot: React.FC = () => {
       const errorMessage = error.message || '서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요.';
       setError(errorMessage);
       
+      // 등록되지 않았거나 404 에러인 경우 등록 페이지로 리다이렉트
+      if (errorMessage.includes('등록된 디바이스가 없습니다') || errorMessage.includes('404')) {
+        console.log('🔄 등록되지 않음 - 등록 페이지로 이동');
+        setTimeout(() => {
+          history.replace('/iot/register');
+        }, 1000);
+        return;
+      }
+      
       // 연결 실패 시 자동 감지 재시도
       if (errorMessage.includes('서버') || errorMessage.includes('timeout') || errorMessage.includes('연결')) {
         console.log('🔄 연결 실패 - 서버 URL 자동 감지 재시도...');
@@ -132,12 +146,20 @@ const Iot: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    // 등록 여부 확인
+    const isRegistered = localStorage.getItem('iot_device_registered') === 'true';
+    if (!isRegistered) {
+      // 등록되지 않았으면 등록 페이지로 리다이렉트
+      history.replace('/iot/register');
+      return;
+    }
+
     // UI를 먼저 렌더링하고, 그 다음에 상태 조회
     // 자동 감지는 연결 실패 시에만 실행
     setTimeout(() => {
       loadStatus();
     }, 500);
-  }, [loadStatus]);
+  }, [loadStatus, history]);
 
   const handlePowerToggle = async (power: boolean) => {
     setLoading(true);
@@ -273,11 +295,27 @@ const Iot: React.FC = () => {
     return fanSpeedMap[fanSpeed] || fanSpeed;
   };
 
+  const handleReregister = () => {
+    // 등록 상태 초기화
+    localStorage.removeItem('iot_device_registered');
+    localStorage.removeItem('thinq_pat_token');
+    localStorage.removeItem('thinq_device_id');
+    localStorage.removeItem('thinq_device_name');
+    console.log('🔄 디바이스 재등록을 위해 등록 상태 초기화');
+    // 등록 페이지로 이동
+    history.push('/iot/register');
+  };
+
   return (
     <IonPage className="iot-page">
       <IonHeader>
         <IonToolbar>
           <IonTitle>IoT 제어</IonTitle>
+          <IonButtons slot="end">
+            <IonButton onClick={handleReregister} fill="clear">
+              <IonIcon icon={refreshOutline} slot="icon-only" />
+            </IonButton>
+          </IonButtons>
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen>

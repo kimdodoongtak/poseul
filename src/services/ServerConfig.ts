@@ -13,17 +13,22 @@ let cachedServerUrl: string | null = null;
  * 우선순위: 캐시 > localStorage > 환경 변수 > 기본값
  */
 export function getServerUrl(): string {
-  // 캐시된 URL이 있으면 사용
-  if (cachedServerUrl) {
+  // 캐시된 URL이 있으면 사용 (단, 10.0.2.2는 제외)
+  if (cachedServerUrl && !cachedServerUrl.includes('10.0.2.2')) {
     return cachedServerUrl;
   }
   
-  // localStorage에서 가져오기
+  // localStorage에서 가져오기 (10.0.2.2는 제외)
   if (typeof window !== 'undefined') {
     const savedUrl = localStorage.getItem(SERVER_URL_KEY);
-    if (savedUrl) {
+    if (savedUrl && !savedUrl.includes('10.0.2.2')) {
       cachedServerUrl = savedUrl;
       return savedUrl;
+    } else if (savedUrl && savedUrl.includes('10.0.2.2')) {
+      // 10.0.2.2가 저장되어 있으면 제거
+      console.log('🗑️ 에뮬레이터용 URL 감지, 제거:', savedUrl);
+      localStorage.removeItem(SERVER_URL_KEY);
+      cachedServerUrl = null;
     }
   }
   
@@ -74,8 +79,9 @@ export async function autoDetectServerUrl(): Promise<string> {
     const savedUrl = localStorage.getItem(SERVER_URL_KEY);
     if (savedUrl) {
       // 잘못된 IP 대역이면 즉시 제거하고 자동 감지 시작
-      if (savedUrl.includes('192.168.0.143') || savedUrl.includes('192.168.68.74')) {
-        console.log('⚠️ 잘못된 URL 감지, 자동 감지 시작:', savedUrl);
+      // 10.0.2.2는 에뮬레이터용이므로 실제 기기에서는 작동하지 않음
+      if (savedUrl.includes('192.168.0.143') || savedUrl.includes('192.168.68.74') || savedUrl.includes('10.0.2.2')) {
+        console.log('⚠️ 잘못된 URL 감지 (에뮬레이터용 또는 잘못된 IP), 자동 감지 시작:', savedUrl);
         localStorage.removeItem(SERVER_URL_KEY);
         cachedServerUrl = null;
       } else {
@@ -158,12 +164,24 @@ export async function autoDetectServerUrl(): Promise<string> {
     const ipCandidates: string[] = [];
     
     if (platform === 'android') {
-      ipCandidates.push('http://10.0.2.2:3000'); // 에뮬레이터
-      // 현재 서버 IP 우선 시도 (192.168.50.27)
+      // 실제 기기에서는 10.0.2.2가 작동하지 않으므로, 실제 IP를 먼저 시도
+      // 현재 서버 IP 최우선 시도 (172.30.1.1 - 사용자 컴퓨터 IP)
+      ipCandidates.push('http://172.30.1.1:3000');
+      // 이전 서버 IP도 시도 (192.168.50.27)
       ipCandidates.push('http://192.168.50.27:3000');
-      // 일반적인 로컬 네트워크 IP 대역
-      const commonIPs = [1, 27, 50, 100, 200, 254];
-      for (const subnet of [50, 0, 1]) {
+      
+      // 172.30.x.x 대역도 시도
+      const commonIPs172 = [1, 2, 10, 20, 100, 200, 254];
+      for (const ip of commonIPs172) {
+        const url = `http://172.30.1.${ip}:3000`;
+        if (!ipCandidates.includes(url)) {
+          ipCandidates.push(url);
+        }
+      }
+      
+      // 일반적인 로컬 네트워크 IP 대역 (더 많은 IP 시도)
+      const commonIPs = [1, 2, 10, 20, 27, 50, 100, 101, 200, 254];
+      for (const subnet of [50, 0, 1, 2]) {
         for (const ip of commonIPs) {
           const url = `http://192.168.${subnet}.${ip}:3000`;
           if (!ipCandidates.includes(url)) {
@@ -171,9 +189,14 @@ export async function autoDetectServerUrl(): Promise<string> {
           }
         }
       }
+      
+      // 마지막에 에뮬레이터용 IP 시도 (실제 기기에서는 실패할 것)
+      ipCandidates.push('http://10.0.2.2:3000');
     } else if (platform === 'ios') {
       ipCandidates.push('http://localhost:3000'); // 시뮬레이터
-      // 현재 서버 IP 우선 시도 (192.168.50.27)
+      // 현재 서버 IP 최우선 시도 (172.30.1.1 - 사용자 컴퓨터 IP)
+      ipCandidates.push('http://172.30.1.1:3000');
+      // 이전 서버 IP도 시도 (192.168.50.27)
       ipCandidates.push('http://192.168.50.27:3000');
       const commonIPs = [1, 27, 50, 68, 74, 100, 200, 254];
       for (const subnet of [50, 0, 1, 68]) {
@@ -186,16 +209,20 @@ export async function autoDetectServerUrl(): Promise<string> {
       }
     } else {
       ipCandidates.push('http://localhost:3000');
-      // 웹에서도 현재 서버 IP 시도
+      // 웹에서도 현재 서버 IP 최우선 시도 (172.30.1.1)
+      ipCandidates.push('http://172.30.1.1:3000');
+      // 이전 서버 IP도 시도
       ipCandidates.push('http://192.168.50.27:3000');
     }
     
     // 병렬로 여러 IP 시도 (첫 번째 성공한 응답 즉시 반환)
-    const promises = ipCandidates.map(async (url) => {
+    console.log(`🔍 ${ipCandidates.length}개의 IP 후보 시도 시작:`, ipCandidates.slice(0, 5), '...');
+    const promises = ipCandidates.map(async (url, index) => {
       try {
+        console.log(`  [${index + 1}/${ipCandidates.length}] 시도 중: ${url}`);
         const response = await fetch(`${url}/health`, {
           method: 'GET',
-          signal: AbortSignal.timeout(800) // 800ms로 단축
+          signal: AbortSignal.timeout(2000) // 2초로 증가 (서버 응답이 느릴 수 있음)
         });
         if (response.ok) {
           const data = await response.json();
@@ -205,11 +232,16 @@ export async function autoDetectServerUrl(): Promise<string> {
             localStorage.setItem(SERVER_URL_KEY, serverUrl);
           }
           cachedServerUrl = serverUrl;
-          console.log('✅ 서버 자동 감지 성공:', serverUrl);
+          console.log(`✅ 서버 자동 감지 성공: ${serverUrl} (시도 ${index + 1}/${ipCandidates.length})`);
           return serverUrl;
+        } else {
+          console.log(`  ❌ ${url} 응답 실패: ${response.status}`);
         }
-      } catch {
-        // 실패한 IP는 무시
+      } catch (error: any) {
+        // 실패한 IP는 로그만 남기고 무시
+        if (error.name !== 'AbortError') {
+          console.log(`  ❌ ${url} 연결 실패: ${error.message || '알 수 없는 오류'}`);
+        }
       }
       return null;
     });
@@ -225,17 +257,30 @@ export async function autoDetectServerUrl(): Promise<string> {
     }
     
     // 모든 시도 결과 확인
+    console.log('🔍 모든 IP 시도 완료, 결과 확인 중...');
     const results = await Promise.allSettled(promises);
     const successResult = results.find(r => 
       r.status === 'fulfilled' && r.value !== null
     );
     if (successResult && successResult.status === 'fulfilled') {
-      return successResult.value;
+      const detectedUrl = successResult.value;
+      console.log('✅ 최종 감지된 서버 URL:', detectedUrl);
+      return detectedUrl;
     }
+    
+    console.error('❌ 모든 IP 시도 실패 - 서버를 찾을 수 없습니다');
+    console.error('   시도한 IP 개수:', ipCandidates.length);
+    console.error('   실패한 결과:', results.filter(r => r.status === 'rejected').length, '개');
   }
   
-  // 4. 기본값 반환
+  // 4. 기본값 반환 (10.0.2.2는 제외)
+  console.warn('⚠️ 자동 감지 실패, 기본값 반환 (10.0.2.2 제외)');
   const defaultUrl = getServerUrl();
+  // 10.0.2.2가 기본값이면 빈 문자열 반환하여 사용자가 수동 입력하도록 유도
+  if (defaultUrl.includes('10.0.2.2')) {
+    console.error('❌ 기본값이 10.0.2.2입니다. 서버를 찾을 수 없습니다.');
+    return '';
+  }
   return defaultUrl;
 }
 

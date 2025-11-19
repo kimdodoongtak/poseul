@@ -80,7 +80,22 @@ class IotService {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+        const errorMessage = errorData.detail || errorData.error || `HTTP error! status: ${response.status}`;
+        
+        // 404 에러는 등록되지 않았음을 의미
+        if (response.status === 404) {
+          // 등록 상태 초기화
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('iot_device_registered');
+            localStorage.removeItem('thinq_pat_token');
+            localStorage.removeItem('thinq_device_id');
+            localStorage.removeItem('thinq_device_name');
+            console.log('🔄 404 에러 감지 - 등록 상태 초기화');
+          }
+          throw new Error('등록된 디바이스가 없습니다. PAT 토큰을 다시 등록해주세요.');
+        }
+        
+        throw new Error(errorMessage);
       }
 
       let data;

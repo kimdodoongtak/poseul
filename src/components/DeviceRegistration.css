@@ -1,0 +1,67 @@
+.device-registration-page {
+  --background: #f5f5f5;
+}
+
+.device-registration-page .container {
+  padding-top: 24px;
+  padding-bottom: 24px;
+}
+
+.device-registration-page ion-card {
+  margin: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  --background: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+}
+
+.device-registration-page ion-card-header {
+  --background: transparent;
+  background: transparent;
+}
+
+.device-registration-page ion-card-content {
+  --background: transparent;
+  background: transparent;
+}
+
+.device-registration-page ion-item {
+  --padding-start: 0;
+  --inner-padding-end: 0;
+  margin-bottom: 16px;
+}
+
+.device-registration-page ion-input {
+  --padding-start: 12px;
+  --padding-end: 12px;
+  --background: #ffffff;
+  --color: #000000;
+  background: #ffffff;
+  border: 2px solid #333;
+  border-radius: 8px;
+  margin-top: 8px;
+}
+
+.device-registration-page ion-item ion-input {
+  --background: #ffffff;
+  --color: #000000;
+  background: #ffffff;
+  border: 2px solid #333;
+}
+
+.device-registration-page ion-item {
+  --background: #ffffff;
+  background: #ffffff;
+}
+
+.device-registration-page ion-button[disabled] {
+  opacity: 0.5;
+}
+
+/* 확인 버튼 스타일 - 직사각형이지만 약간 둥근 모서리 */
+.device-registration-page ion-button[color="primary"] {
+  --border-radius: 8px;
+  border-radius: 8px;
+  margin-top: 24px;
+}
+
