@@ -173,12 +173,18 @@ ion-tab-bar {
   padding-bottom: env(safe-area-inset-bottom, 0px) !important;
   padding-left: env(safe-area-inset-left, 0px) !important;
   padding-right: env(safe-area-inset-right, 0px) !important;
+  margin: 0 !important;
+  transform: none !important;
 }
 
 /* 탭 버튼 색상 - 페이지 톤에 맞춤 */
 ion-tab-button {
   --color: #7C88A9 !important;
   --color-selected: #C4A1C2 !important;
+  --background: transparent !important;
+  --background-hover: transparent !important;
+  --background-activated: transparent !important;
+  background: transparent !important;
 }
 
 ion-tab-button ion-label {
@@ -199,17 +205,63 @@ ion-tab-button.tab-selected ion-icon {
   color: #C4A1C2 !important;
 }
 
+/* 탭 버튼 배경 투명 처리 - 탭바 전체 그라데이션만 보이도록 */
+ion-tab-button::part(native) {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+body.dark ion-tab-button::part(native) {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
 /* 다크모드 지원 - 탭 바 */
 body.dark ion-tab-bar {
+  --background: linear-gradient(135deg, #3A3B45 0%, #323340 50%, #2E2F3A 100%) !important;
+  --background-color: #3A3B45 !important;
+  --border-color: rgba(124, 136, 169, 0.3) !important;
   background: linear-gradient(135deg, #3A3B45 0%, #323340 50%, #2E2F3A 100%) !important;
   background-color: #3A3B45 !important;
+  border-top: 1px solid rgba(124, 136, 169, 0.3) !important;
   border-top-color: rgba(124, 136, 169, 0.3) !important;
+  box-shadow: 0 -4px 12px rgba(46, 47, 58, 0.3) !important;
+}
+
+/* Shadow DOM 내부 스타일 강제 적용 */
+body.dark ion-tab-bar::part(native) {
+  background: linear-gradient(135deg, #3A3B45 0%, #323340 50%, #2E2F3A 100%) !important;
+  background-color: #3A3B45 !important;
+  border-top: 1px solid rgba(124, 136, 169, 0.3) !important;
+  box-shadow: 0 -4px 12px rgba(46, 47, 58, 0.3) !important;
+}
+
+/* 플랫폼별 다크모드 탭바 스타일 */
+body.dark .platform-android ion-tab-bar,
+body.dark .platform-ios ion-tab-bar {
+  --background: linear-gradient(135deg, #3A3B45 0%, #323340 50%, #2E2F3A 100%) !important;
+  --background-color: #3A3B45 !important;
+  background: linear-gradient(135deg, #3A3B45 0%, #323340 50%, #2E2F3A 100%) !important;
+  background-color: #3A3B45 !important;
+  border-top: 1px solid rgba(124, 136, 169, 0.3) !important;
+  box-shadow: 0 -4px 12px rgba(46, 47, 58, 0.3) !important;
+}
+
+body.dark .platform-android ion-tab-bar::part(native),
+body.dark .platform-ios ion-tab-bar::part(native) {
+  background: linear-gradient(135deg, #3A3B45 0%, #323340 50%, #2E2F3A 100%) !important;
+  background-color: #3A3B45 !important;
+  border-top: 1px solid rgba(124, 136, 169, 0.3) !important;
   box-shadow: 0 -4px 12px rgba(46, 47, 58, 0.3) !important;
 }
 
 body.dark ion-tab-button {
   --color: #A0A5B8 !important;
   --color-selected: #C4A1C2 !important;
+  --background: transparent !important;
+  --background-hover: transparent !important;
+  --background-activated: transparent !important;
+  background: transparent !important;
 }
 
 body.dark ion-tab-button ion-label {
@@ -248,18 +300,19 @@ ion-router-outlet {
   position: relative !important;
   overflow: visible !important;
   min-height: calc(100vh - 56px) !important;
+  padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px)) !important;
 }
 
 /* Android (갤럭시 S24 플러스) - 콘텐츠 영역 조정 */
 .platform-android ion-router-outlet {
   min-height: calc(100vh - 56px) !important;
-  padding-bottom: 56px !important;
+  padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px)) !important;
 }
 
 /* iOS - 기존 디자인 유지 */
 .platform-ios ion-router-outlet {
   min-height: calc(100vh - 56px) !important;
-  padding-bottom: 56px !important;
+  padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px)) !important;
 }
 
 /* IonPage 스타일 */

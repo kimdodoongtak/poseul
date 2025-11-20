@@ -722,7 +722,79 @@ async def receive_health_data(data: HealthData):
             
             conn.commit()
             
-            # 온도 조절은 스케줄러가 2분마다 자동으로 처리합니다 (최근 3개 데이터 확인)
+            # test_script_logs에 실제 건강 데이터 로그 저장
+            try:
+                # test_script_logs 테이블 존재 여부 확인
+                test_log_table_check = text("""
+                    SELECT COUNT(*) as count
+                    FROM information_schema.tables 
+                    WHERE table_schema = 'main' 
+                    AND table_name = 'test_script_logs'
+                """)
+                test_log_table_exists = conn.execute(test_log_table_check).fetchone().count > 0
+                
+                if test_log_table_exists:
+                    # 실제 건강 데이터를 로그로 저장
+                    # predicted_skin_temp를 기반으로 분류 (더움/추움/적정)
+                    # 임계값 가져오기
+                    temp_min_threshold = 32.5
+                    temp_max_threshold = 34.5
+                    
+                    try:
+                        new_table_check = text("""
+                            SELECT COUNT(*) as count
+                            FROM information_schema.tables 
+                            WHERE table_schema = 'main' 
+                            AND table_name = 'new_skinthreshold'
+                        """)
+                        new_table_exists = conn.execute(new_table_check).fetchone().count > 0
+                        
+                        if new_table_exists:
+                            latest_threshold_query = text("""
+                                SELECT min_skinthreshold, max_skinthreshold
+                                FROM new_skinthreshold
+                                ORDER BY id DESC
+                                LIMIT 1
+                            """)
+                            latest_threshold = conn.execute(latest_threshold_query).fetchone()
+                            
+                            if latest_threshold and latest_threshold.min_skinthreshold is not None:
+                                temp_min_threshold = float(latest_threshold.min_skinthreshold)
+                                temp_max_threshold = float(latest_threshold.max_skinthreshold)
+                    except Exception as e:
+                        logger.warning(f"⚠️ 임계값 조회 실패, 기본값 사용: {str(e)}")
+                    
+                    # 예측 온도를 기반으로 분류 결정
+                    if predicted_skin_temp > 0:
+                        if predicted_skin_temp < temp_min_threshold:
+                            majority_result = 'C'  # 추움
+                        elif predicted_skin_temp > temp_max_threshold:
+                            majority_result = 'H'  # 더움
+                        else:
+                            majority_result = 'G'  # 적정
+                        
+                        # 실제 건강 데이터 로그 저장
+                        test_log_query = text("""
+                            INSERT INTO test_script_logs 
+                            (classification_results, majority_result, temperature_action, previous_temperature, new_temperature, created_at)
+                            VALUES 
+                            (:classification_results, :majority_result, :temperature_action, :previous_temperature, :new_temperature, NOW())
+                        """)
+                        conn.execute(test_log_query, {
+                            'classification_results': f'HR:{data.heartRate},HRV:{data.HRV},O2:{data.oxygenSaturation}',
+                            'majority_result': majority_result,
+                            'temperature_action': 'none',  # 실제 데이터 로그이므로 조절 없음
+                            'previous_temperature': None,
+                            'new_temperature': predicted_skin_temp
+                        })
+                        conn.commit()
+                        logger.info(f"✅ 실제 건강 데이터 로그 저장 완료: 예측온도={predicted_skin_temp}°C, 분류={majority_result}")
+                else:
+                    logger.warning("⚠️ test_script_logs 테이블이 존재하지 않습니다.")
+            except Exception as e:
+                logger.warning(f"⚠️ 실제 데이터 로그 저장 실패: {str(e)}")
+            
+            # 온도 조절은 스케줄러가 30분마다 자동으로 처리합니다
         
         logger.info(f"✅ 데이터가 DB에 저장되었습니다. (gender: {gender}, bmi: {bmi}, age: {age}, predicted_skin_temp: {predicted_skin_temp})")
         return {
@@ -2946,7 +3018,7 @@ def adjust_air_conditioner_wrapper():
 
 scheduler.add_job(
     adjust_air_conditioner_wrapper,
-    trigger=IntervalTrigger(minutes=2),  # 테스트용: 2분으로 변경
+    trigger=IntervalTrigger(minutes=30),  # 30분마다 실행
     id='air_conditioner_adjustment',
     name='에어컨 자동 온도 조절',
     replace_existing=True
@@ -2977,7 +3049,7 @@ async def startup_event():
         set_temperature_func=set_temperature
     )
     scheduler.start()
-    logger.info("✅ 스케줄러 시작 완료 (2분마다 자동 조절 - 테스트 모드)")
+    logger.info("✅ 스케줄러 시작 완료 (30분마다 자동 조절)")
 
 @app.on_event("shutdown")
 async def shutdown_event():

@@ -30,15 +30,18 @@ const HeartRateChart: React.FC<HeartRateChartProps> = ({ data }) => {
       return (
         <div
           style={{
-            backgroundColor: 'rgba(255, 255, 255, 0.95)',
-            padding: '10px',
-            border: '1px solid #ccc',
-            borderRadius: '5px',
+            backgroundColor: 'rgba(255, 255, 255, 0.98)',
+            padding: '12px',
+            border: '2px solid #ff6b6b',
+            borderRadius: '12px',
+            boxShadow: '0 4px 12px rgba(255, 107, 107, 0.3), 0 2px 6px rgba(0, 0, 0, 0.1)',
           }}
         >
-          <p style={{ margin: 0, fontWeight: 'bold' }}>{`시간: ${data.time}`}</p>
-          <p style={{ margin: '5px 0', color: '#ff6b6b' }}>
-            심박수: {data.heartRate?.toFixed(0)} bpm
+          <p style={{ margin: 0, fontWeight: 'bold', fontSize: '14px', color: '#333' }}>
+            {`시간: ${data.time}`}
+          </p>
+          <p style={{ margin: '8px 0 0 0', color: '#ff6b6b', fontWeight: '600', fontSize: '15px' }}>
+            심박수: <strong>{data.heartRate?.toFixed(0)} bpm</strong>
           </p>
         </div>
       );
@@ -58,28 +61,39 @@ const HeartRateChart: React.FC<HeartRateChartProps> = ({ data }) => {
   const recentData = chartData.slice(-12);
 
   return (
-    <ResponsiveContainer width="100%" height={300}>
-      <LineChart data={recentData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-        <CartesianGrid strokeDasharray="3 3" />
+    <ResponsiveContainer width="100%" height={180}>
+      <LineChart data={recentData} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#E0E0E0" opacity={0.5} />
         <XAxis
           dataKey="time"
           tick={{ fontSize: 12 }}
           interval="preserveStartEnd"
         />
         <YAxis
-          label={{ value: '심박수 (bpm)', angle: -90, position: 'insideLeft' }}
           domain={['dataMin - 10', 'dataMax + 10']}
+          width={32}
         />
         <Tooltip content={<CustomTooltip />} />
-        <Legend />
+        <Legend align="center" wrapperStyle={{ paddingLeft: '5%' }} />
         <Line
           type="monotone"
           dataKey="heartRate"
           name="심박수"
           stroke="#ff6b6b"
-          strokeWidth={2}
-          dot={{ r: 4 }}
-          activeDot={{ r: 6 }}
+          strokeWidth={2.5}
+          dot={{ 
+            r: 4, 
+            fill: '#ff6b6b',
+            stroke: '#fff',
+            strokeWidth: 2
+          }}
+          activeDot={{ 
+            r: 7, 
+            fill: '#ff6b6b',
+            stroke: '#fff',
+            strokeWidth: 2.5,
+            style: { filter: 'drop-shadow(0 2px 4px rgba(255, 107, 107, 0.4))' }
+          }}
         />
       </LineChart>
     </ResponsiveContainer>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   IonContent,
   IonHeader,
@@ -22,10 +22,16 @@ import {
   IonSelect,
   IonSelectOption
 } from '@ionic/react';
-import { personOutline, refreshOutline } from 'ionicons/icons';
+import { personOutline } from 'ionicons/icons';
 import SignIn from '../components/SignIn';
 import './Health_ios.css';
 import { getServerUrl, autoDetectServerUrl } from '../services/ServerConfig';
+import ChartDataService, {
+  NightChartData,
+} from '../services/ChartDataService';
+import TemperatureChart from '../components/TemperatureChart';
+import HeartRateChart from '../components/HeartRateChart';
+import { ModelService, IotService, HealthDataService } from '../services';
 
 interface HealthData {
   heartRate: { value: number; date: string } | null;
@@ -45,7 +51,11 @@ const Health_ios: React.FC = () => {
   const [backgroundMonitoring, setBackgroundMonitoring] = useState<boolean>(false);
   const [healthDataPlugin, setHealthDataPlugin] = useState<any>(null);
   const [platform, setPlatform] = useState<string>('web');
-  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+  
+  // 차트 데이터 상태
+  const [chartData, setChartData] = useState<NightChartData | null>(null);
+  const [lastCollectionTime, setLastCollectionTime] = useState<number>(0);
+  const collectionIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
   // 초기 설정 단계 관리
   const [setupStep, setSetupStep] = useState<'info' | 'permission' | 'monitoring' | 'complete'>('info');
@@ -166,13 +176,13 @@ const Health_ios: React.FC = () => {
         fetchHealthData(healthDataPlugin);
       }, 1000); // 1초 후 첫 데이터 가져오기
       
-      // 2분마다 자동으로 데이터 가져오기 (테스트용)
+      // 30분마다 자동으로 데이터 가져오기
       const interval = setInterval(() => {
-        console.log('⏰ 2분 주기 - HealthData 가져오기 시작...');
+        console.log('⏰ 30분 주기 - HealthData 가져오기 시작...');
         fetchHealthData(healthDataPlugin);
-      }, 2 * 60 * 1000); // 2분 = 120000ms
+      }, 30 * 60 * 1000); // 30분 = 1800000ms
       
-      console.log('✅ 2분마다 HealthData 자동 수집 시작');
+      console.log('✅ 30분마다 HealthData 자동 수집 시작');
 
       return () => {
         clearTimeout(initialTimeout);
@@ -187,13 +197,13 @@ const Health_ios: React.FC = () => {
         fetchHealthDataFromServer();
       }, 500); // 500ms 지연으로 UI 먼저 렌더링
       
-      // 2분마다 자동으로 데이터 가져오기 (테스트용)
+      // 30분마다 자동으로 데이터 가져오기
       const interval = setInterval(() => {
-        console.log('⏰ 2분 주기 - 서버에서 HealthData 가져오기 시작...');
+        console.log('⏰ 30분 주기 - 서버에서 HealthData 가져오기 시작...');
         fetchHealthDataFromServer();
-      }, 2 * 60 * 1000); // 2분 = 120000ms
+      }, 30 * 60 * 1000); // 30분 = 1800000ms
       
-      console.log('✅ 2분마다 HealthData 자동 수집 시작 (Android)');
+      console.log('✅ 30분마다 HealthData 자동 수집 시작 (Android)');
 
       return () => {
         clearTimeout(initialTimeout);
@@ -297,7 +307,7 @@ const Health_ios: React.FC = () => {
 
       // 서버로 데이터 전송은 완전히 백그라운드로 처리 (로딩 상태와 무관)
       if (normalizedHeartRate || normalizedHrv || normalizedOxygen) {
-        console.log('📤 서버로 데이터 전송 시작 (2분 주기)...');
+        console.log('📤 서버로 데이터 전송 시작 (30분 주기)...');
         // Promise를 반환하지 않도록 void로 처리하여 완전히 백그라운드로 실행
         void sendToServer({
           heartRate: normalizedHeartRate?.value || null,
@@ -307,7 +317,7 @@ const Health_ios: React.FC = () => {
           age: age ? parseFloat(age) : null,
           gender: gender && gender !== '' ? parseFloat(gender) : 0.0,
         }).then(() => {
-          console.log('✅ 서버 전송 성공 (2분 주기)');
+          console.log('✅ 서버 전송 성공 (30분 주기)');
         }).catch((err) => {
           console.error('❌ 서버 전송 실패 (백그라운드):', err);
         });
@@ -467,6 +477,158 @@ const Health_ios: React.FC = () => {
         hrv: null,
         oxygenSaturation: null,
       });
+    }
+  };
+
+  // 차트 데이터 로드
+  const loadChartData = () => {
+    const data = ChartDataService.getTodayData();
+    setChartData(data);
+  };
+
+  // DB에서 차트 데이터 로드
+  const loadChartDataFromDB = async () => {
+    try {
+      console.log('📊 DB에서 차트 데이터 로드 시작...');
+      const baseUrl = getServerUrl();
+      
+      // 오늘 날짜의 빈 데이터 구조 생성
+      const today = new Date().toISOString().split('T')[0];
+      const dbChartData: NightChartData = {
+        date: today,
+        temperatureData: [],
+        heartRateData: [],
+        lastUpdated: new Date().toISOString(),
+      };
+      
+      // 1. 심박수 데이터 가져오기 (predicted_results)
+      try {
+        const heartRateResponse = await fetch(`${baseUrl}/chart/heartrate?hours=12`);
+        if (heartRateResponse.ok) {
+          const heartRateData = await heartRateResponse.json();
+          if (heartRateData.success && heartRateData.data) {
+            // DB 데이터를 차트 형식으로 변환
+            heartRateData.data.forEach((point: any) => {
+              const timestamp = new Date(point.timestamp);
+              dbChartData.heartRateData.push({
+                timestamp: point.timestamp,
+                hour: point.hour,
+                minute: point.minute,
+                heartRate: point.heartRate,
+              });
+            });
+            console.log(`✅ 심박수 데이터 ${heartRateData.count}개 로드 완료`);
+          }
+        }
+      } catch (error) {
+        console.error('심박수 데이터 로드 실패:', error);
+      }
+      
+      // 2. 온도 데이터 가져오기 (test_script_logs)
+      try {
+        const tempResponse = await fetch(`${baseUrl}/chart/temperature?hours=12`);
+        if (tempResponse.ok) {
+          const tempData = await tempResponse.json();
+          if (tempData.success && tempData.data) {
+            // DB 데이터를 차트 형식으로 변환
+            tempData.data.forEach((point: any) => {
+              dbChartData.temperatureData.push({
+                timestamp: point.timestamp,
+                hour: point.hour,
+                minute: point.minute,
+                predictedTemperature: point.predictedTemperature,
+                temperatureCategory: point.temperatureCategory,
+                currentTemperature: point.currentTemperature,
+                targetTemperature: point.targetTemperature,
+              });
+            });
+            console.log(`✅ 온도 데이터 ${tempData.count}개 로드 완료`);
+          }
+        }
+      } catch (error) {
+        console.error('온도 데이터 로드 실패:', error);
+      }
+      
+      // 3. DB 데이터가 있으면 localStorage에 저장하고 차트에 표시
+      if (dbChartData.temperatureData.length > 0 || dbChartData.heartRateData.length > 0) {
+        try {
+          localStorage.setItem('night_chart_data', JSON.stringify(dbChartData));
+          setChartData(dbChartData);
+          console.log('✅ DB 데이터를 차트에 반영 완료');
+        } catch (error) {
+          console.error('차트 데이터 저장 실패:', error);
+        }
+      } else {
+        // DB 데이터가 없으면 기존 데이터 로드
+        loadChartData();
+      }
+    } catch (error) {
+      console.error('DB 차트 데이터 로드 실패:', error);
+      // 실패 시 기존 데이터 로드
+      loadChartData();
+    }
+  };
+
+  // 테스트 데이터 생성 함수
+  const generateTestData = () => {
+    const now = new Date();
+    const testData: NightChartData = {
+      date: now.toISOString().split('T')[0],
+      temperatureData: [],
+      heartRateData: [],
+      lastUpdated: now.toISOString(),
+    };
+
+    // 12시간치 테스트 데이터 생성 (1시간 간격) - 최근 12시간
+    const currentHour = now.getHours();
+    const startHour = currentHour >= 12 ? currentHour - 11 : (currentHour + 24) - 11;
+    
+    for (let i = 0; i < 12; i++) {
+      const hour = (startHour + i) % 24;
+      const minute = hour === 0 ? 30 : 0; // 첫 번째는 30분, 나머지는 0분
+      const timestamp = new Date(now);
+      timestamp.setHours(hour, minute, 0, 0);
+
+      // 온도 데이터 (다양한 패턴)
+      let predictedTemp = 34.5 + Math.sin((hour - 6) * Math.PI / 12) * 1.5; // 34.5~36.5 범위
+      let category: '더움' | '추움' | '적정' = '적정';
+      if (predictedTemp < 34.5) {
+        category = '추움';
+        predictedTemp = 33.5 + Math.random() * 0.8; // 33.5~34.3
+      } else if (predictedTemp > 35.6) {
+        category = '더움';
+        predictedTemp = 35.7 + Math.random() * 0.8; // 35.7~36.5
+      } else {
+        predictedTemp = 34.5 + Math.random() * 1.1; // 34.5~35.6
+      }
+
+      testData.temperatureData.push({
+        timestamp: timestamp.toISOString(),
+        hour,
+        minute,
+        predictedTemperature: Number(predictedTemp.toFixed(1)),
+        temperatureCategory: category,
+        currentTemperature: 24.0 + Math.random() * 3, // 24~27도
+        targetTemperature: 25.0 + Math.random() * 2, // 25~27도
+      });
+
+      // 심박수 데이터 (60~80 bpm 범위)
+      const heartRate = 60 + Math.sin((hour - 6) * Math.PI / 12) * 10 + Math.random() * 5;
+      testData.heartRateData.push({
+        timestamp: timestamp.toISOString(),
+        hour,
+        minute,
+        heartRate: Math.round(heartRate),
+      });
+    }
+
+    // localStorage에 저장
+    try {
+      localStorage.setItem('night_chart_data', JSON.stringify(testData));
+      setChartData(testData);
+      console.log('✅ 테스트 데이터 생성 완료:', testData);
+    } catch (error) {
+      console.error('테스트 데이터 저장 실패:', error);
     }
   };
 
@@ -710,6 +872,35 @@ const Health_ios: React.FC = () => {
     }
   };
 
+  // 차트 데이터 초기 로드 및 DB에서 데이터 가져오기
+  useEffect(() => {
+    // 초기 데이터 로드
+    loadChartData();
+
+    // DB에서 차트 데이터 로드 (predicted_results, test_script_logs)
+    loadChartDataFromDB();
+
+    // 테스트 데이터가 없으면 생성 (DB 데이터가 없을 때만)
+    setTimeout(() => {
+      const existingData = ChartDataService.getTodayData();
+      if (!existingData || existingData.temperatureData.length === 0) {
+        console.log('📊 테스트 데이터 생성 중...');
+        generateTestData();
+      }
+    }, 2000); // DB 로드 후 확인
+
+    // 주기적으로 DB에서 데이터 갱신 (5분마다)
+    collectionIntervalRef.current = setInterval(() => {
+      loadChartDataFromDB();
+    }, 300000); // 5분
+
+    return () => {
+      if (collectionIntervalRef.current) {
+        clearInterval(collectionIntervalRef.current);
+      }
+    };
+  }, []);
+
   const handleBackgroundMonitoringToggle = async (enabled: boolean) => {
     if (!healthDataPlugin || platform !== 'ios') {
       console.log('HealthData 플러그인이 사용 불가능합니다. (iOS에서만 사용 가능)');
@@ -792,48 +983,8 @@ const Health_ios: React.FC = () => {
     }
   };
 
-  // 건강 데이터 수동 새로고침
-  const handleRefreshHealthData = async () => {
-    if (!healthDataPlugin || platform !== 'ios') {
-      alert('iOS에서만 HealthKit 데이터를 가져올 수 있습니다.');
-      return;
-    }
-    
-    setIsRefreshing(true);
-    try {
-      await fetchHealthData(healthDataPlugin);
-      alert('건강 데이터를 새로고침했습니다.');
-    } catch (error) {
-      console.error('데이터 새로고침 실패:', error);
-      alert('데이터 새로고침에 실패했습니다.');
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
 
 
-  // 오늘의 수면 팁 (날짜 기반으로 매일 다른 팁 표시)
-  const dailySleepTips = [
-    "정확한 예측을 위해 워치를 너무 헐겁거나 꽉맞지 않게 착용해주세요",
-    "규칙적인 운동은 수면의 질을 높여줘요. 격렬한 운동은 오전에 하는 게 좋아요",
-    "침대는 잠을 자는 곳으로만 사용하세요. 식사나 전화 같은 다른 활동은 피하는 게 좋아요",
-    "잠자는 환경은 조용하고 어둡게 만드세요",
-    "일정한 수면시간을 유지하면 더 편안하게 잠들 수 있어요. 규칙적인 기상시간이 도움이 됩니다",
-    "잠자기 직전에는 음식을 많이 먹지 말고, 전자제품은 꺼두는 게 좋아요",
-    "잠자기 6시간 전부터는 카페인을 피하고, 밤에는 술을 피하세요",
-    "잠자기 전 따뜻한 물로 샤워하면 몸이 편안해져 잠이 잘 와요",
-    "잠자기 전에는 일을 멈추고, 명상이나 가벼운 스트레칭 같은 이완 활동을 해보세요",
-    "30분이 넘도록 잠이 오지 않으면 잠자리에서 나와 조용한 책을 읽어보세요. 졸릴 때 다시 들어가면 돼요"
-  ];
-
-  // 날짜 기반으로 오늘의 팁 선택
-  const getTodayTip = () => {
-    const today = new Date();
-    const dayOfYear = Math.floor((today.getTime() - new Date(today.getFullYear(), 0, 0).getTime()) / 86400000);
-    return dailySleepTips[dayOfYear % dailySleepTips.length];
-  };
-
-  const todayTip = getTodayTip();
 
   // 웹에서 예시 데이터 사용
   const displayHealthData = platform === 'web' ? {
@@ -1053,37 +1204,7 @@ const Health_ios: React.FC = () => {
 
         {/* 메인 화면 (설정 완료 후 또는 Android/Web) */}
         {(isSetupComplete || platform !== 'ios') && (
-          <div style={{ padding: '16px', minHeight: '200px' }}>
-            
-            {/* 데이터 새로고침 버튼 */}
-            {platform === 'ios' && healthDataPlugin && (
-              <div className="health-refresh-section">
-                <IonButton 
-                  expand="block" 
-                  fill="outline"
-                  onClick={handleRefreshHealthData}
-                  disabled={isRefreshing}
-                  className="health-refresh-button"
-                >
-                  <IonIcon icon={refreshOutline} slot="start" />
-                  {isRefreshing ? '새로고침 중...' : '데이터 새로고침'}
-                </IonButton>
-              </div>
-            )}
-
-            {/* 오늘의 수면 팁 */}
-            <IonCard className="daily-tip-card">
-              <IonCardHeader>
-                <IonCardTitle>오늘의 수면 팁</IonCardTitle>
-              </IonCardHeader>
-              <IonCardContent>
-                <IonText>
-                  <p style={{ fontSize: '15px', lineHeight: '1.6', color: '#66748D', margin: 0 }}>
-                    {todayTip}
-                  </p>
-                </IonText>
-              </IonCardContent>
-            </IonCard>
+          <div className="container">
             
             {/* HealthKit 데이터 표시 - 다양한 레이아웃 */}
             <div className="health-data-section">
@@ -1094,22 +1215,6 @@ const Health_ios: React.FC = () => {
                   </IonText>
                 </div>
               )}
-              {/* 심박수 - 큰 숫자 중심, 헤더 없음 */}
-              <div className="health-data-main-card heart-rate-main">
-                <div className="health-data-label-large">심박수</div>
-                {displayHealthData.heartRate ? (
-                  <>
-                    <div className="health-data-value-wrapper-large">
-                      <div className="health-data-value-large">{displayHealthData.heartRate.value.toFixed(0)}</div>
-                      <div className="health-data-unit-large">bpm</div>
-                    </div>
-                    <div className="health-data-date-large">{formatDate(displayHealthData.heartRate.date)}</div>
-                  </>
-                ) : (
-                  <div className="health-data-empty-large">데이터 없음</div>
-                )}
-              </div>
-
               {/* HRV와 산소포화도 - 가로 배치 */}
               <div className="health-data-secondary-row">
                 {/* 심박변이 */}
@@ -1142,9 +1247,55 @@ const Health_ios: React.FC = () => {
                   </IonCardContent>
                 </IonCard>
               </div>
+
+              {/* 심박수 - 큰 숫자 중심, 헤더 없음 */}
+              <IonCard className="health-data-main-card heart-rate-main">
+                <IonCardContent>
+                  <div className="health-data-label-large">심박수</div>
+                  {displayHealthData.heartRate ? (
+                    <>
+                      <div className="health-data-value-wrapper-large">
+                        <div className="health-data-value-large">{displayHealthData.heartRate.value.toFixed(0)}</div>
+                        <div className="health-data-unit-large">bpm</div>
+                      </div>
+                      <div className="health-data-date-large" style={{ fontSize: '13px', marginTop: '8px' }}>
+                        마지막 업데이트: {new Date(displayHealthData.heartRate.date).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="health-data-empty-large">데이터 없음</div>
+                  )}
+                  
+                  {/* 심박수 차트 */}
+                  {chartData && chartData.heartRateData.length > 0 && (
+                    <div style={{ marginTop: '12px' }}>
+                      <HeartRateChart data={chartData.heartRateData} />
+                    </div>
+                  )}
+                </IonCardContent>
+              </IonCard>
             </div>
           </div>
         )}
+
+        {/* 온도 차트 */}
+        <div className="container">
+        <IonCard className="temperature-chart-card">
+          <IonCardContent>
+            <div className="temperature-chart-title">하룻밤 온도 변화</div>
+            {chartData && chartData.temperatureData.length > 0 ? (
+              <TemperatureChart data={chartData.temperatureData} />
+            ) : (
+              <div style={{ padding: '20px', textAlign: 'center' }}>
+                <IonText color="medium">
+                  <p>데이터가 없습니다. 1시간마다 자동으로 데이터가 수집됩니다.</p>
+                </IonText>
+              </div>
+            )}
+          </IonCardContent>
+        </IonCard>
+        </div>
+
       </IonContent>
     </IonPage>
   );

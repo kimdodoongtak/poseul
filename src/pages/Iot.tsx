@@ -323,11 +323,6 @@ const Iot: React.FC = () => {
       <IonHeader>
         <IonToolbar>
           <IonTitle>IoT 제어</IonTitle>
-          <IonButtons slot="end">
-            <IonButton onClick={handleReregister} fill="clear">
-              <IonIcon icon={refreshOutline} slot="icon-only" />
-            </IonButton>
-          </IonButtons>
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen className="ion-padding iot-page">
@@ -335,6 +330,13 @@ const Iot: React.FC = () => {
         <div className="stars-background"></div>
 
         <div className="container" style={{ display: 'block', visibility: 'visible', opacity: 1 }}>
+          {/* 디바이스 등록 버튼 */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '12px' }}>
+            <IonButton onClick={handleReregister} fill="outline" size="small">
+              <IonIcon icon={refreshOutline} slot="start" />
+              디바이스 등록
+            </IonButton>
+          </div>
           {/* 에러 메시지 */}
           {error && (
             <IonCard>

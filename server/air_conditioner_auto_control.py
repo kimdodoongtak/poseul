@@ -382,50 +382,68 @@ def adjust_air_conditioner(
                 print(f"🎯 다수결 결과: {majority_feedback} ({majority_text})")
                 
                 # 에어컨 상태 가져오기
+                state = None
+                is_power_on = False
+                current_temp = None
+                target_temp = None
+                
                 if not air_conditioner_available:
                     logger.warning("⚠️ 에어컨 모듈을 사용할 수 없습니다.")
-                    return
+                else:
+                    try:
+                        state_response = get_air_conditioner_state_func()
+                        
+                        # 응답 구조 확인 및 다양한 경로 지원
+                        # 1. result.value 경로 확인
+                        if state_response and 'result' in state_response:
+                            result = state_response['result']
+                            if isinstance(result, dict) and 'value' in result:
+                                state = result['value']
+                        
+                        # 2. response.value 경로 확인
+                        if state is None and state_response and 'response' in state_response:
+                            response = state_response['response']
+                            if isinstance(response, dict):
+                                if 'value' in response:
+                                    state = response['value']
+                                else:
+                                    state = response
+                            elif isinstance(response, list) and len(response) > 0:
+                                state = response[0]
+                        
+                        # 3. 최상위 value 경로 확인
+                        if state is None and state_response and 'value' in state_response:
+                            state = state_response['value']
+                        
+                        if state:
+                            # 에어컨 전원 상태 확인
+                            power_state = state.get('operation', {}).get('airConOperationMode')
+                            is_power_on = power_state == 'POWER_ON'
+                            current_temp = state.get('temperature', {}).get('currentTemperature')
+                            target_temp = state.get('temperature', {}).get('targetTemperature')
+                        else:
+                            logger.warning("⚠️ 에어컨 상태를 가져올 수 없습니다.")
+                            if state_response:
+                                import json
+                                logger.warning(f"응답 내용 (일부): {json.dumps({k: str(v)[:100] for k, v in list(state_response.items())[:3]}, indent=2, ensure_ascii=False)}")
+                    except Exception as e:
+                        logger.warning(f"⚠️ 에어컨 상태 조회 실패: {e}")
                 
-                try:
-                    state_response = get_air_conditioner_state_func()
-                    
-                    # 응답 구조 확인 및 다양한 경로 지원
-                    state = None
-                    
-                    # 1. result.value 경로 확인
-                    if state_response and 'result' in state_response:
-                        result = state_response['result']
-                        if isinstance(result, dict) and 'value' in result:
-                            state = result['value']
-                    
-                    # 2. response.value 경로 확인
-                    if state is None and state_response and 'response' in state_response:
-                        response = state_response['response']
-                        if isinstance(response, dict):
-                            if 'value' in response:
-                                state = response['value']
-                            else:
-                                state = response
-                        elif isinstance(response, list) and len(response) > 0:
-                            state = response[0]
-                    
-                    # 3. 최상위 value 경로 확인
-                    if state is None and state_response and 'value' in state_response:
-                        state = state_response['value']
-                    
-                    if not state:
-                        logger.warning("⚠️ 에어컨 상태를 가져올 수 없습니다.")
-                        logger.warning(f"응답 구조: {list(state_response.keys()) if state_response else 'None'}")
-                        if state_response:
-                            import json
-                            logger.warning(f"응답 내용 (일부): {json.dumps({k: str(v)[:100] for k, v in list(state_response.items())[:3]}, indent=2, ensure_ascii=False)}")
-                        return
-                    
-                    current_temp = state.get('temperature', {}).get('currentTemperature')
-                    target_temp = state.get('temperature', {}).get('targetTemperature')
-                    
-                    logger.info(f"🌡️ 현재 상태: 온도={current_temp}°C, 목표 온도={target_temp}°C")
+                # 에어컨이 꺼져있으면 조절은 하지 않지만 다수결 결과는 저장
+                actions_taken = []
+                original_target_temp = None
+                temperature_adjusted = False
+                actual_new_temp = None
+                
+                if not is_power_on:
+                    logger.info("⏸️ 에어컨이 꺼져있습니다. 조절은 건너뛰지만 다수결 결과는 저장합니다.")
+                    print(f"⏸️ 에어컨이 꺼져있습니다. 조절은 건너뛰지만 다수결 결과는 저장합니다.")
+                    # 다수결 결과만 저장하고 조절은 건너뜀
+                    actions_taken = ["none"]
+                else:
+                    logger.info(f"🌡️ 현재 상태: 전원=ON, 온도={current_temp}°C, 목표 온도={target_temp}°C")
                     print(f"🌡️ 에어컨 현재 상태:")
+                    print(f"   전원: ON")
                     print(f"   현재 온도: {current_temp}°C")
                     print(f"   목표 온도: {target_temp}°C")
                     
@@ -553,71 +571,74 @@ def adjust_air_conditioner(
                     except Exception as e:
                         logger.warning(f"⚠️ 조절 결과 DB 저장 실패: {e}")
                     
-                    # 테스트 스크립트 로그 테이블에 저장
-                    try:
-                        # test_script_logs 테이블 존재 여부 확인 및 생성
-                        test_log_table_check = text("""
-                            SELECT COUNT(*) as count
-                            FROM information_schema.tables 
-                            WHERE table_schema = 'main' 
-                            AND table_name = 'test_script_logs'
+                    # 마지막 조절 시간 업데이트 (에어컨이 켜져있을 때만)
+                    if is_power_on:
+                        last_adjustment_time = now
+                
+                # test_script_logs 테이블에 다수결 결과 저장 (에어컨이 꺼져있어도 저장)
+                try:
+                    # test_script_logs 테이블 존재 여부 확인 및 생성
+                    test_log_table_check = text("""
+                        SELECT COUNT(*) as count
+                        FROM information_schema.tables 
+                        WHERE table_schema = 'main' 
+                        AND table_name = 'test_script_logs'
+                    """)
+                    test_log_table_exists = conn.execute(test_log_table_check).fetchone().count > 0
+                    
+                    if not test_log_table_exists:
+                        # 테이블 생성
+                        create_test_log_table = text("""
+                            CREATE TABLE IF NOT EXISTS test_script_logs (
+                                id INT AUTO_INCREMENT PRIMARY KEY,
+                                classification_results VARCHAR(50) NOT NULL COMMENT '3개 분류 결과 (예: C,H,G)',
+                                majority_result VARCHAR(1) NOT NULL COMMENT '다수결 결과 (H, C, G)',
+                                temperature_action VARCHAR(20) NOT NULL COMMENT '온도 조절 방향 (up, down, none)',
+                                previous_temperature FLOAT COMMENT '이전 목표 온도',
+                                new_temperature FLOAT COMMENT '새로운 목표 온도',
+                                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                            )
                         """)
-                        test_log_table_exists = conn.execute(test_log_table_check).fetchone().count > 0
-                        
-                        if not test_log_table_exists:
-                            # 테이블 생성
-                            create_test_log_table = text("""
-                                CREATE TABLE IF NOT EXISTS test_script_logs (
-                                    id INT AUTO_INCREMENT PRIMARY KEY,
-                                    classification_results VARCHAR(50) NOT NULL COMMENT '3개 분류 결과 (예: C,H,G)',
-                                    majority_result VARCHAR(1) NOT NULL COMMENT '다수결 결과 (H, C, G)',
-                                    temperature_action VARCHAR(20) NOT NULL COMMENT '온도 조절 방향 (up, down, none)',
-                                    previous_temperature FLOAT COMMENT '이전 목표 온도',
-                                    new_temperature FLOAT COMMENT '새로운 목표 온도',
-                                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-                                )
-                            """)
-                            conn.execute(create_test_log_table)
-                            conn.commit()
-                            logger.info("✅ test_script_logs 테이블 생성 완료")
-                        
-                        # 온도 조절 방향 결정
-                        temp_action = "none"
-                        previous_temp = original_target_temp
-                        new_temp = actual_new_temp  # 실제로 설정된 온도 사용
-                        
+                        conn.execute(create_test_log_table)
+                        conn.commit()
+                        logger.info("✅ test_script_logs 테이블 생성 완료")
+                    
+                    # 온도 조절 방향 결정
+                    temp_action = "none"
+                    previous_temp = original_target_temp if original_target_temp is not None else None
+                    new_temp = actual_new_temp if actual_new_temp is not None else None
+                    
+                    if is_power_on:
+                        # 에어컨이 켜져있을 때만 조절 방향 결정
                         if majority_feedback == 'H':
                             temp_action = "down" if temperature_adjusted else "none"
                         elif majority_feedback == 'C':
                             temp_action = "up" if temperature_adjusted else "none"
-                        
-                        # 분류 결과를 문자열로 변환 (예: "C,H,G")
-                        classification_str = ",".join(feedbacks)
-                        
-                        # test_script_logs 테이블에 저장
-                        test_log_query = text("""
-                            INSERT INTO test_script_logs 
-                            (classification_results, majority_result, temperature_action, previous_temperature, new_temperature, created_at)
-                            VALUES 
-                            (:classification_results, :majority_result, :temperature_action, :previous_temperature, :new_temperature, NOW())
-                        """)
-                        conn.execute(test_log_query, {
-                            'classification_results': classification_str,
-                            'majority_result': majority_feedback,
-                            'temperature_action': temp_action,
-                            'previous_temperature': previous_temp,
-                            'new_temperature': new_temp
-                        })
-                        conn.commit()
-                        logger.info(f"✅ 테스트 스크립트 로그 저장 완료: 분류={classification_str}, 다수결={majority_feedback}, 조절={temp_action}")
-                    except Exception as e:
-                        logger.warning(f"⚠️ 테스트 스크립트 로그 저장 실패: {e}")
+                    else:
+                        # 에어컨이 꺼져있으면 조절 없음
+                        temp_action = "none"
                     
-                    # 마지막 조절 시간 업데이트
-                    last_adjustment_time = now
+                    # 분류 결과를 문자열로 변환 (예: "C,H,G")
+                    classification_str = ",".join(feedbacks)
                     
+                    # test_script_logs 테이블에 저장
+                    test_log_query = text("""
+                        INSERT INTO test_script_logs 
+                        (classification_results, majority_result, temperature_action, previous_temperature, new_temperature, created_at)
+                        VALUES 
+                        (:classification_results, :majority_result, :temperature_action, :previous_temperature, :new_temperature, NOW())
+                    """)
+                    conn.execute(test_log_query, {
+                        'classification_results': classification_str,
+                        'majority_result': majority_feedback,
+                        'temperature_action': temp_action,
+                        'previous_temperature': previous_temp,
+                        'new_temperature': new_temp
+                    })
+                    conn.commit()
+                    logger.info(f"✅ 다수결 결과 저장 완료: 분류={classification_str}, 다수결={majority_feedback}, 조절={temp_action} (에어컨 전원: {'ON' if is_power_on else 'OFF'})")
                 except Exception as e:
-                    logger.error(f"❌ 에어컨 상태 조회 또는 조절 실패: {e}")
+                    logger.warning(f"⚠️ 다수결 결과 저장 실패: {e}")
                     
             except Exception as e:
                 logger.error(f"❌ 피드백 조회 실패: {e}")

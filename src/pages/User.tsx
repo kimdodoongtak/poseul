@@ -448,6 +448,7 @@ const User: React.FC = () => {
           </div>
         )}
 
+        <div className="container">
         <IonCard className="user-info-card">
           <IonCardHeader>
             <IonCardTitle>사용자 정보</IonCardTitle>
@@ -510,29 +511,13 @@ const User: React.FC = () => {
             >
               지금 피드백 남기기 {!isFeedbackDisabled && `(${feedbackCount}/7)`}
             </IonButton>
-            {isFeedbackDisabled ? (
+            {isFeedbackDisabled && (
               <IonText color="medium" style={{ display: 'block', textAlign: 'center', marginTop: '8px', fontSize: '14px' }}>
                 피드백을 7번 완료했습니다. 재갱신 버튼을 눌러 다시 시작하세요.
-              </IonText>
-            ) : (
-              <IonText color="medium" style={{ display: 'block', textAlign: 'center', marginTop: '8px', fontSize: '14px' }}>
-                남은 피드백: {7 - feedbackCount}번
               </IonText>
             )}
           </IonCardContent>
         </IonCard>
-
-        {/* 온도 범위 관리 - 헤더 없이 버튼만 */}
-        <div className="temperature-range-management-section">
-          <IonButton 
-            expand="block" 
-            className="reset-feedback-button"
-            onClick={() => setShowResetAlert(true)}
-          >
-            <IonIcon icon={refreshOutline} slot="start" />
-            온도 범위 재갱신
-          </IonButton>
-        </div>
 
         <IonCard className="settings-card">
           <IonCardHeader>
@@ -542,8 +527,22 @@ const User: React.FC = () => {
             <IonButton expand="block" onClick={() => setShowSignIn(true)} style={{ marginTop: '16px' }}>
               로그인
             </IonButton>
+            <IonButton 
+              expand="block" 
+              className="reset-feedback-button"
+              onClick={() => setShowResetAlert(true)}
+              style={{ marginTop: '16px' }}
+            >
+              <IonIcon icon={refreshOutline} slot="start" />
+              온도 범위 재갱신
+            </IonButton>
+            <IonText color="medium" style={{ display: 'block', textAlign: 'center', marginTop: '8px', fontSize: '13px' }}>
+              재갱신 시 다시 7번의 피드백이 필요합니다
+            </IonText>
           </IonCardContent>
         </IonCard>
+
+        </div>
 
         {/* 하단 여백 추가 (스크롤 끝까지 내려가도록) */}
         <div style={{ height: '80px', width: '100%' }}></div>
@@ -614,7 +613,8 @@ const User: React.FC = () => {
           isOpen={showResetAlert}
           onDidDismiss={() => setShowResetAlert(false)}
           header="온도 범위 재갱신"
-          message="재갱신을 하게되면 다시 7번의 피드백을 해주셔야 합니다. 현재 저장된 임계값부터 다시 7번의 피드백을 받아 조정합니다. 계속하시겠습니까?"
+          subHeader="재갱신을 하게되면 다시 7번의 피드백을 해주셔야 합니다. 현재 저장된 범위부터 다시 7번의 피드백을 받아 조정합니다."
+          message="계속하시겠습니까?"
           buttons={[
             {
               text: '취소',

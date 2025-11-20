@@ -6,7 +6,7 @@
 const SERVER_URL_KEY = 'server_url';
 
 // 하드코딩된 서버 IP (우선 사용)
-const HARDCODED_SERVER_IP = '192.168.68.72';
+const HARDCODED_SERVER_IP = '192.168.68.77';
 const HARDCODED_SERVER_URL = `http://${HARDCODED_SERVER_IP}:3000`;
 
 // 동기 버전 (기본값 반환용)
@@ -296,10 +296,13 @@ export async function autoDetectServerUrl(): Promise<string> {
     }
     
     // 병렬로 여러 IP 시도 (첫 번째 성공한 응답 즉시 반환)
-    console.log(`🔍 ${ipCandidates.length}개의 IP 후보 시도 시작:`, ipCandidates.slice(0, 5), '...');
+    console.log(`🔍 ${ipCandidates.length}개의 IP 후보 자동 감지 시작...`);
     const promises = ipCandidates.map(async (url, index) => {
       try {
-        console.log(`  [${index + 1}/${ipCandidates.length}] 시도 중: ${url}`);
+        // 처음 3개만 상세 로그
+        if (index < 3) {
+          console.log(`  [${index + 1}/${ipCandidates.length}] 시도 중: ${url}`);
+        }
         const response = await fetch(`${url}/health`, {
           method: 'GET',
           signal: AbortSignal.timeout(2000) // 2초로 증가 (서버 응답이 느릴 수 있음)
@@ -312,17 +315,13 @@ export async function autoDetectServerUrl(): Promise<string> {
             localStorage.setItem(SERVER_URL_KEY, serverUrl);
           }
           cachedServerUrl = serverUrl;
-          console.log(`✅ 서버 자동 감지 성공: ${serverUrl} (시도 ${index + 1}/${ipCandidates.length})`);
+          console.log(`✅ 서버 자동 감지 성공: ${serverUrl} (${index + 1}/${ipCandidates.length}번째 시도)`);
           return serverUrl;
-        } else {
-          console.log(`  ❌ ${url} 응답 실패: ${response.status}`);
         }
       } catch (error: any) {
-        // 실패한 IP는 로그만 남기고 무시 (처음 몇 개만 상세 로그)
-        if (error.name !== 'AbortError') {
-          if (index < 3) {
-            console.log(`  ❌ ${url} 연결 실패: ${error.message || '알 수 없는 오류'}`);
-          }
+        // 실패한 IP는 로그 없이 무시 (처음 3개만 상세 로그)
+        if (error.name !== 'AbortError' && index < 3) {
+          // 조용히 실패 처리
         }
       }
       return null;
@@ -339,7 +338,6 @@ export async function autoDetectServerUrl(): Promise<string> {
     }
     
     // 모든 시도 결과 확인
-    console.log('🔍 모든 IP 시도 완료, 결과 확인 중...');
     const results = await Promise.allSettled(promises);
     const successResult = results.find(r => 
       r.status === 'fulfilled' && r.value !== null && r.value !== ''
@@ -350,15 +348,9 @@ export async function autoDetectServerUrl(): Promise<string> {
       return detectedUrl;
     }
     
-    // 모든 시도가 실패한 경우
+    // 모든 시도가 실패한 경우 (로그 최소화)
     console.error('❌ 모든 IP 시도 실패 - 서버를 찾을 수 없습니다');
-    console.error('   시도한 IP 개수:', ipCandidates.length);
-    console.error('   실패한 결과:', results.filter(r => r.status === 'rejected').length, '개');
-    console.error('시도한 IP 범위:', {
-      subnets: [0, 1, 50, 68, 100, 192],
-      commonIPs: [1, 2, 10, 20, 27, 50, 68, 74, 100, 101, 200, 254],
-      total: ipCandidates.length
-    });
+    console.error(`   시도한 IP 개수: ${ipCandidates.length}개`);
   }
   
   // 4. 기본값 반환 (10.0.2.2는 제외)

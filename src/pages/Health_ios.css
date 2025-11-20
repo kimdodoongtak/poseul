@@ -1,5 +1,21 @@
 /* Health_ios 페이지 스타일 */
 
+/* 컨테이너 */
+.health-ios-page .container {
+  padding: 16px;
+  width: 100%;
+  margin: 0;
+  box-sizing: border-box;
+}
+
+/* iOS에서도 전체 너비 적용 */
+.platform-ios .health-ios-page .container {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  padding: 16px !important;
+}
+
 /* 모바일 헤더 - Home과 동일한 부드러운 분홍~보라 그라데이션 */
 @media (max-width: 767px) {
   .health-ios-page ion-header {
@@ -75,8 +91,8 @@ ion-content ion-header {
   --background: linear-gradient(180deg, #D5D7E3 0%, #D0B5CE 50%, #B2BECF 100%) !important;
   background: linear-gradient(180deg, #D5D7E3 0%, #D0B5CE 50%, #B2BECF 100%) !important;
   background-image: linear-gradient(180deg, #D5D7E3 0%, #D0B5CE 50%, #B2BECF 100%) !important;
-  --padding-start: 16px !important;
-  --padding-end: 16px !important;
+  --padding-start: 32px !important;
+  --padding-end: 32px !important;
   --padding-top: 16px !important;
   --padding-bottom: 16px !important;
   color: #66748D !important;
@@ -151,6 +167,55 @@ ion-content ion-header {
   color: #66748D !important;
   width: 100%;
   box-sizing: border-box;
+}
+
+/* 온도 차트 카드 - 심박수 카드와 동일한 좌우 패딩 및 간격 조정 */
+.health-ios-page .temperature-chart-card {
+  margin-top: -20px !important;
+  padding: 0 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  border: 1px solid rgba(196, 161, 194, 0.35) !important;
+}
+
+.health-ios-page .temperature-chart-card ion-card-header {
+  padding: 24px!important;
+  box-sizing: border-box !important;
+}
+
+.health-ios-page .temperature-chart-card ion-card-content {
+  padding: 10px 10px !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
+}
+
+.health-ios-page .temperature-chart-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, #7C88A9 0%, #C4A1C2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  text-align: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  position: relative;
+  letter-spacing: 0.5px;
+}
+
+.health-ios-page .temperature-chart-title::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60px;
+  height: 3px;
+  background: linear-gradient(90deg, transparent 0%, #C4A1C2 50%, transparent 100%);
+  border-radius: 2px;
 }
 
 /* 건강 데이터 카드 - Home과 동일 */
@@ -412,22 +477,29 @@ ion-item ion-input {
 
 /* 건강 데이터 섹션 - 다양한 레이아웃 */
 .health-ios-page .health-data-section {
-  margin: 20px 0;
+  margin: 25px -14px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 5px;
 }
 
 /* 심박수 - 큰 숫자 중심, 헤더 없음 */
 .health-ios-page .health-data-main-card {
   background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%);
   border-radius: 24px;
-  padding: 32px 24px;
+  padding: 0;
   text-align: center;
   box-shadow: 0 12px 40px rgba(196, 161, 194, 0.4), 0 4px 16px rgba(102, 116, 141, 0.3);
   border: 1px solid rgba(196, 161, 194, 0.35);
   position: relative;
   overflow: hidden;
+  margin-left: -2px !important;
+  margin-right: -2px !important;
+  width: calc(100% + 4px) !important;
+}
+
+.health-ios-page .health-data-main-card ion-card-content {
+  padding: 15px 20px !important;
 }
 
 .health-ios-page .health-data-main-card::before {
@@ -463,7 +535,7 @@ ion-item ion-input {
 }
 
 .health-ios-page .health-data-value-large {
-  font-size: 3.5rem;
+  font-size: 2.5rem;
   font-weight: 800;
   color: #4A5568;
   line-height: 1;
@@ -471,7 +543,7 @@ ion-item ion-input {
 }
 
 .health-ios-page .health-data-unit-large {
-  font-size: 1.6rem;
+  font-size: 1.2rem;
   font-weight: 700;
   color: #66748D;
   opacity: 0.7;
@@ -500,7 +572,9 @@ ion-item ion-input {
 .health-ios-page .health-data-secondary-row {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
+  gap: 15px;
+  margin: 0;
+  width: 100%;
 }
 
 .health-ios-page .hrv-card,
@@ -509,6 +583,7 @@ ion-item ion-input {
   background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%) !important;
   border: 1px solid rgba(196, 161, 194, 0.35) !important;
   box-shadow: 0 8px 24px rgba(196, 161, 194, 0.3), 0 4px 12px rgba(102, 116, 141, 0.2) !important;
+  width: 100% !important;
 }
 
 .health-ios-page .hrv-card ion-card-content,
@@ -519,11 +594,11 @@ ion-item ion-input {
 }
 
 .health-ios-page .health-data-label-small {
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   font-weight: 600;
   color: #66748D;
   opacity: 0.8;
-  margin-bottom: 12px;
+  margin-bottom: 4px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -532,12 +607,12 @@ ion-item ion-input {
   font-size: 1.8rem;
   font-weight: 800;
   color: #4A5568;
-  line-height: 1;
-  margin-bottom: 8px;
+  line-height: 1.1;
+  margin-bottom: 2px;
 }
 
 .health-ios-page .health-data-unit-small {
-  font-size: 1rem;
+  font-size: 1.1rem;
   font-weight: 600;
   color: #66748D;
   opacity: 0.7;
@@ -545,9 +620,10 @@ ion-item ion-input {
 }
 
 .health-ios-page .health-data-date-small {
-  font-size: 0.75rem;
+  font-size: 0.65rem;
   color: #66748D;
   opacity: 0.7;
+  margin-top: 0;
 }
 
 .health-ios-page .health-data-empty-small {
@@ -593,7 +669,7 @@ ion-item ion-input {
 .hrv-box {
   background: linear-gradient(135deg, rgba(120, 140, 200, 0.75) 0%, rgba(130, 120, 200, 0.75) 100%);
   color: #f8efde;
-  box-shadow: 0 4px 12px rgba(120, 140, 200, 0.25);
+  box-shadow: 0 8px 12px rgba(120, 140, 200, 0.25);
 }
 
 /* 산소포화도 박스 - 가장 밝은 버전 */

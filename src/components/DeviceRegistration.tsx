@@ -204,7 +204,26 @@ const DeviceRegistration: React.FC = () => {
     setLoadingMessage('서버 연결 확인 중...');
 
     try {
-      const baseUrl = serverUrl || getServerUrl();
+      let baseUrl = serverUrl || getServerUrl();
+      
+      // 서버 URL이 없거나 localhost인 경우 자동 감지
+      if (!baseUrl || baseUrl === '' || baseUrl.includes('localhost')) {
+        console.log('⚠️ 서버 URL 없음 또는 localhost 감지, 자동 감지 시도');
+        setLoadingMessage('서버 자동 감지 중...');
+        try {
+          const detectedUrl = await autoDetectServerUrl();
+          if (!detectedUrl || detectedUrl === '') {
+            throw new Error('서버 URL 자동 감지 실패');
+          }
+          baseUrl = detectedUrl;
+          setServerUrl(detectedUrl);
+          console.log('✅ 서버 자동 감지 성공:', baseUrl);
+        } catch (detectError) {
+          console.error('❌ 서버 자동 감지 실패:', detectError);
+          throw new Error('서버를 찾을 수 없습니다. 서버가 실행 중인지 확인해주세요.');
+        }
+      }
+
       const requestStartTime = Date.now();
       console.log('🔍 PAT 토큰 등록 시도:', {
         baseUrl,
@@ -226,7 +245,37 @@ const DeviceRegistration: React.FC = () => {
         console.log('✅ 서버 연결 확인 성공');
       } catch (healthError: any) {
         console.error('❌ 서버 연결 실패:', healthError);
-        throw new Error(`서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요. (${baseUrl})`);
+        
+        // 서버 URL 자동 감지 재시도
+        if (!healthError.message?.includes('자동 감지')) {
+          console.log('🔄 서버 연결 실패 - 서버 URL 자동 감지 재시도...');
+          setLoadingMessage('서버 자동 감지 중...');
+          try {
+            const detectedUrl = await autoDetectServerUrl();
+            if (detectedUrl && detectedUrl !== '' && detectedUrl !== baseUrl) {
+              console.log('✅ 새로운 서버 URL 감지:', detectedUrl);
+              setServerUrl(detectedUrl);
+              baseUrl = detectedUrl;
+              // 재연결 시도
+              const retryHealthResponse = await fetch(`${baseUrl}/health`, {
+                method: 'GET',
+                signal: AbortSignal.timeout(5000)
+              });
+              if (retryHealthResponse.ok) {
+                console.log('✅ 재연결 성공');
+              } else {
+                throw new Error(`서버 응답 오류: ${retryHealthResponse.status}`);
+              }
+            } else {
+              throw new Error(`서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요. (${baseUrl})`);
+            }
+          } catch (detectError: any) {
+            console.error('❌ 서버 URL 자동 감지 실패:', detectError);
+            throw new Error(`서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요. (${baseUrl})`);
+          }
+        } else {
+          throw new Error(`서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요. (${baseUrl})`);
+        }
       }
       
       // 타임아웃 설정 (30초로 증가 - LG ThinQ API 응답이 매우 느릴 수 있음)
@@ -260,7 +309,7 @@ const DeviceRegistration: React.FC = () => {
         if (fetchError.name === 'AbortError') {
           console.error(`❌ 요청 타임아웃 (${elapsed}초)`);
           throw new Error(`요청 시간이 초과되었습니다 (${elapsed}초). 서버가 응답하지 않거나 네트워크 연결이 느립니다.`);
-        } else if (fetchError.message?.includes('Failed to fetch') || fetchError.message?.includes('NetworkError')) {
+        } else if (fetchError.message?.includes('Failed to fetch') || fetchError.message?.includes('NetworkError') || fetchError.message?.includes('서버에 연결할 수 없습니다')) {
           console.error(`❌ 네트워크 오류: ${fetchError.message}`);
           throw new Error(`서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요. (${baseUrl})`);
         } else {
