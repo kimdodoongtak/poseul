@@ -120,7 +120,7 @@ const TemperatureChart: React.FC<TemperatureChartProps> = ({ data }) => {
             )}
             {data.target !== null && (
               <p style={{ margin: '4px 0', color: '#ffc658', fontSize: '12px' }}>
-                목표 온도: <strong>{data.target?.toFixed(1)}°C</strong>
+                설정 온도: <strong>{data.target?.toFixed(1)}°C</strong>
               </p>
             )}
           </div>
@@ -139,7 +139,7 @@ const TemperatureChart: React.FC<TemperatureChartProps> = ({ data }) => {
           style={{
             backgroundColor: 'rgba(255, 255, 255, 0.98)',
             padding: '12px',
-            border: '2px solid #888',
+            border: `2px solid ${data.categoryColor || '#888'}`,
             borderRadius: '8px',
             boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
           }}
@@ -155,7 +155,7 @@ const TemperatureChart: React.FC<TemperatureChartProps> = ({ data }) => {
             )}
             {data.target !== null && (
               <p style={{ margin: '4px 0', color: '#ffc658', fontSize: '12px' }}>
-                목표 온도: <strong>{data.target?.toFixed(1)}°C</strong>
+                설정 온도: <strong>{data.target?.toFixed(1)}°C</strong>
               </p>
             )}
           </div>
@@ -219,7 +219,7 @@ const TemperatureChart: React.FC<TemperatureChartProps> = ({ data }) => {
             boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
           }}
         >
-          ← 분류 보기
+          ← 돌아가기
         </button>
       )}
       <ResponsiveContainer width="100%" height={350}>
@@ -341,7 +341,7 @@ const TemperatureChart: React.FC<TemperatureChartProps> = ({ data }) => {
                 <Line
                   type="monotone"
                   dataKey="target"
-                  name="목표 온도"
+                  name="설정 온도"
                   stroke="#ffc658"
                   strokeWidth={2.5}
                   dot={(props: any) => {
