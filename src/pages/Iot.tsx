@@ -330,7 +330,9 @@ const Iot: React.FC = () => {
           </IonButtons>
         </IonToolbar>
       </IonHeader>
-      <IonContent fullscreen>
+      <IonContent fullscreen className="ion-padding iot-page">
+        {/* 별 배경 효과 (다크모드) */}
+        <div className="stars-background"></div>
 
         <div className="container" style={{ display: 'block', visibility: 'visible', opacity: 1 }}>
           {/* 에러 메시지 */}
@@ -344,90 +346,93 @@ const Iot: React.FC = () => {
             </IonCard>
           )}
 
-          {/* 현재 상태 */}
-          <IonCard>
-            <IonCardHeader>
-              <IonCardTitle>현재 상태</IonCardTitle>
-            </IonCardHeader>
-            <IonCardContent>
-              <IonItem>
-                <IonLabel>
-                  <h2>현재 온도</h2>
-                  <p style={{ fontSize: '24px', fontWeight: 'bold', marginTop: '8px' }}>
-                    {status.currentTemperature}°C
-                  </p>
-                  {temperatureRange.min !== null && temperatureRange.max !== null ? (
-                    <div style={{ marginTop: '8px' }}>
-                      <p style={{ fontSize: '14px', color: '#666', marginBottom: '4px' }}>
-                        <strong>
-                          {isCachedRange ? '수동 온도 범위:' : isAutoRange ? '자동 온도 범위:' : '온도 범위:'}
-                        </strong> {temperatureRange.min?.toFixed(1)}°C ~ {temperatureRange.max?.toFixed(1)}°C
-                      </p>
-                      {originalTemperatureRange.min !== null && originalTemperatureRange.max !== null && 
-                       (originalTemperatureRange.min !== temperatureRange.min || originalTemperatureRange.max !== temperatureRange.max) ? (
-                        <p style={{ fontSize: '12px', color: '#999', fontStyle: 'italic' }}>
-                          원래 설정: {originalTemperatureRange.min.toFixed(1)}°C ~ {originalTemperatureRange.max.toFixed(1)}°C
-                        </p>
-                      ) : originalTemperatureRange.min !== null && originalTemperatureRange.max !== null ? (
-                        <p style={{ fontSize: '12px', color: '#999', fontStyle: 'italic' }}>
-                          원래 설정: {originalTemperatureRange.min.toFixed(1)}°C ~ {originalTemperatureRange.max.toFixed(1)}°C
-                        </p>
-                      ) : null}
+          {/* 현재 상태 - 큰 온도 숫자 중심, 정보 카드 분리 */}
+          <div className="status-section">
+            <div className="status-main-card">
+              <div className="status-temperature-display">
+                <div className="status-label">현재 온도</div>
+                <div className="status-temperature-value-wrapper">
+                  <div className="status-temperature-value">{status.currentTemperature}</div>
+                  <div className="status-temperature-unit">°C</div>
+                </div>
+                {status.power && status.targetTemperature > 0 && (
+                  <div className="status-target-info">
+                    <span className="status-target-label">목표</span>
+                    <span className="status-target-value">{status.targetTemperature}°C</span>
+                    {Math.abs(status.currentTemperature - status.targetTemperature) > 0.5 && (
+                      <span className="status-temperature-diff">
+                        {status.currentTemperature > status.targetTemperature ? '↑' : '↓'} {Math.abs(status.currentTemperature - status.targetTemperature).toFixed(1)}°C
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+            {/* 온도범위 표시 */}
+            {temperatureRange.min !== null && temperatureRange.max !== null && (
+              <div className="temperature-range-section">
+                <div className="temperature-range-card">
+                  <div className="temperature-range-label">
+                    {isCachedRange ? '수동 온도 범위' : isAutoRange ? '자동 온도 범위' : '온도 범위'}
+                  </div>
+                  <div className="temperature-range-values">
+                    <span className="temperature-range-number">{temperatureRange.min?.toFixed(1)}</span>
+                    <span className="temperature-range-unit">°C</span>
+                    <span className="temperature-range-separator">~</span>
+                    <span className="temperature-range-number">{temperatureRange.max?.toFixed(1)}</span>
+                    <span className="temperature-range-unit">°C</span>
+                  </div>
+                  {originalTemperatureRange.min !== null && originalTemperatureRange.max !== null && 
+                   (originalTemperatureRange.min !== temperatureRange.min || originalTemperatureRange.max !== temperatureRange.max) && (
+                    <div className="temperature-range-original">
+                      원래 설정: {originalTemperatureRange.min.toFixed(1)}°C ~ {originalTemperatureRange.max.toFixed(1)}°C
                     </div>
-                  ) : (
-                    <p style={{ fontSize: '12px', color: '#999', marginTop: '8px', fontStyle: 'italic' }}>
-                      온도 범위 정보 없음
-                    </p>
                   )}
-                </IonLabel>
-              </IonItem>
-            </IonCardContent>
-          </IonCard>
+                </div>
+              </div>
+            )}
+          </div>
 
-          {/* 전원 제어 */}
-          <IonCard>
-            <IonCardHeader>
-              <IonCardTitle>전원</IonCardTitle>
-            </IonCardHeader>
-            <IonCardContent>
-              <IonButton
-                expand="block"
-                color={status.power ? 'danger' : 'success'}
-                onClick={() => handlePowerToggle(!status.power)}
-                disabled={loading}
-              >
-                {status.power ? '전원 끄기' : '전원 켜기'}
-              </IonButton>
-              <IonButton
-                expand="block"
-                fill="outline"
-                onClick={loadStatus}
-                disabled={loading}
-                style={{ marginTop: '10px' }}
-              >
-                상태 새로고침
-              </IonButton>
-            </IonCardContent>
-          </IonCard>
+          {/* 전원 제어 - 헤더 없이 버튼 중심 */}
+          <div className="power-section">
+            <IonButton
+              expand="block"
+              color={status.power ? 'danger' : 'success'}
+              onClick={() => handlePowerToggle(!status.power)}
+              disabled={loading}
+              className="power-main-button"
+            >
+              {status.power ? '전원 끄기' : '전원 켜기'}
+            </IonButton>
+            <IonButton
+              expand="block"
+              fill="outline"
+              onClick={loadStatus}
+              disabled={loading}
+              className="power-refresh-button"
+            >
+              상태 새로고침
+            </IonButton>
+          </div>
 
-          {/* 목표 온도 */}
+          {/* 목표 온도 - 큰 온도 숫자, 버튼 그리드 */}
           {status.power && (
-          <IonCard>
+          <IonCard className="temperature-card">
             <IonCardHeader>
               <IonCardTitle>목표 온도</IonCardTitle>
             </IonCardHeader>
-              <IonCardContent>
-                <IonItem>
-                  <IonLabel>
-                    <h2>{pendingTemperature !== null ? pendingTemperature : status.targetTemperature}°C</h2>
-                    {pendingTemperature !== null && pendingTemperature !== status.targetTemperature && (
-                      <p style={{ color: '#666', fontSize: '14px' }}>선택된 온도: {pendingTemperature}°C</p>
-                    )}
-                  </IonLabel>
-                </IonItem>
-                <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+            <IonCardContent>
+              <div className="temperature-display-section">
+                <div className="temperature-value-large">
+                  {pendingTemperature !== null ? pendingTemperature : status.targetTemperature}°C
+                </div>
+                {pendingTemperature !== null && pendingTemperature !== status.targetTemperature && (
+                  <div className="temperature-pending">선택된 온도: {pendingTemperature}°C</div>
+                )}
+              </div>
+              <div className="temperature-controls">
+                <div className="temperature-adjust-buttons">
                   <IonButton
-                    expand="block"
                     fill="outline"
                     onClick={() => {
                       const currentTemp = pendingTemperature !== null ? pendingTemperature : status.targetTemperature;
@@ -440,7 +445,6 @@ const Iot: React.FC = () => {
                     -1°C
                   </IonButton>
                   <IonButton
-                    expand="block"
                     fill="outline"
                     onClick={() => {
                       const currentTemp = pendingTemperature !== null ? pendingTemperature : status.targetTemperature;
@@ -453,9 +457,8 @@ const Iot: React.FC = () => {
                     +1°C
                   </IonButton>
                 </div>
-                <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                <div className="temperature-preset-buttons">
                   <IonButton
-                    expand="block"
                     fill="outline"
                     onClick={() => handleTemperatureChange(18)}
                     disabled={loading}
@@ -463,7 +466,6 @@ const Iot: React.FC = () => {
                     18°C
                   </IonButton>
                   <IonButton
-                    expand="block"
                     fill="outline"
                     onClick={() => handleTemperatureChange(22)}
                     disabled={loading}
@@ -471,7 +473,6 @@ const Iot: React.FC = () => {
                     22°C
                   </IonButton>
                   <IonButton
-                    expand="block"
                     fill="outline"
                     onClick={() => handleTemperatureChange(26)}
                     disabled={loading}
@@ -479,116 +480,108 @@ const Iot: React.FC = () => {
                     26°C
                   </IonButton>
                 </div>
-                
-                {/* 확인 버튼 - 온도 조절 버튼들 바로 아래 */}
                 <IonButton
                   expand="block"
                   color="primary"
                   className="temperature-confirm-button"
                   onClick={handleConfirmTemperature}
                   disabled={loading}
-                  style={{ 
-                    marginTop: '20px', 
-                    width: '100%',
-                    height: '48px',
-                    fontSize: '16px',
-                    fontWeight: 'bold'
-                  }}
                 >
                   확인 ({(pendingTemperature !== null ? pendingTemperature : status.targetTemperature)}°C)
                 </IonButton>
-              </IonCardContent>
-            </IonCard>
+              </div>
+            </IonCardContent>
+          </IonCard>
           )}
 
-          {/* 작동 모드 */}
+          {/* 작동 모드 - 2x2 그리드 */}
           {status.power && (
-          <IonCard>
+          <IonCard className="mode-card">
             <IonCardHeader>
               <IonCardTitle>작동 모드</IonCardTitle>
             </IonCardHeader>
-              <IonCardContent>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <IonButton
-                    expand="block"
-                    color={status.mode === 'COOL' ? 'primary' : 'medium'}
-                    onClick={() => handleModeChange('COOL')}
-                    disabled={loading}
-                  >
-                    냉방
-                  </IonButton>
-                  <IonButton
-                    expand="block"
-                    color={status.mode === 'AIR_DRY' ? 'primary' : 'medium'}
-                    onClick={() => handleModeChange('AIR_DRY')}
-                    disabled={loading}
-                  >
-                    제습
-                  </IonButton>
-                  <IonButton
-                    expand="block"
-                    color={status.mode === 'AIR_CLEAN' ? 'primary' : 'medium'}
-                    onClick={() => handleModeChange('AIR_CLEAN')}
-                    disabled={loading}
-                  >
-                    공기청정
-                  </IonButton>
-                  <IonButton
-                    expand="block"
-                    color={status.mode === 'AUTO' ? 'primary' : 'medium'}
-                    onClick={() => handleModeChange('AUTO')}
-                    disabled={loading}
-                  >
-                    자동
-                  </IonButton>
-                </div>
-              </IonCardContent>
-            </IonCard>
+            <IonCardContent>
+              <div className="mode-grid">
+                <IonButton
+                  color={status.mode === 'COOL' ? 'primary' : 'medium'}
+                  onClick={() => handleModeChange('COOL')}
+                  disabled={loading}
+                  className="mode-button"
+                >
+                  냉방
+                </IonButton>
+                <IonButton
+                  color={status.mode === 'AIR_DRY' ? 'primary' : 'medium'}
+                  onClick={() => handleModeChange('AIR_DRY')}
+                  disabled={loading}
+                  className="mode-button"
+                >
+                  제습
+                </IonButton>
+                <IonButton
+                  color={status.mode === 'AIR_CLEAN' ? 'primary' : 'medium'}
+                  onClick={() => handleModeChange('AIR_CLEAN')}
+                  disabled={loading}
+                  className="mode-button"
+                >
+                  공기청정
+                </IonButton>
+                <IonButton
+                  color={status.mode === 'AUTO' ? 'primary' : 'medium'}
+                  onClick={() => handleModeChange('AUTO')}
+                  disabled={loading}
+                  className="mode-button"
+                >
+                  자동
+                </IonButton>
+              </div>
+            </IonCardContent>
+          </IonCard>
           )}
 
-          {/* 풍량 조절 */}
+          {/* 풍량 조절 - 가로 배치 */}
           {status.power && (
-          <IonCard>
+          <IonCard className="fan-card">
             <IonCardHeader>
               <IonCardTitle>풍량</IonCardTitle>
             </IonCardHeader>
-              <IonCardContent>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <IonButton
-                    expand="block"
-                    color={status.fanSpeed === 'HIGH' ? 'primary' : 'medium'}
-                    onClick={() => handleFanSpeedChange('HIGH')}
-                    disabled={loading}
-                  >
-                    강
-                  </IonButton>
-                  <IonButton
-                    expand="block"
-                    color={status.fanSpeed === 'MID' ? 'primary' : 'medium'}
-                    onClick={() => handleFanSpeedChange('MID')}
-                    disabled={loading}
-                  >
-                    중
-                  </IonButton>
-                  <IonButton
-                    expand="block"
-                    color={status.fanSpeed === 'LOW' ? 'primary' : 'medium'}
-                    onClick={() => handleFanSpeedChange('LOW')}
-                    disabled={loading}
-                  >
-                    약
-                  </IonButton>
-                  <IonButton
-                    expand="block"
-                    color={status.fanSpeed === 'AUTO' ? 'primary' : 'medium'}
-                    onClick={() => handleFanSpeedChange('AUTO')}
-                    disabled={loading}
-                  >
-                    자동
-                  </IonButton>
-                </div>
-              </IonCardContent>
-            </IonCard>
+            <IonCardContent>
+              <div className="fan-row">
+                <IonButton
+                  color={status.fanSpeed === 'HIGH' ? 'primary' : 'medium'}
+                  onClick={() => handleFanSpeedChange('HIGH')}
+                  disabled={loading}
+                  className="fan-button"
+                >
+                  강
+                </IonButton>
+                <IonButton
+                  color={status.fanSpeed === 'MID' ? 'primary' : 'medium'}
+                  onClick={() => handleFanSpeedChange('MID')}
+                  disabled={loading}
+                  className="fan-button"
+                >
+                  중
+                </IonButton>
+                <IonButton
+                  color={status.fanSpeed === 'LOW' ? 'primary' : 'medium'}
+                  onClick={() => handleFanSpeedChange('LOW')}
+                  disabled={loading}
+                  className="fan-button"
+                >
+                  약
+                </IonButton>
+                <IonButton
+                  color={status.fanSpeed === 'AUTO' ? 'primary' : 'medium'}
+                  onClick={() => handleFanSpeedChange('AUTO')}
+                  disabled={loading}
+                  className="fan-button"
+                >
+                  자동
+                </IonButton>
+              </div>
+            </IonCardContent>
+          </IonCard>
           )}
 
           {loading && (
@@ -628,4 +621,5 @@ const Iot: React.FC = () => {
 };
 
 export default Iot;
+
 

@@ -95,7 +95,7 @@ ion-content ion-header {
   background-image: linear-gradient(180deg, #D5D7E3 0%, #D0B5CE 50%, #B2BECF 100%) !important;
 }
 
-/* 카드 스타일 - Home과 동일한 Silver Mist & Lavender 톤 */
+/* 카드 기본 스타일 - Home과 동일한 Silver Mist & Lavender 톤 */
 .health-ios-page ion-card {
   margin: 20px 0;
   margin-left: 0 !important;
@@ -110,6 +110,8 @@ ion-content ion-header {
   box-sizing: border-box;
   border: 1px solid rgba(196, 161, 194, 0.35);
 }
+
+/* 백그라운드 모니터링 카드, 건강 데이터 카드 - 헤더 있는 카드 (기본 스타일 유지) */
 
 /* iOS에서도 전체 너비 적용 */
 .platform-ios .health-ios-page ion-card {
@@ -312,14 +314,32 @@ ion-item ion-input {
 
 /* 토글 스타일 - 페이지 색상 톤 적용 */
 .health-ios-page ion-item ion-toggle {
-  --background-checked: linear-gradient(135deg, #C4A1C2 0%, #7C88A9 100%);
-  --handle-background-checked: white;
+  --background: rgba(196, 161, 194, 0.3) !important;
+  --background-checked: linear-gradient(135deg, #C4A1C2 0%, #7C88A9 100%) !important;
+  --handle-background: white !important;
+  --handle-background-checked: white !important;
   flex-shrink: 0 !important;
   flex-grow: 0 !important;
   margin-left: 20px !important;
   margin-right: 0 !important;
   min-width: 50px;
   width: 50px;
+}
+
+.health-ios-page ion-item ion-toggle::part(track) {
+  background: rgba(196, 161, 194, 0.3) !important;
+}
+
+.health-ios-page ion-item ion-toggle[checked]::part(track) {
+  background: linear-gradient(135deg, #C4A1C2 0%, #7C88A9 100%) !important;
+}
+
+.health-ios-page ion-item ion-toggle::part(handle) {
+  background: white !important;
+}
+
+.health-ios-page ion-item ion-toggle[checked]::part(handle) {
+  background: white !important;
 }
 
 /* 로그인 버튼 */
@@ -360,7 +380,185 @@ ion-item ion-input {
   font-style: italic;
 }
 
-/* 건강 데이터 박스 (가로로 긴 형태) */
+/* 데이터 새로고침 섹션 */
+.health-ios-page .health-refresh-section {
+  margin: 20px 0;
+}
+
+.health-ios-page .health-refresh-button {
+  --background: linear-gradient(135deg, #A4B0C1 0%, #7C88A9 100%) !important;
+  --color: #ffffff !important;
+  --border-radius: 14px !important;
+  --box-shadow: 0 6px 20px rgba(124, 136, 169, 0.35), 0 2px 8px rgba(102, 116, 141, 0.2) !important;
+  font-weight: 600;
+  height: 48px;
+}
+
+.health-ios-page .health-refresh-button::part(native) {
+  background: linear-gradient(135deg, #A4B0C1 0%, #7C88A9 100%) !important;
+  color: #ffffff !important;
+}
+
+.health-ios-page .health-refresh-button:hover {
+  --box-shadow: 0 10px 28px rgba(124, 136, 169, 0.45), 0 4px 12px rgba(102, 116, 141, 0.25) !important;
+}
+
+/* 오늘의 수면 팁 카드 */
+.health-ios-page .daily-tip-card {
+  margin: 20px 0;
+  background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%) !important;
+  border: 1px solid rgba(196, 161, 194, 0.35) !important;
+}
+
+/* 건강 데이터 섹션 - 다양한 레이아웃 */
+.health-ios-page .health-data-section {
+  margin: 20px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* 심박수 - 큰 숫자 중심, 헤더 없음 */
+.health-ios-page .health-data-main-card {
+  background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%);
+  border-radius: 24px;
+  padding: 32px 24px;
+  text-align: center;
+  box-shadow: 0 12px 40px rgba(196, 161, 194, 0.4), 0 4px 16px rgba(102, 116, 141, 0.3);
+  border: 1px solid rgba(196, 161, 194, 0.35);
+  position: relative;
+  overflow: hidden;
+}
+
+.health-ios-page .health-data-main-card::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(196, 161, 194, 0.1) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.health-ios-page .health-data-label-large {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #66748D;
+  opacity: 0.8;
+  letter-spacing: 0.5px;
+  margin-bottom: 16px;
+  position: relative;
+  z-index: 1;
+}
+
+.health-ios-page .health-data-value-wrapper-large {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  justify-content: center;
+  margin-bottom: 12px;
+  position: relative;
+  z-index: 1;
+}
+
+.health-ios-page .health-data-value-large {
+  font-size: 3.5rem;
+  font-weight: 800;
+  color: #4A5568;
+  line-height: 1;
+  text-shadow: 0 2px 8px rgba(196, 161, 194, 0.2);
+}
+
+.health-ios-page .health-data-unit-large {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #66748D;
+  opacity: 0.7;
+  line-height: 1;
+}
+
+.health-ios-page .health-data-date-large {
+  font-size: 0.85rem;
+  color: #66748D;
+  opacity: 0.7;
+  position: relative;
+  z-index: 1;
+}
+
+.health-ios-page .health-data-empty-large {
+  font-size: 1rem;
+  color: #66748D;
+  opacity: 0.6;
+  font-style: italic;
+  position: relative;
+  z-index: 1;
+  padding: 20px 0;
+}
+
+/* HRV와 산소포화도 - 가로 배치 */
+.health-ios-page .health-data-secondary-row {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.health-ios-page .hrv-card,
+.health-ios-page .oxygen-card {
+  margin: 0 !important;
+  background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%) !important;
+  border: 1px solid rgba(196, 161, 194, 0.35) !important;
+  box-shadow: 0 8px 24px rgba(196, 161, 194, 0.3), 0 4px 12px rgba(102, 116, 141, 0.2) !important;
+}
+
+.health-ios-page .hrv-card ion-card-content,
+.health-ios-page .oxygen-card ion-card-content {
+  padding: 20px 16px !important;
+  background: transparent !important;
+  text-align: center;
+}
+
+.health-ios-page .health-data-label-small {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #66748D;
+  opacity: 0.8;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.health-ios-page .health-data-value-small {
+  font-size: 1.8rem;
+  font-weight: 800;
+  color: #4A5568;
+  line-height: 1;
+  margin-bottom: 8px;
+}
+
+.health-ios-page .health-data-unit-small {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #66748D;
+  opacity: 0.7;
+  margin-left: 4px;
+}
+
+.health-ios-page .health-data-date-small {
+  font-size: 0.75rem;
+  color: #66748D;
+  opacity: 0.7;
+}
+
+.health-ios-page .health-data-empty-small {
+  font-size: 0.9rem;
+  color: #66748D;
+  opacity: 0.6;
+  font-style: italic;
+  padding: 16px 0;
+}
+
+/* 건강 데이터 박스 (기존 스타일 - 호환성 유지) */
 .health-data-box {
   aspect-ratio: 2.5;
   border-radius: clamp(12px, 2vw, 16px);
@@ -498,6 +696,239 @@ ion-col {
 }
 
 
+/* 다크모드 지원 - User 페이지와 동일한 톤 */
+body.dark .health-ios-page ion-content {
+  --background: linear-gradient(180deg, #4E5055 0%, #4A4C51 50%, #46484D 100%) !important;
+  background: linear-gradient(180deg, #4E5055 0%, #4A4C51 50%, #46484D 100%) !important;
+  background-image: linear-gradient(180deg, #4E5055 0%, #4A4C51 50%, #46484D 100%) !important;
+  color: #E0E5ED !important;
+}
+
+body.dark .health-ios-page ion-content::part(scroll) {
+  background: linear-gradient(180deg, #4E5055 0%, #4A4C51 50%, #46484D 100%) !important;
+  background-image: linear-gradient(180deg, #4E5055 0%, #4A4C51 50%, #46484D 100%) !important;
+}
+
+body.dark .health-ios-page ion-content .scroll-content {
+  background: linear-gradient(180deg, #4E5055 0%, #4A4C51 50%, #46484D 100%) !important;
+  background-image: linear-gradient(180deg, #4E5055 0%, #4A4C51 50%, #46484D 100%) !important;
+}
+
+body.dark .health-ios-page ion-header {
+  --background: linear-gradient(135deg, #3A3B45 0%, #323340 30%, #2E2F3A 60%, #2A2B35 100%) !important;
+  background: linear-gradient(135deg, #3A3B45 0%, #323340 30%, #2E2F3A 60%, #2A2B35 100%) !important;
+  background-image: linear-gradient(135deg, #3A3B45 0%, #323340 30%, #2E2F3A 60%, #2A2B35 100%) !important;
+  box-shadow: 0 4px 12px rgba(46, 47, 58, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+}
+
+body.dark .health-ios-page ion-header::part(native) {
+  background: linear-gradient(135deg, #3A3B45 0%, #323340 30%, #2E2F3A 60%, #2A2B35 100%) !important;
+  background-image: linear-gradient(135deg, #3A3B45 0%, #323340 30%, #2E2F3A 60%, #2A2B35 100%) !important;
+  box-shadow: 0 4px 12px rgba(46, 47, 58, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+}
+
+body.dark .health-ios-page ion-toolbar {
+  --background: linear-gradient(135deg, #3A3B45 0%, #323340 30%, #2E2F3A 60%, #2A2B35 100%) !important;
+  background: linear-gradient(135deg, #3A3B45 0%, #323340 30%, #2E2F3A 60%, #2A2B35 100%) !important;
+  background-image: linear-gradient(135deg, #3A3B45 0%, #323340 30%, #2E2F3A 60%, #2A2B35 100%) !important;
+}
+
+body.dark .health-ios-page ion-toolbar::part(native) {
+  background: linear-gradient(135deg, #3A3B45 0%, #323340 30%, #2E2F3A 60%, #2A2B35 100%) !important;
+  background-image: linear-gradient(135deg, #3A3B45 0%, #323340 30%, #2E2F3A 60%, #2A2B35 100%) !important;
+}
+
+body.dark .health-ios-page ion-card {
+  background: linear-gradient(135deg, #323340 0%, #363744 50%, #3A3B45 100%) !important;
+  border-color: rgba(124, 136, 169, 0.35) !important;
+  color: #E0E5ED !important;
+  box-shadow: 0 4px 12px rgba(212, 165, 210, 0.6), 
+              0 0 8px rgba(228, 181, 226, 0.3),
+              0 2px 6px rgba(102, 116, 141, 0.3), 
+              0 1px 3px rgba(0, 0, 0, 0.15) !important;
+}
+
+body.dark .health-ios-page ion-card-content {
+  background: linear-gradient(135deg, #323340 0%, #363744 50%, #3A3B45 100%) !important;
+  color: #E0E5ED !important;
+}
+
+body.dark .health-ios-page ion-item {
+  background: rgba(255, 255, 255, 0.1) !important;
+  background-color: rgba(255, 255, 255, 0.1) !important;
+  color: #E0E5ED !important;
+  border-color: rgba(124, 136, 169, 0.25) !important;
+}
+
+body.dark .health-ios-page ion-item:focus-within {
+  background: rgba(255, 255, 255, 0.12) !important;
+  background-color: rgba(255, 255, 255, 0.12) !important;
+  border-color: rgba(124, 136, 169, 0.4) !important;
+}
+
+body.dark .health-ios-page ion-item::part(native) {
+  background: rgba(255, 255, 255, 0.08) !important;
+  background-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+body.dark .health-ios-page ion-item:focus-within::part(native) {
+  background: rgba(255, 255, 255, 0.12) !important;
+  background-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+body.dark .health-ios-page ion-item ion-label {
+  color: #E0E5ED !important;
+}
+
+body.dark .health-ios-page ion-button {
+  --background: linear-gradient(135deg, #3A3B45 0%, #323340 50%, #2E2F3A 100%) !important;
+  --background-hover: linear-gradient(135deg, #424350 0%, #3A3B45 50%, #323340 100%) !important;
+  --background-activated: linear-gradient(135deg, #424350 0%, #3A3B45 50%, #323340 100%) !important;
+  --color: #E0E5ED !important;
+  --box-shadow: 0 6px 20px rgba(46, 47, 58, 0.4), 0 2px 8px rgba(42, 43, 52, 0.3) !important;
+}
+
+body.dark .health-ios-page ion-button::part(native) {
+  background: linear-gradient(135deg, #3A3B45 0%, #323340 50%, #2E2F3A 100%) !important;
+  color: #E0E5ED !important;
+  box-shadow: 0 6px 20px rgba(46, 47, 58, 0.4), 0 2px 8px rgba(42, 43, 52, 0.3) !important;
+}
+
+body.dark .health-ios-page ion-button:hover {
+  --box-shadow: 0 10px 28px rgba(46, 47, 58, 0.5), 0 4px 12px rgba(42, 43, 52, 0.35) !important;
+}
+
+body.dark .health-ios-page ion-button:hover::part(native) {
+  box-shadow: 0 10px 28px rgba(46, 47, 58, 0.5), 0 4px 12px rgba(42, 43, 52, 0.35) !important;
+}
+
+body.dark .health-ios-page ion-card-header {
+  background: linear-gradient(135deg, #4A4B55 0%, #3A3B45 25%, #2E2F3A 50%, #252630 75%, #1E1F2A 100%) !important;
+  box-shadow: 0 4px 12px rgba(46, 47, 58, 0.3), 
+              0 0 20px rgba(124, 136, 169, 0.15),
+              0 0 40px rgba(108, 120, 153, 0.1),
+              inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
+  border-bottom: 1px solid rgba(124, 136, 169, 0.3) !important;
+  position: relative !important;
+  color: #E0E5ED !important;
+}
+
+body.dark .health-ios-page ion-card-header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, rgba(140, 165, 201, 0.08) 0%, rgba(124, 136, 169, 0.05) 50%, rgba(108, 120, 153, 0.03) 100%);
+  pointer-events: none;
+  border-radius: 24px 24px 0 0;
+  z-index: 0;
+}
+
+body.dark .health-ios-page ion-card-title {
+  color: #E0E5ED !important;
+}
+
+body.dark .health-ios-page ion-item ion-input {
+  color: #E0E5ED !important;
+}
+
+body.dark .health-ios-page ion-item ion-input::part(native) {
+  color: #E0E5ED !important;
+}
+
+body.dark .health-ios-page ion-item ion-select {
+  color: #E0E5ED !important;
+}
+
+body.dark .health-ios-page ion-input::placeholder {
+  color: #A0A5B8 !important;
+  opacity: 0.6;
+}
+
+body.dark .health-ios-page ion-select::part(placeholder) {
+  color: #A0A5B8 !important;
+  opacity: 0.6;
+}
+
+body.dark .health-ios-page ion-text {
+  color: #E0E5ED !important;
+}
+
+body.dark .health-ios-page .health-data-main-card {
+  background: linear-gradient(135deg, #323340 0%, #363744 50%, #3A3B45 100%) !important;
+  border-color: rgba(124, 136, 169, 0.35) !important;
+}
+
+body.dark .health-ios-page .health-data-label-large,
+body.dark .health-ios-page .health-data-label-small {
+  color: #E0E5ED !important;
+}
+
+body.dark .health-ios-page .health-data-value-large,
+body.dark .health-ios-page .health-data-value-small {
+  color: #E0E5ED !important;
+}
+
+body.dark .health-ios-page .health-data-unit-large,
+body.dark .health-ios-page .health-data-unit-small {
+  color: #C4D0E1 !important;
+}
+
+body.dark .health-ios-page .health-data-date-large,
+body.dark .health-ios-page .health-data-date-small {
+  color: #C4D0E1 !important;
+}
+
+body.dark .health-ios-page .health-data-empty-large,
+body.dark .health-ios-page .health-data-empty-small {
+  color: #A0A5B8 !important;
+}
+
+body.dark .health-ios-page .hrv-card,
+body.dark .health-ios-page .oxygen-card {
+  background: linear-gradient(135deg, #323340 0%, #363744 50%, #3A3B45 100%) !important;
+  border-color: rgba(124, 136, 169, 0.35) !important;
+}
+
+body.dark .health-ios-page .daily-tip-card {
+  background: linear-gradient(135deg, #323340 0%, #363744 50%, #3A3B45 100%) !important;
+  border-color: rgba(124, 136, 169, 0.35) !important;
+}
+
+body.dark .health-ios-page .daily-tip-content {
+  color: #E0E5ED !important;
+}
+
+body.dark .health-ios-page .daily-tip-card ion-text,
+body.dark .health-ios-page .daily-tip-card ion-text p,
+body.dark .health-ios-page .daily-tip-card p {
+  color: #E0E5ED !important;
+}
+
+body.dark .health-ios-page .health-refresh-button {
+  --background: linear-gradient(135deg, #3A3B45 0%, #323340 50%, #2E2F3A 100%) !important;
+  --color: #E0E5ED !important;
+  --box-shadow: 0 6px 20px rgba(46, 47, 58, 0.4), 0 2px 8px rgba(42, 43, 52, 0.3) !important;
+}
+
+body.dark .health-ios-page ion-toggle::part(track) {
+  background: rgba(196, 161, 194, 0.3) !important;
+}
+
+body.dark .health-ios-page ion-toggle[checked]::part(track) {
+  background: linear-gradient(135deg, #C4A1C2 0%, #B895B6 100%) !important;
+}
+
+body.dark .health-ios-page ion-toggle::part(handle) {
+  background: white !important;
+}
+
+body.dark .health-ios-page ion-toggle[checked]::part(handle) {
+  background: white !important;
+}
+
 /* 다크모드 지원 */
 @media (prefers-color-scheme: dark) {
   ion-card-content {
@@ -519,5 +950,53 @@ ion-col {
   ion-item ion-label {
     color: #e0e0e0;
   }
+}
+
+/* 별 배경 효과 - 다크모드 */
+.health-ios-page .stars-background {
+  display: none;
+}
+
+body.dark .health-ios-page .stars-background {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  background-image: 
+    radial-gradient(5px 5px at 20% 30%, rgba(255, 255, 255, 1), transparent),
+    radial-gradient(4px 4px at 60% 70%, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(4px 4px at 50% 50%, rgba(255, 255, 255, 1), transparent),
+    radial-gradient(4px 4px at 80% 10%, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(5px 5px at 90% 40%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(4px 4px at 33% 60%, rgba(255, 255, 255, 1), transparent),
+    radial-gradient(4px 4px at 15% 80%, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(5px 5px at 70% 20%, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(4px 4px at 40% 90%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(5px 5px at 10% 50%, rgba(255, 255, 255, 1), transparent),
+    radial-gradient(4px 4px at 85% 60%, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(5px 5px at 25% 15%, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(4px 4px at 55% 85%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(5px 5px at 75% 30%, rgba(255, 255, 255, 1), transparent),
+    radial-gradient(4px 4px at 45% 70%, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(5px 5px at 95% 80%, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(4px 4px at 5% 25%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(5px 5px at 35% 45%, rgba(255, 255, 255, 1), transparent),
+    radial-gradient(4px 4px at 65% 10%, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(4px 4px at 12% 35%, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(5px 5px at 42% 65%, rgba(255, 255, 255, 1), transparent),
+    radial-gradient(4px 4px at 88% 75%, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(4px 4px at 18% 55%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(5px 5px at 62% 25%, rgba(255, 255, 255, 0.8), transparent);
+  background-size: 100% 100%;
+  background-position: 0% 0%;
+  background-repeat: no-repeat;
+  animation: twinkle 8s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0 !important;
+  opacity: 1;
+  display: block !important;
 }
 

@@ -1,0 +1,7 @@
+{
+  "min_temp": 22.0,
+  "max_temp": 24.0,
+  "target_temperature": 23.0,
+  "created_at": "2025-11-19T16:03:59.891831",
+  "expires_at": "2025-11-20T04:03:59.891817"
+}

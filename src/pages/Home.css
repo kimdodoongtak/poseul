@@ -117,6 +117,8 @@
 }
 
 .home-page ion-card-title {
+  position: relative;
+  z-index: 1;
   font-size: 1.4rem;
   font-weight: 600;
   color: #ffffff;
@@ -178,7 +180,449 @@
   --color: #66748D !important;
 }
 
-/* 예측 결과 스타일 - Home 페이지에만 적용 */
+/* 토글 스타일 - Home 페이지 */
+.home-page ion-item ion-toggle {
+  --background: rgba(196, 161, 194, 0.3) !important;
+  --background-checked: linear-gradient(135deg, #C4A1C2 0%, #B895B6 100%) !important;
+  --handle-background: white !important;
+  --handle-background-checked: white !important;
+  flex-shrink: 0 !important;
+  flex-grow: 0 !important;
+  margin-left: auto !important;
+  margin-right: 0 !important;
+  min-width: 50px;
+  width: 50px;
+}
+
+.home-page ion-item ion-toggle::part(track) {
+  background: rgba(196, 161, 194, 0.3) !important;
+}
+
+.home-page ion-item ion-toggle[checked]::part(track) {
+  background: linear-gradient(135deg, #C4A1C2 0%, #B895B6 100%) !important;
+}
+
+.home-page ion-item ion-toggle::part(handle) {
+  background: white !important;
+}
+
+.home-page ion-item ion-toggle[checked]::part(handle) {
+  background: white !important;
+}
+
+/* 다크모드 카드 */
+.home-page .dark-mode-card {
+  margin: 20px 0;
+}
+
+/* 다크모드 애니메이션 */
+.home-page .dark-mode-animation-wrapper {
+  width: 100%;
+  height: 230px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%);
+  margin-bottom: 16px;
+  position: relative;
+}
+
+.home-page .dark-mode-animation {
+  width: 100%;
+  height: 100%;
+  background-size: 120% auto;
+  background-position: 30% 3ch;
+  background-repeat: no-repeat;
+  transition: none;
+}
+
+/* 기본 상태: 첫 이미지 */
+body:not(.dark) .home-page .dark-mode-animation:not(.playing) {
+  background-image: url('/포슬_first.tiff') !important;
+  background-position: 30% 43% !important;
+}
+
+/* 다크모드 토글 누르면: 애니메이션 재생 (최우선) */
+.home-page .dark-mode-animation.playing {
+  background-image: url('/포슬_Dark3.png') !important;
+  background-position: 30% 43% !important;
+  animation: darkModeAnimation 1.5s steps(30, end) forwards !important;
+}
+
+/* playing 클래스가 있을 때는 무조건 애니메이션 이미지 */
+body:not(.dark) .home-page .dark-mode-animation.playing {
+  background-image: url('/포슬_Dark3.png') !important;
+  background-position: 30% 43% !important;
+  animation: darkModeAnimation 1.5s steps(30, end) forwards !important;
+}
+
+@keyframes darkModeAnimation {
+  0% {
+    background-position: 30% 0%;
+  }
+  100% {
+    background-position: 30% 100%;
+  }
+}
+
+/* 다크모드 활성화 상태: 마지막 이미지 (애니메이션 완료 후) */
+body.dark .home-page .dark-mode-animation:not(.playing) {
+  background-image: url('/포슬_last.tiff') !important;
+  background-position: 30% 43% !important;
+  animation: none !important;
+  position: relative;
+}
+
+/* 포슬_last.tiff 이미지에 어두운 배경 오버레이 */
+body.dark .home-page .dark-mode-animation:not(.playing)::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(180deg, rgba(46, 47, 58, 0.3) 0%, rgba(42, 43, 52, 0.4) 50%, rgba(38, 39, 48, 0.5) 100%);
+  pointer-events: none;
+  z-index: 1;
+  border-radius: 16px;
+}
+
+/* 다크모드일 때 wrapper 배경도 어둡게 */
+body.dark .home-page .dark-mode-animation-wrapper {
+  background: linear-gradient(135deg, #323340 0%, #363744 50%, #3A3B45 100%) !important;
+}
+
+/* 다크모드 지원 - User 페이지와 동일한 톤 */
+body.dark .home-page ion-content {
+  --background: linear-gradient(180deg, #4E5055 0%, #4A4C51 50%, #46484D 100%) !important;
+  background: linear-gradient(180deg, #4E5055 0%, #4A4C51 50%, #46484D 100%) !important;
+  background-image: linear-gradient(180deg, #4E5055 0%, #4A4C51 50%, #46484D 100%) !important;
+  color: #E0E5ED !important;
+}
+
+body.dark .home-page ion-content::part(scroll) {
+  background: linear-gradient(180deg, #4E5055 0%, #4A4C51 50%, #46484D 100%) !important;
+  background-image: linear-gradient(180deg, #4E5055 0%, #4A4C51 50%, #46484D 100%) !important;
+}
+
+body.dark .home-page ion-header {
+  --background: linear-gradient(135deg, #3A3B45 0%, #323340 30%, #2E2F3A 60%, #2A2B35 100%) !important;
+  background: linear-gradient(135deg, #3A3B45 0%, #323340 30%, #2E2F3A 60%, #2A2B35 100%) !important;
+  background-image: linear-gradient(135deg, #3A3B45 0%, #323340 30%, #2E2F3A 60%, #2A2B35 100%) !important;
+  box-shadow: 0 4px 12px rgba(46, 47, 58, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+}
+
+body.dark .home-page ion-header::part(native) {
+  background: linear-gradient(135deg, #3A3B45 0%, #323340 30%, #2E2F3A 60%, #2A2B35 100%) !important;
+  background-image: linear-gradient(135deg, #3A3B45 0%, #323340 30%, #2E2F3A 60%, #2A2B35 100%) !important;
+  box-shadow: 0 4px 12px rgba(46, 47, 58, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+}
+
+body.dark .home-page ion-toolbar {
+  --background: linear-gradient(135deg, #3A3B45 0%, #323340 30%, #2E2F3A 60%, #2A2B35 100%) !important;
+  background: linear-gradient(135deg, #3A3B45 0%, #323340 30%, #2E2F3A 60%, #2A2B35 100%) !important;
+  background-image: linear-gradient(135deg, #3A3B45 0%, #323340 30%, #2E2F3A 60%, #2A2B35 100%) !important;
+}
+
+body.dark .home-page ion-toolbar::part(native) {
+  background: linear-gradient(135deg, #3A3B45 0%, #323340 30%, #2E2F3A 60%, #2A2B35 100%) !important;
+  background-image: linear-gradient(135deg, #3A3B45 0%, #323340 30%, #2E2F3A 60%, #2A2B35 100%) !important;
+}
+
+body.dark .home-page ion-card {
+  background: linear-gradient(135deg, #323340 0%, #363744 50%, #3A3B45 100%) !important;
+  border-color: rgba(124, 136, 169, 0.35) !important;
+  color: #E0E5ED !important;
+  box-shadow: 0 4px 12px rgba(212, 165, 210, 0.6), 
+              0 0 8px rgba(228, 181, 226, 0.3),
+              0 2px 6px rgba(102, 116, 141, 0.3), 
+              0 1px 3px rgba(0, 0, 0, 0.15) !important;
+}
+
+body.dark .home-page ion-card-content {
+  background: linear-gradient(135deg, #323340 0%, #363744 50%, #3A3B45 100%) !important;
+  color: #E0E5ED !important;
+}
+
+body.dark .home-page ion-item {
+  background: rgba(255, 255, 255, 0.1) !important;
+  background-color: rgba(255, 255, 255, 0.1) !important;
+  color: #E0E5ED !important;
+  border-color: rgba(124, 136, 169, 0.25) !important;
+}
+
+body.dark .home-page ion-item:focus-within {
+  background: rgba(255, 255, 255, 0.12) !important;
+  background-color: rgba(255, 255, 255, 0.12) !important;
+  border-color: rgba(124, 136, 169, 0.4) !important;
+}
+
+body.dark .home-page ion-item::part(native) {
+  background: rgba(255, 255, 255, 0.08) !important;
+  background-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+body.dark .home-page ion-item:focus-within::part(native) {
+  background: rgba(255, 255, 255, 0.12) !important;
+  background-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+body.dark .home-page ion-item ion-label {
+  color: #E0E5ED !important;
+}
+
+body.dark .home-page ion-button {
+  --background: linear-gradient(135deg, #3A3B45 0%, #323340 50%, #2E2F3A 100%) !important;
+  --background-hover: linear-gradient(135deg, #424350 0%, #3A3B45 50%, #323340 100%) !important;
+  --background-activated: linear-gradient(135deg, #424350 0%, #3A3B45 50%, #323340 100%) !important;
+  --color: #E0E5ED !important;
+  --box-shadow: 0 6px 20px rgba(46, 47, 58, 0.4), 0 2px 8px rgba(42, 43, 52, 0.3) !important;
+}
+
+body.dark .home-page ion-button::part(native) {
+  background: linear-gradient(135deg, #3A3B45 0%, #323340 50%, #2E2F3A 100%) !important;
+  color: #E0E5ED !important;
+  box-shadow: 0 6px 20px rgba(46, 47, 58, 0.4), 0 2px 8px rgba(42, 43, 52, 0.3) !important;
+}
+
+body.dark .home-page ion-button:hover {
+  --box-shadow: 0 10px 28px rgba(46, 47, 58, 0.5), 0 4px 12px rgba(42, 43, 52, 0.35) !important;
+}
+
+body.dark .home-page ion-button:hover::part(native) {
+  box-shadow: 0 10px 28px rgba(46, 47, 58, 0.5), 0 4px 12px rgba(42, 43, 52, 0.35) !important;
+}
+
+body.dark .home-page ion-card-header {
+  background: linear-gradient(135deg, #4A4B55 0%, #3A3B45 25%, #2E2F3A 50%, #252630 75%, #1E1F2A 100%) !important;
+  box-shadow: 0 4px 12px rgba(46, 47, 58, 0.3), 
+              0 0 20px rgba(124, 136, 169, 0.15),
+              0 0 40px rgba(108, 120, 153, 0.1),
+              inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
+  border-bottom: 1px solid rgba(124, 136, 169, 0.3) !important;
+  position: relative !important;
+  color: #E0E5ED !important;
+}
+
+body.dark .home-page ion-card-header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, rgba(140, 165, 201, 0.08) 0%, rgba(124, 136, 169, 0.05) 50%, rgba(108, 120, 153, 0.03) 100%);
+  pointer-events: none;
+  border-radius: 24px 24px 0 0;
+  z-index: 0;
+}
+
+body.dark .home-page ion-card-title {
+  color: #E0E5ED !important;
+}
+
+body.dark .home-page ion-item ion-input {
+  color: #E0E5ED !important;
+}
+
+body.dark .home-page ion-item ion-input::part(native) {
+  color: #E0E5ED !important;
+}
+
+body.dark .home-page ion-item ion-select {
+  color: #E0E5ED !important;
+}
+
+body.dark .home-page ion-input::placeholder {
+  color: #A0A5B8 !important;
+  opacity: 0.6;
+}
+
+body.dark .home-page ion-select::part(placeholder) {
+  color: #A0A5B8 !important;
+  opacity: 0.6;
+}
+
+body.dark .home-page ion-text {
+  color: #E0E5ED !important;
+}
+
+body.dark .home-page ion-text[color="medium"] {
+  color: #A0A5B8 !important;
+}
+
+body.dark .home-page ion-text[color="primary"] {
+  color: #7C88A9 !important;
+}
+
+body.dark .home-page ion-spinner {
+  --color: #E0E5ED !important;
+}
+
+body.dark .home-page .prediction-main-card {
+  background: linear-gradient(135deg, #323340 0%, #363744 50%, #3A3B45 100%) !important;
+  border-color: rgba(124, 136, 169, 0.35) !important;
+}
+
+body.dark .home-page .prediction-label {
+  color: #E0E5ED !important;
+}
+
+body.dark .home-page .prediction-value {
+  color: #E0E5ED !important;
+}
+
+body.dark .home-page .prediction-unit {
+  color: #C4D0E1 !important;
+}
+
+body.dark .home-page .chart-card {
+  background: linear-gradient(135deg, #323340 0%, #363744 50%, #3A3B45 100%) !important;
+  border-color: rgba(124, 136, 169, 0.35) !important;
+}
+
+body.dark .home-page .chart-placeholder {
+  background: rgba(58, 59, 69, 0.4) !important;
+  border-color: rgba(124, 136, 169, 0.3) !important;
+  color: #E0E5ED !important;
+}
+
+body.dark .home-page .sleep-mode-card {
+  background: linear-gradient(135deg, #323340 0%, #363744 50%, #3A3B45 100%) !important;
+  border-color: rgba(124, 136, 169, 0.35) !important;
+}
+
+body.dark .home-page .dark-mode-card {
+  background: linear-gradient(135deg, #323340 0%, #363744 50%, #3A3B45 100%) !important;
+  border-color: rgba(124, 136, 169, 0.35) !important;
+}
+
+body.dark .home-page .sleep-start-button {
+  --background: linear-gradient(135deg, #D4A5D2 0%, #C4A1C2 50%, #B895B6 100%) !important;
+  --color: #ffffff !important;
+}
+
+body.dark .home-page .model-test-button {
+  --background: linear-gradient(135deg, #A4B0C1 0%, #7C88A9 100%) !important;
+  --color: #ffffff !important;
+}
+
+body.dark .home-page ion-item ion-toggle::part(track) {
+  background: rgba(196, 161, 194, 0.3) !important;
+}
+
+body.dark .home-page ion-item ion-toggle[checked]::part(track) {
+  background: linear-gradient(135deg, #C4A1C2 0%, #B895B6 100%) !important;
+}
+
+body.dark .home-page ion-item ion-toggle::part(handle) {
+  background: white !important;
+}
+
+body.dark .home-page ion-item ion-toggle[checked]::part(handle) {
+  background: white !important;
+}
+
+/* 다크모드 비활성화 시 첫 이미지로 복귀 */
+body:not(.dark) .home-page .dark-mode-animation {
+  background-image: url('/포슬_first.tiff') !important;
+  background-position: 30% -20% !important;
+  animation: none !important;
+}
+
+/* 예측 결과 섹션 - 큰 숫자 중심, 헤더 없음 */
+.home-page .prediction-section {
+  margin: 20px 0;
+}
+
+.home-page .prediction-main-card {
+  background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%);
+  border-radius: 24px;
+  padding: 32px 24px;
+  text-align: center;
+  box-shadow: 0 12px 40px rgba(196, 161, 194, 0.4), 0 4px 16px rgba(102, 116, 141, 0.3);
+  border: 1px solid rgba(196, 161, 194, 0.35);
+  position: relative;
+  overflow: hidden;
+}
+
+.home-page .prediction-main-card::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(196, 161, 194, 0.1) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.home-page .prediction-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #66748D;
+  opacity: 0.8;
+  letter-spacing: 0.5px;
+  margin-bottom: 16px;
+}
+
+.home-page .prediction-value-wrapper {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  justify-content: center;
+  margin-bottom: 16px;
+  position: relative;
+  z-index: 1;
+}
+
+.home-page .prediction-value {
+  font-size: 3.5rem;
+  font-weight: 800;
+  color: #4A5568;
+  line-height: 1;
+  text-shadow: 0 2px 8px rgba(196, 161, 194, 0.2);
+}
+
+.home-page .prediction-unit {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #66748D;
+  opacity: 0.7;
+  line-height: 1;
+}
+
+.home-page .prediction-status {
+  display: inline-block;
+  padding: 8px 20px;
+  border-radius: 16px;
+  font-size: 1rem;
+  font-weight: 700;
+  position: relative;
+  z-index: 1;
+}
+
+.home-page .prediction-status-comfortable {
+  background: rgba(76, 175, 80, 0.2);
+  color: #4CAF50;
+  border: 1px solid rgba(76, 175, 80, 0.3);
+}
+
+.home-page .prediction-status-cold {
+  background: rgba(33, 150, 243, 0.2);
+  color: #2196F3;
+  border: 1px solid rgba(33, 150, 243, 0.3);
+}
+
+.home-page .prediction-status-hot {
+  background: rgba(244, 67, 54, 0.2);
+  color: #F44336;
+  border: 1px solid rgba(244, 67, 54, 0.3);
+}
+
+/* 예측 결과 스타일 - Home 페이지에만 적용 (기존 스타일 유지) */
 .home-page .prediction-result {
   text-align: center;
   padding: 40px 20px;
@@ -311,6 +755,12 @@
   position: relative !important;
 }
 
+.home-page .sleep-start-button.ion-activated::part(native),
+.home-page .sleep-start-button.ion-activatable.ion-activated::part(native) {
+  background: linear-gradient(135deg, #E4B5E2 0%, #D4A5D2 50%, #C4A1C2 100%) !important;
+  box-shadow: 0 8px 24px rgba(196, 161, 194, 0.6), 0 4px 12px rgba(184, 149, 182, 0.4), 0 0 0 2px rgba(212, 165, 210, 0.3), inset 0 2px 4px rgba(0, 0, 0, 0.15), inset 0 -2px 4px rgba(0, 0, 0, 0.1) !important;
+}
+
 .home-page .sleep-start-button:hover {
   --box-shadow: 0 12px 32px rgba(196, 161, 194, 0.7), 0 6px 16px rgba(184, 149, 182, 0.5), 0 0 0 3px rgba(212, 165, 210, 0.4), inset 0 2px 4px rgba(0, 0, 0, 0.2), inset 0 -2px 4px rgba(0, 0, 0, 0.15) !important;
   transform: translateY(-2px) scale(1.02) !important;
@@ -318,6 +768,62 @@
 
 .home-page .sleep-start-button:hover::part(native) {
   box-shadow: 0 12px 32px rgba(196, 161, 194, 0.7), 0 6px 16px rgba(184, 149, 182, 0.5), 0 0 0 3px rgba(212, 165, 210, 0.4), inset 0 2px 4px rgba(0, 0, 0, 0.2), inset 0 -2px 4px rgba(0, 0, 0, 0.15) !important;
+}
+
+/* 수면 모드 중지 버튼 - 붉은색 그라데이션 (들어간 입체감) */
+.home-page ion-button[color="danger"] {
+  --background: linear-gradient(135deg, #FF6B6B 0%, #E85A5A 50%, #D84A4A 100%) !important;
+  --background-hover: linear-gradient(135deg, #FF7B7B 0%, #FF6B6B 50%, #E85A5A 100%) !important;
+  --background-activated: linear-gradient(135deg, #FF7B7B 0%, #FF6B6B 50%, #E85A5A 100%) !important;
+  --background-focused: linear-gradient(135deg, #FF7B7B 0%, #FF6B6B 50%, #E85A5A 100%) !important;
+  --color: #ffffff !important;
+  --border-radius: 16px !important;
+  --box-shadow: 0 8px 24px rgba(255, 107, 107, 0.6), 0 4px 12px rgba(216, 74, 74, 0.4), 0 0 0 2px rgba(255, 107, 107, 0.3), inset 0 3px 6px rgba(0, 0, 0, 0.2), inset 0 -3px 6px rgba(0, 0, 0, 0.15) !important;
+  border-radius: 16px !important;
+  font-weight: 700 !important;
+  font-size: 1.1rem !important;
+  height: 56px !important;
+  position: relative !important;
+  overflow: hidden !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.home-page ion-button[color="danger"]::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.25) 0%, transparent 50%, rgba(255, 255, 255, 0.15) 100%);
+  pointer-events: none;
+  z-index: 1;
+  border-radius: 16px;
+}
+
+.home-page ion-button[color="danger"]::part(native) {
+  background: linear-gradient(135deg, #FF6B6B 0%, #E85A5A 50%, #D84A4A 100%) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 8px 24px rgba(255, 107, 107, 0.6), 0 4px 12px rgba(216, 74, 74, 0.4), 0 0 0 2px rgba(255, 107, 107, 0.3), inset 0 3px 6px rgba(0, 0, 0, 0.2), inset 0 -3px 6px rgba(0, 0, 0, 0.15) !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2) !important;
+  position: relative !important;
+}
+
+.home-page ion-button[color="danger"].ion-activated::part(native),
+.home-page ion-button[color="danger"].ion-activatable.ion-activated::part(native) {
+  background: linear-gradient(135deg, #FF7B7B 0%, #FF6B6B 50%, #E85A5A 100%) !important;
+  box-shadow: 0 8px 24px rgba(255, 107, 107, 0.6), 0 4px 12px rgba(216, 74, 74, 0.4), 0 0 0 2px rgba(255, 107, 107, 0.3), inset 0 3px 6px rgba(0, 0, 0, 0.2), inset 0 -3px 6px rgba(0, 0, 0, 0.15) !important;
+}
+
+.home-page ion-button[color="danger"]:hover {
+  --box-shadow: 0 12px 32px rgba(255, 107, 107, 0.7), 0 6px 16px rgba(216, 74, 74, 0.5), 0 0 0 3px rgba(255, 107, 107, 0.4), inset 0 4px 8px rgba(0, 0, 0, 0.25), inset 0 -4px 8px rgba(0, 0, 0, 0.2) !important;
+  transform: translateY(-2px) scale(1.02) !important;
+}
+
+.home-page ion-button[color="danger"]:hover::part(native) {
+  box-shadow: 0 12px 32px rgba(255, 107, 107, 0.7), 0 6px 16px rgba(216, 74, 74, 0.5), 0 0 0 3px rgba(255, 107, 107, 0.4), inset 0 4px 8px rgba(0, 0, 0, 0.25), inset 0 -4px 8px rgba(0, 0, 0, 0.2) !important;
 }
 
 /* 모델 테스트 버튼 - 연보라 살짝 & Dusk Blue 그라데이션 */
@@ -341,15 +847,28 @@
   --box-shadow: 0 10px 28px rgba(124, 136, 169, 0.45), 0 4px 12px rgba(102, 116, 141, 0.25) !important;
 }
 
-/* 차트 영역 */
-.chart-placeholder {
+/* 차트 카드 */
+.home-page .chart-card {
+  margin: 20px 0;
+}
+
+.home-page .chart-placeholder {
   text-align: center;
   padding: 60px 20px;
-  color: #999;
+  color: #66748D;
   font-style: italic;
-  background: #f8f9fa;
-  border-radius: 12px;
-  border: 2px dashed #ddd;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 16px;
+  border: 2px dashed rgba(196, 161, 194, 0.3);
+  font-size: 0.95rem;
+}
+
+/* 모델 테스트 섹션 - 헤더 없이 버튼만 */
+.home-page .model-test-section {
+  margin: 20px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 /* 로딩 스피너 - Home 페이지에만 적용 */
@@ -391,5 +910,68 @@
     background: #E8E9F0;
     border-color: #C4A1C2;
     color: #66748D;
+  }
+}
+
+/* 별 배경 효과 - 다크모드 */
+.home-page .stars-background {
+  display: none;
+}
+
+body.dark .home-page .stars-background {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  background-image: 
+    radial-gradient(5px 5px at 20% 30%, rgba(255, 255, 255, 1), transparent),
+    radial-gradient(4px 4px at 60% 70%, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(4px 4px at 50% 50%, rgba(255, 255, 255, 1), transparent),
+    radial-gradient(4px 4px at 80% 10%, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(5px 5px at 90% 40%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(4px 4px at 33% 60%, rgba(255, 255, 255, 1), transparent),
+    radial-gradient(4px 4px at 15% 80%, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(5px 5px at 70% 20%, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(4px 4px at 40% 90%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(5px 5px at 10% 50%, rgba(255, 255, 255, 1), transparent),
+    radial-gradient(4px 4px at 85% 60%, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(5px 5px at 25% 15%, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(4px 4px at 55% 85%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(5px 5px at 75% 30%, rgba(255, 255, 255, 1), transparent),
+    radial-gradient(4px 4px at 45% 70%, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(5px 5px at 95% 80%, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(4px 4px at 5% 25%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(5px 5px at 35% 45%, rgba(255, 255, 255, 1), transparent),
+    radial-gradient(4px 4px at 65% 10%, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(4px 4px at 12% 35%, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(5px 5px at 42% 65%, rgba(255, 255, 255, 1), transparent),
+    radial-gradient(4px 4px at 88% 75%, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(4px 4px at 18% 55%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(5px 5px at 62% 25%, rgba(255, 255, 255, 0.8), transparent);
+  background-size: 100% 100%;
+  background-position: 0% 0%;
+  background-repeat: no-repeat;
+  animation: twinkle 8s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0 !important;
+  opacity: 1;
+  display: block !important;
+}
+
+@keyframes twinkle {
+  0%, 100% {
+    opacity: 0.6;
+  }
+  25% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+  75% {
+    opacity: 1;
   }
 }

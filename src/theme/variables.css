@@ -170,6 +170,9 @@ ion-tab-bar {
   background-color: #E8E9F0 !important;
   border-top: 1px solid rgba(196, 161, 194, 0.3) !important;
   box-shadow: 0 -4px 12px rgba(196, 161, 194, 0.2) !important;
+  padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+  padding-left: env(safe-area-inset-left, 0px) !important;
+  padding-right: env(safe-area-inset-right, 0px) !important;
 }
 
 /* 탭 버튼 색상 - 페이지 톤에 맞춤 */
@@ -196,15 +199,44 @@ ion-tab-button.tab-selected ion-icon {
   color: #C4A1C2 !important;
 }
 
+/* 다크모드 지원 - 탭 바 */
+body.dark ion-tab-bar {
+  background: linear-gradient(135deg, #3A3B45 0%, #323340 50%, #2E2F3A 100%) !important;
+  background-color: #3A3B45 !important;
+  border-top-color: rgba(124, 136, 169, 0.3) !important;
+  box-shadow: 0 -4px 12px rgba(46, 47, 58, 0.3) !important;
+}
+
+body.dark ion-tab-button {
+  --color: #A0A5B8 !important;
+  --color-selected: #C4A1C2 !important;
+}
+
+body.dark ion-tab-button ion-label {
+  color: #A0A5B8 !important;
+}
+
+body.dark ion-tab-button.tab-selected ion-label {
+  color: #C4A1C2 !important;
+}
+
+body.dark ion-tab-button ion-icon {
+  color: #A0A5B8 !important;
+}
+
+body.dark ion-tab-button.tab-selected ion-icon {
+  color: #C4A1C2 !important;
+}
+
 /* Android (갤럭시 S24 플러스) - Safe area 처리 */
 .platform-android ion-tab-bar {
-  padding-bottom: env(safe-area-inset-bottom, 0px) !important;
   height: calc(56px + env(safe-area-inset-bottom, 0px)) !important;
 }
 
-/* iOS - 기존 디자인 유지 */
+/* iOS - Safe area 처리 (홈 인디케이터 고려) */
 .platform-ios ion-tab-bar {
-  height: 56px !important;
+  height: calc(56px + env(safe-area-inset-bottom, 0px)) !important;
+  min-height: 56px !important;
 }
 
 /* 탭 바가 하단에 있을 때 콘텐츠 영역 조정 */

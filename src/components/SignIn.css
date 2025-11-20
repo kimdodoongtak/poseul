@@ -84,33 +84,37 @@
   display: block;
 }
 
-@media (prefers-color-scheme: dark) {
-  .sign-in-container {
-    background: #1e1e1e;
-    color: white;
-  }
+/* 다크모드 지원 - 로그인 창 */
+body.dark .sign-in-modal {
+  background-color: rgba(0, 0, 0, 0.8) !important;
+}
 
-  .sign-in-title {
-    color: white;
-  }
+body.dark .sign-in-container {
+  background: linear-gradient(135deg, #3A3B45 0%, #323340 50%, #2E2F3A 100%) !important;
+  color: #E0E5ED !important;
+  border: 1px solid rgba(124, 136, 169, 0.3) !important;
+}
 
-  .close-button {
-    --color: white;
-  }
+body.dark .sign-in-title {
+  color: #E0E5ED !important;
+}
 
-  .sign-in-subtitle {
-    color: #999;
-  }
+body.dark .close-button {
+  --color: #E0E5ED !important;
+}
 
-  .divider {
-    background-color: rgba(255, 255, 255, 0.1);
-  }
+body.dark .sign-in-subtitle {
+  color: #C4D0E1 !important;
+}
 
-  .or-text {
-    color: rgba(255, 255, 255, 0.5);
-  }
+body.dark .divider {
+  background-color: rgba(124, 136, 169, 0.2) !important;
+}
 
-  .footer-text {
-    color: #999;
-  }
+body.dark .or-text {
+  color: rgba(196, 208, 225, 0.6) !important;
+}
+
+body.dark .footer-text {
+  color: #C4D0E1 !important;
 }

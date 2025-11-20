@@ -51,8 +51,8 @@ import '@ionic/react/css/display.css';
  */
 
 /* import '@ionic/react/css/palettes/dark.always.css'; */
-/* import '@ionic/react/css/palettes/dark.class.css'; */
-/* import '@ionic/react/css/palettes/dark.system.css'; */ // 다크 모드 비활성화
+import '@ionic/react/css/palettes/dark.class.css'; // 다크 모드 활성화 (body.dark 클래스 사용)
+/* import '@ionic/react/css/palettes/dark.system.css'; */
 
 /* Theme variables */
 import './theme/variables.css';

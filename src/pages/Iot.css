@@ -81,7 +81,7 @@
   margin: 0 !important;
 }
 
-/* 카드 스타일 - Home과 동일한 Silver Mist & Lavender 톤 */
+/* 카드 기본 스타일 */
 .iot-page ion-card {
   margin: 20px 0;
   margin-left: 0 !important;
@@ -95,6 +95,319 @@
   max-width: 100% !important;
   box-sizing: border-box;
   border: 1px solid rgba(196, 161, 194, 0.35);
+}
+
+/* 현재 상태 섹션 - 큰 온도 숫자 중심, 정보 카드 분리 */
+.iot-page .status-section {
+  margin: 20px 0;
+}
+
+.iot-page .status-main-card {
+  background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%);
+  border-radius: 20px;
+  padding: 24px 20px;
+  text-align: center;
+  box-shadow: 0 12px 40px rgba(196, 161, 194, 0.4), 0 4px 16px rgba(102, 116, 141, 0.3);
+  border: 1px solid rgba(196, 161, 194, 0.35);
+  margin-bottom: 16px;
+  position: relative;
+  overflow: hidden;
+}
+
+.iot-page .status-main-card::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(196, 161, 194, 0.1) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.iot-page .status-temperature-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  position: relative;
+  z-index: 1;
+}
+
+.iot-page .status-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #66748D;
+  opacity: 0.8;
+  letter-spacing: 0.5px;
+}
+
+.iot-page .status-temperature-value-wrapper {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  justify-content: center;
+}
+
+.iot-page .status-temperature-value {
+  font-size: 3.5rem;
+  font-weight: 800;
+  color: #4A5568;
+  line-height: 1;
+  text-shadow: 0 2px 8px rgba(196, 161, 194, 0.2);
+}
+
+.iot-page .status-temperature-unit {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #66748D;
+  opacity: 0.7;
+  line-height: 1;
+}
+
+.iot-page .status-target-info {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 16px;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: 14px;
+  border: 1px solid rgba(196, 161, 194, 0.3);
+  margin-top: 4px;
+}
+
+.iot-page .status-target-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #66748D;
+  opacity: 0.7;
+}
+
+.iot-page .status-target-value {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #4A5568;
+}
+
+.iot-page .status-temperature-diff {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #7C88A9;
+  margin-left: 4px;
+  padding-left: 6px;
+  border-left: 1px solid rgba(124, 136, 169, 0.3);
+}
+
+/* 온도 범위 섹션 - 시각적 레이아웃 */
+.iot-page .temperature-range-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.iot-page .temperature-range-card {
+  background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%);
+  border-radius: 12px;
+  padding: 10px 16px;
+  box-shadow: 0 2px 8px rgba(196, 161, 194, 0.15), 0 1px 4px rgba(102, 116, 141, 0.1);
+  border: 1px solid rgba(196, 161, 194, 0.25);
+}
+
+.iot-page .temperature-range-label {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: #66748D;
+  text-align: center;
+  margin-bottom: 8px;
+  opacity: 0.7;
+}
+
+.iot-page .temperature-range-values {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.iot-page .temperature-range-number {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: #4A5568;
+  line-height: 1;
+}
+
+.iot-page .temperature-range-unit {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #66748D;
+  opacity: 0.7;
+}
+
+.iot-page .temperature-range-separator {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #7C88A9;
+  opacity: 0.5;
+  margin: 0 2px;
+}
+
+.iot-page .temperature-range-original {
+  font-size: 0.65rem;
+  color: #66748D;
+  text-align: center;
+  opacity: 0.6;
+  padding-top: 6px;
+  border-top: 1px solid rgba(196, 161, 194, 0.15);
+}
+
+/* 전원 섹션 - 헤더 없이 버튼 중심 */
+.iot-page .power-section {
+  margin: 20px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: transparent !important;
+}
+
+body.dark .iot-page .power-section {
+  background: transparent !important;
+}
+
+body.dark .iot-page .power-section > * {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+.iot-page .power-main-button {
+  height: 64px !important;
+  font-size: 1.2rem !important;
+  font-weight: 700 !important;
+  border-radius: 16px !important;
+  margin: 0 !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+}
+
+.iot-page .power-main-button::part(button) {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  border-radius: 16px !important;
+  overflow: hidden !important;
+}
+
+.iot-page .power-refresh-button {
+  height: 48px !important;
+  font-size: 1rem !important;
+  border-radius: 16px !important;
+  margin: 0 !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+}
+
+.iot-page .power-refresh-button::part(button) {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  border-radius: 16px !important;
+  overflow: hidden !important;
+}
+
+.iot-page .power-refresh-button::part(native) {
+  background: linear-gradient(135deg, #A4B0C1 0%, #8C98B9 50%, #7C88A9 100%) !important;
+  border-radius: 16px !important;
+  overflow: hidden !important;
+  color: #ffffff !important;
+  box-shadow: 0 6px 20px rgba(124, 136, 169, 0.35), 0 2px 8px rgba(102, 116, 141, 0.2) !important;
+  border: none !important;
+  border-color: transparent !important;
+}
+
+/* 목표 온도 카드 - 큰 온도 숫자, 버튼 그리드 */
+.iot-page ion-card.temperature-card {
+  background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%) !important;
+  border: 1px solid rgba(196, 161, 194, 0.35) !important;
+}
+
+.iot-page .temperature-display-section {
+  text-align: center;
+  padding: 24px 0;
+  border-bottom: 2px solid rgba(196, 161, 194, 0.2);
+  margin-bottom: 24px;
+}
+
+.iot-page .temperature-value-large {
+  font-size: 3.5rem;
+  font-weight: 800;
+  color: #4A5568;
+  line-height: 1;
+  margin-bottom: 8px;
+}
+
+.iot-page .temperature-pending {
+  font-size: 0.9rem;
+  color: #66748D;
+  font-weight: 500;
+}
+
+.iot-page .temperature-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.iot-page .temperature-adjust-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.iot-page .temperature-preset-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+/* 작동 모드 카드 - 2x2 그리드 */
+.iot-page ion-card.mode-card {
+  background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%) !important;
+  border: 1px solid rgba(196, 161, 194, 0.35) !important;
+}
+
+.iot-page .mode-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.iot-page .mode-button {
+  height: 56px !important;
+  margin: 0 !important;
+  font-size: 1rem !important;
+  font-weight: 600 !important;
+}
+
+/* 풍량 카드 - 가로 배치 */
+.iot-page ion-card.fan-card {
+  background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%) !important;
+  border: 1px solid rgba(196, 161, 194, 0.35) !important;
+}
+
+.iot-page .fan-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.iot-page .fan-button {
+  height: 56px !important;
+  margin: 0 !important;
+  font-size: 1rem !important;
+  font-weight: 600 !important;
 }
 
 /* iOS에서도 전체 너비 적용 */
@@ -344,8 +657,8 @@ ion-range::part(tick-active) {
   overflow: hidden !important;
   border: none !important;
   position: relative !important;
-  transform: scale(1.12) !important;
-  margin: 18px 0 !important;
+  transform: scale(1.03) !important;
+  margin: 0 !important;
   font-weight: 700 !important;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2) !important;
 }
@@ -376,7 +689,7 @@ ion-range::part(tick-active) {
 
 .iot-page ion-button[color="primary"]:not(.temperature-confirm-button):hover {
   --box-shadow: 0 12px 32px rgba(124, 136, 169, 0.7), 0 6px 16px rgba(102, 116, 141, 0.5), inset 0 4px 8px rgba(0, 0, 0, 0.25), inset 0 -4px 8px rgba(0, 0, 0, 0.2), inset 0 0 0 1px rgba(255, 255, 255, 0.25) !important;
-  transform: scale(1.15) !important;
+  transform: scale(1.05) !important;
 }
 
 .iot-page ion-button[color="primary"]:not(.temperature-confirm-button)::part(native):hover {
@@ -475,6 +788,18 @@ ion-range::part(tick-active) {
   border-radius: 14px !important;
   overflow: hidden !important;
   position: relative !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+}
+
+.iot-page ion-button[color="success"]::part(button),
+.iot-page .container ion-button[color="success"]::part(button) {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  border-radius: 14px !important;
+  overflow: hidden !important;
 }
 
 .iot-page ion-button[color="success"]::part(native),
@@ -485,6 +810,8 @@ ion-range::part(tick-active) {
   overflow: hidden !important;
   color: #ffffff !important;
   position: relative !important;
+  border: none !important;
+  border-color: transparent !important;
 }
 
 .iot-page ion-button[color="success"]:hover {
@@ -508,6 +835,18 @@ ion-range::part(tick-active) {
   border-radius: 14px !important;
   overflow: hidden !important;
   position: relative !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+}
+
+.iot-page ion-button[color="danger"]::part(button),
+.iot-page .container ion-button[color="danger"]::part(button) {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  border-radius: 14px !important;
+  overflow: hidden !important;
 }
 
 .iot-page ion-button[color="danger"]::part(native),
@@ -518,6 +857,8 @@ ion-range::part(tick-active) {
   overflow: hidden !important;
   color: #ffffff !important;
   position: relative !important;
+  border: none !important;
+  border-color: transparent !important;
 }
 
 .iot-page ion-button[color="danger"]:hover {
@@ -541,6 +882,17 @@ ion-range::part(tick-active) {
   position: relative !important;
   border: none !important;
   --box-shadow: 0 6px 20px rgba(124, 136, 169, 0.35), 0 2px 8px rgba(102, 116, 141, 0.2) !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+}
+
+.iot-page ion-button[fill="outline"]::part(button) {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  border-radius: 14px !important;
+  overflow: hidden !important;
 }
 
 .iot-page ion-button[fill="outline"]::before {
@@ -566,6 +918,7 @@ ion-range::part(tick-active) {
   background: linear-gradient(135deg, #A4B0C1 0%, #8C98B9 50%, #7C88A9 100%) !important;
   box-shadow: 0 6px 20px rgba(124, 136, 169, 0.35), 0 2px 8px rgba(102, 116, 141, 0.2) !important;
   position: relative !important;
+  overflow: hidden !important;
 }
 
 .iot-page ion-button[fill="outline"]:hover {
@@ -583,6 +936,345 @@ ion-range::part(tick-active) {
   color: #ffffff !important;
   background: linear-gradient(135deg, #B4C0D1 0%, #9CA8C9 50%, #8C98B9 100%) !important;
   box-shadow: 0 10px 28px rgba(124, 136, 169, 0.45), 0 4px 12px rgba(102, 116, 141, 0.25) !important;
+}
+
+/* 다크모드 지원 - User 페이지와 동일한 톤 */
+body.dark .iot-page ion-content {
+  --background: linear-gradient(180deg, #4E5055 0%, #4A4C51 50%, #46484D 100%) !important;
+  background: linear-gradient(180deg, #4E5055 0%, #4A4C51 50%, #46484D 100%) !important;
+  background-image: linear-gradient(180deg, #4E5055 0%, #4A4C51 50%, #46484D 100%) !important;
+  color: #E0E5ED !important;
+}
+
+body.dark .iot-page ion-content::part(scroll) {
+  background: linear-gradient(180deg, #4E5055 0%, #4A4C51 50%, #46484D 100%) !important;
+  background-image: linear-gradient(180deg, #4E5055 0%, #4A4C51 50%, #46484D 100%) !important;
+}
+
+body.dark .iot-page ion-content .scroll-content {
+  background: linear-gradient(180deg, #4E5055 0%, #4A4C51 50%, #46484D 100%) !important;
+  background-image: linear-gradient(180deg, #4E5055 0%, #4A4C51 50%, #46484D 100%) !important;
+}
+
+body.dark .iot-page ion-header {
+  --background: linear-gradient(135deg, #3A3B45 0%, #323340 30%, #2E2F3A 60%, #2A2B35 100%) !important;
+  background: linear-gradient(135deg, #3A3B45 0%, #323340 30%, #2E2F3A 60%, #2A2B35 100%) !important;
+  background-image: linear-gradient(135deg, #3A3B45 0%, #323340 30%, #2E2F3A 60%, #2A2B35 100%) !important;
+  box-shadow: 0 4px 12px rgba(46, 47, 58, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+}
+
+body.dark .iot-page ion-header::part(native) {
+  background: linear-gradient(135deg, #3A3B45 0%, #323340 30%, #2E2F3A 60%, #2A2B35 100%) !important;
+  background-image: linear-gradient(135deg, #3A3B45 0%, #323340 30%, #2E2F3A 60%, #2A2B35 100%) !important;
+  box-shadow: 0 4px 12px rgba(46, 47, 58, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+}
+
+body.dark .iot-page ion-toolbar {
+  --background: linear-gradient(135deg, #3A3B45 0%, #323340 30%, #2E2F3A 60%, #2A2B35 100%) !important;
+  background: linear-gradient(135deg, #3A3B45 0%, #323340 30%, #2E2F3A 60%, #2A2B35 100%) !important;
+  background-image: linear-gradient(135deg, #3A3B45 0%, #323340 30%, #2E2F3A 60%, #2A2B35 100%) !important;
+}
+
+body.dark .iot-page ion-toolbar::part(native) {
+  background: linear-gradient(135deg, #3A3B45 0%, #323340 30%, #2E2F3A 60%, #2A2B35 100%) !important;
+  background-image: linear-gradient(135deg, #3A3B45 0%, #323340 30%, #2E2F3A 60%, #2A2B35 100%) !important;
+}
+
+body.dark .iot-page ion-card {
+  background: linear-gradient(135deg, #323340 0%, #363744 50%, #3A3B45 100%) !important;
+  border-color: rgba(124, 136, 169, 0.35) !important;
+  color: #E0E5ED !important;
+  box-shadow: 0 4px 12px rgba(212, 165, 210, 0.6), 
+              0 0 8px rgba(228, 181, 226, 0.3),
+              0 2px 6px rgba(102, 116, 141, 0.3), 
+              0 1px 3px rgba(0, 0, 0, 0.15) !important;
+}
+
+body.dark .iot-page ion-card-content {
+  background: linear-gradient(135deg, #323340 0%, #363744 50%, #3A3B45 100%) !important;
+  color: #E0E5ED !important;
+}
+
+body.dark .iot-page ion-item {
+  background: rgba(255, 255, 255, 0.1) !important;
+  background-color: rgba(255, 255, 255, 0.1) !important;
+  color: #E0E5ED !important;
+  border-color: rgba(124, 136, 169, 0.25) !important;
+}
+
+body.dark .iot-page ion-item:focus-within {
+  background: rgba(255, 255, 255, 0.12) !important;
+  background-color: rgba(255, 255, 255, 0.12) !important;
+  border-color: rgba(124, 136, 169, 0.4) !important;
+}
+
+body.dark .iot-page ion-item::part(native) {
+  background: rgba(255, 255, 255, 0.08) !important;
+  background-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+body.dark .iot-page ion-item:focus-within::part(native) {
+  background: rgba(255, 255, 255, 0.12) !important;
+  background-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+body.dark .iot-page ion-item ion-label {
+  color: #E0E5ED !important;
+}
+
+body.dark .iot-page ion-item ion-label h2 {
+  color: #E0E5ED !important;
+}
+
+body.dark .iot-page ion-item ion-label p {
+  color: #C4D0E1 !important;
+}
+
+body.dark .iot-page ion-button:not([color="success"]):not([color="danger"]):not(.power-main-button):not(.power-refresh-button):not([fill="outline"]) {
+  --background: linear-gradient(135deg, #3A3B45 0%, #323340 50%, #2E2F3A 100%) !important;
+  --background-hover: linear-gradient(135deg, #424350 0%, #3A3B45 50%, #323340 100%) !important;
+  --background-activated: linear-gradient(135deg, #424350 0%, #3A3B45 50%, #323340 100%) !important;
+  --color: #E0E5ED !important;
+  --box-shadow: 0 6px 20px rgba(46, 47, 58, 0.4), 0 2px 8px rgba(42, 43, 52, 0.3) !important;
+}
+
+body.dark .iot-page ion-button:not([color="success"]):not([color="danger"]):not(.power-main-button):not(.power-refresh-button):not([fill="outline"])::part(native) {
+  background: linear-gradient(135deg, #3A3B45 0%, #323340 50%, #2E2F3A 100%) !important;
+  color: #E0E5ED !important;
+  box-shadow: 0 6px 20px rgba(46, 47, 58, 0.4), 0 2px 8px rgba(42, 43, 52, 0.3) !important;
+}
+
+body.dark .iot-page ion-button:hover {
+  --box-shadow: 0 10px 28px rgba(46, 47, 58, 0.5), 0 4px 12px rgba(42, 43, 52, 0.35) !important;
+}
+
+body.dark .iot-page ion-button:hover::part(native) {
+  box-shadow: 0 10px 28px rgba(46, 47, 58, 0.5), 0 4px 12px rgba(42, 43, 52, 0.35) !important;
+}
+
+/* 다크모드에서 전원 끄기 버튼 (빨간색 유지) */
+body.dark .iot-page ion-button[color="danger"]::part(button),
+body.dark .iot-page .power-main-button[color="danger"]::part(button) {
+  --background: transparent !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+}
+
+body.dark .iot-page ion-button[color="danger"]::part(native),
+body.dark .iot-page .power-main-button[color="danger"]::part(native) {
+  background: linear-gradient(135deg, #FF6B6B 0%, #E85A5A 50%, #D84A4A 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 6px 20px rgba(255, 107, 107, 0.4), 0 2px 8px rgba(216, 74, 74, 0.3), inset 0 3px 6px rgba(0, 0, 0, 0.2), inset 0 -3px 6px rgba(0, 0, 0, 0.15) !important;
+}
+
+/* 다크모드에서 전원 켜기 버튼 배경 제거 */
+body.dark .iot-page ion-button[color="success"]::part(button),
+body.dark .iot-page .power-main-button::part(button) {
+  --background: transparent !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+}
+
+/* 다크모드에서 상태 새로고침 버튼 배경 제거 */
+body.dark .iot-page ion-button[fill="outline"]::part(button),
+body.dark .iot-page .power-refresh-button::part(button) {
+  --background: transparent !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+}
+
+body.dark .iot-page ion-button[color="success"]::part(native),
+body.dark .iot-page .power-main-button::part(native) {
+  background: linear-gradient(135deg, #5DB9FF 0%, #4A9FE8 50%, #3A8FD8 100%) !important;
+}
+
+body.dark .iot-page ion-button[fill="outline"]::part(native),
+body.dark .iot-page .power-refresh-button::part(native) {
+  background: linear-gradient(135deg, #A4B0C1 0%, #8C98B9 50%, #7C88A9 100%) !important;
+}
+
+body.dark .iot-page ion-card-header {
+  background: linear-gradient(135deg, #4A4B55 0%, #3A3B45 25%, #2E2F3A 50%, #252630 75%, #1E1F2A 100%) !important;
+  box-shadow: 0 4px 12px rgba(46, 47, 58, 0.3), 
+              0 0 20px rgba(124, 136, 169, 0.15),
+              0 0 40px rgba(108, 120, 153, 0.1),
+              inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
+  border-bottom: 1px solid rgba(124, 136, 169, 0.3) !important;
+  position: relative !important;
+  color: #E0E5ED !important;
+}
+
+body.dark .iot-page ion-card-header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, rgba(140, 165, 201, 0.08) 0%, rgba(124, 136, 169, 0.05) 50%, rgba(108, 120, 153, 0.03) 100%);
+  pointer-events: none;
+  border-radius: 24px 24px 0 0;
+  z-index: 0;
+}
+
+body.dark .iot-page ion-card-title {
+  color: #E0E5ED !important;
+}
+
+body.dark .iot-page ion-item ion-input {
+  color: #E0E5ED !important;
+}
+
+body.dark .iot-page ion-item ion-input::part(native) {
+  color: #E0E5ED !important;
+}
+
+body.dark .iot-page ion-item ion-select {
+  color: #E0E5ED !important;
+}
+
+body.dark .iot-page ion-input::placeholder {
+  color: #A0A5B8 !important;
+  opacity: 0.6;
+}
+
+body.dark .iot-page ion-select::part(placeholder) {
+  color: #A0A5B8 !important;
+  opacity: 0.6;
+}
+
+body.dark .iot-page ion-text {
+  color: #E0E5ED !important;
+}
+
+body.dark .iot-page .status-main-card {
+  background: linear-gradient(135deg, #323340 0%, #363744 50%, #3A3B45 100%) !important;
+  border-color: rgba(124, 136, 169, 0.35) !important;
+}
+
+body.dark .iot-page .temperature-range-card {
+  background: linear-gradient(135deg, #323340 0%, #363744 50%, #3A3B45 100%) !important;
+  border-color: rgba(124, 136, 169, 0.25) !important;
+}
+
+body.dark .iot-page .temperature-range-label {
+  color: #C4D0E1 !important;
+}
+
+body.dark .iot-page .temperature-range-number {
+  color: #E0E5ED !important;
+}
+
+body.dark .iot-page .temperature-range-unit {
+  color: #A4B0C1 !important;
+}
+
+body.dark .iot-page .temperature-range-separator {
+  color: #7C88A9 !important;
+}
+
+body.dark .iot-page .temperature-range-original {
+  color: #A4B0C1 !important;
+  border-top-color: rgba(124, 136, 169, 0.15) !important;
+}
+
+body.dark .iot-page .temperature-card {
+  background: linear-gradient(135deg, #323340 0%, #363744 50%, #3A3B45 100%) !important;
+  border-color: rgba(124, 136, 169, 0.35) !important;
+}
+
+body.dark .iot-page .temperature-value-large {
+  color: #C4D0E1 !important;
+}
+
+body.dark .iot-page .power-section {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  border: none !important;
+  border-color: transparent !important;
+}
+
+body.dark .iot-page ion-card.mode-card,
+body.dark .iot-page ion-card.fan-card {
+  background: linear-gradient(135deg, #323340 0%, #363744 50%, #3A3B45 100%) !important;
+  border-color: rgba(124, 136, 169, 0.35) !important;
+}
+
+body.dark .iot-page .status-main-card {
+  background: linear-gradient(135deg, #3A3B45 0%, #323340 50%, #2E2F3A 100%) !important;
+  border-color: rgba(124, 136, 169, 0.3) !important;
+}
+
+body.dark .iot-page .status-label {
+  color: #E0E5ED !important;
+}
+
+body.dark .iot-page .status-temperature-value {
+  color: #E0E5ED !important;
+}
+
+/* 목표온도 색상 - 현재 온도보다 약간 어둡게 */
+body.dark .iot-page .status-target-info .status-target-value,
+body.dark .iot-page .status-target-info span.status-target-value {
+  color: #C4D0E1 !important;
+  font-weight: 800 !important;
+}
+
+body.dark .iot-page .status-temperature-unit {
+  color: #C4D0E1 !important;
+}
+
+body.dark .iot-page .status-target-info {
+  background: rgba(58, 59, 69, 0.4) !important;
+  border-color: rgba(124, 136, 169, 0.2) !important;
+}
+
+body.dark .iot-page .status-target-info span.status-target-label,
+body.dark .iot-page .status-target-info .status-target-label,
+body.dark .iot-page .status-target-label,
+body.dark .iot-page .status-main-card .status-target-info .status-target-label,
+body.dark .iot-page .status-main-card .status-target-info span.status-target-label,
+body.dark .iot-page .status-main-card .status-target-info span.status-target-label {
+  color: #E0E5ED !important;
+  opacity: 0.9 !important;
+}
+
+body.dark .iot-page .status-target-info span.status-target-value,
+body.dark .iot-page .status-target-info .status-target-value,
+body.dark .iot-page .status-target-value,
+body.dark .iot-page .status-main-card .status-target-info .status-target-value,
+body.dark .iot-page .status-main-card .status-target-info span.status-target-value,
+body.dark .iot-page .status-main-card .status-target-info span.status-target-value {
+  color: #C4D0E1 !important;
+  font-weight: 800 !important;
+}
+
+/* 더 강력한 선택자로 오버라이드 */
+body.dark .iot-page .status-main-card .status-target-info span.status-target-value {
+  color: #C4D0E1 !important;
+  font-weight: 800 !important;
+}
+
+body.dark .iot-page .status-target-info .status-temperature-diff {
+  color: #C4D0E1 !important;
+}
+
+body.dark .iot-page .status-target-info .status-temperature-diff {
+  color: #C4D0E1 !important;
+}
+
+body.dark .iot-page .status-temperature-diff {
+  color: #C4D0E1 !important;
+  border-left-color: rgba(124, 136, 169, 0.3) !important;
+}
+
+body.dark .iot-page .temperature-card {
+  background: linear-gradient(135deg, #3A3B45 0%, #323340 50%, #2E2F3A 100%) !important;
+  border-color: rgba(124, 136, 169, 0.3) !important;
 }
 
 /* 다크모드 지원 - Home과 동일한 톤 유지 */
@@ -624,4 +1316,52 @@ ion-range::part(tick-active) {
   .iot-page .loading-container {
     background: linear-gradient(135deg, rgba(232, 233, 240, 0.6) 0%, rgba(229, 220, 232, 0.4) 100%);
   }
+}
+
+/* 별 배경 효과 - 다크모드 */
+.iot-page .stars-background {
+  display: none;
+}
+
+body.dark .iot-page .stars-background {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  background-image: 
+    radial-gradient(5px 5px at 20% 30%, rgba(255, 255, 255, 1), transparent),
+    radial-gradient(4px 4px at 60% 70%, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(4px 4px at 50% 50%, rgba(255, 255, 255, 1), transparent),
+    radial-gradient(4px 4px at 80% 10%, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(5px 5px at 90% 40%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(4px 4px at 33% 60%, rgba(255, 255, 255, 1), transparent),
+    radial-gradient(4px 4px at 15% 80%, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(5px 5px at 70% 20%, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(4px 4px at 40% 90%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(5px 5px at 10% 50%, rgba(255, 255, 255, 1), transparent),
+    radial-gradient(4px 4px at 85% 60%, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(5px 5px at 25% 15%, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(4px 4px at 55% 85%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(5px 5px at 75% 30%, rgba(255, 255, 255, 1), transparent),
+    radial-gradient(4px 4px at 45% 70%, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(5px 5px at 95% 80%, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(4px 4px at 5% 25%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(5px 5px at 35% 45%, rgba(255, 255, 255, 1), transparent),
+    radial-gradient(4px 4px at 65% 10%, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(4px 4px at 12% 35%, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(5px 5px at 42% 65%, rgba(255, 255, 255, 1), transparent),
+    radial-gradient(4px 4px at 88% 75%, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(4px 4px at 18% 55%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(5px 5px at 62% 25%, rgba(255, 255, 255, 0.8), transparent);
+  background-size: 100% 100%;
+  background-position: 0% 0%;
+  background-repeat: no-repeat;
+  animation: twinkle 8s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0 !important;
+  opacity: 1;
+  display: block !important;
 }

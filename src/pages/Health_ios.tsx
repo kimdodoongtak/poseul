@@ -22,7 +22,7 @@ import {
   IonSelect,
   IonSelectOption
 } from '@ionic/react';
-import { personOutline } from 'ionicons/icons';
+import { personOutline, refreshOutline } from 'ionicons/icons';
 import SignIn from '../components/SignIn';
 import './Health_ios.css';
 import { getServerUrl, autoDetectServerUrl } from '../services/ServerConfig';
@@ -45,6 +45,7 @@ const Health_ios: React.FC = () => {
   const [backgroundMonitoring, setBackgroundMonitoring] = useState<boolean>(false);
   const [healthDataPlugin, setHealthDataPlugin] = useState<any>(null);
   const [platform, setPlatform] = useState<string>('web');
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   
   // 초기 설정 단계 관리
   const [setupStep, setSetupStep] = useState<'info' | 'permission' | 'monitoring' | 'complete'>('info');
@@ -791,6 +792,58 @@ const Health_ios: React.FC = () => {
     }
   };
 
+  // 건강 데이터 수동 새로고침
+  const handleRefreshHealthData = async () => {
+    if (!healthDataPlugin || platform !== 'ios') {
+      alert('iOS에서만 HealthKit 데이터를 가져올 수 있습니다.');
+      return;
+    }
+    
+    setIsRefreshing(true);
+    try {
+      await fetchHealthData(healthDataPlugin);
+      alert('건강 데이터를 새로고침했습니다.');
+    } catch (error) {
+      console.error('데이터 새로고침 실패:', error);
+      alert('데이터 새로고침에 실패했습니다.');
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+
+  // 오늘의 수면 팁 (날짜 기반으로 매일 다른 팁 표시)
+  const dailySleepTips = [
+    "정확한 예측을 위해 워치를 너무 헐겁거나 꽉맞지 않게 착용해주세요",
+    "규칙적인 운동은 수면의 질을 높여줘요. 격렬한 운동은 오전에 하는 게 좋아요",
+    "침대는 잠을 자는 곳으로만 사용하세요. 식사나 전화 같은 다른 활동은 피하는 게 좋아요",
+    "잠자는 환경은 조용하고 어둡게 만드세요",
+    "일정한 수면시간을 유지하면 더 편안하게 잠들 수 있어요. 규칙적인 기상시간이 도움이 됩니다",
+    "잠자기 직전에는 음식을 많이 먹지 말고, 전자제품은 꺼두는 게 좋아요",
+    "잠자기 6시간 전부터는 카페인을 피하고, 밤에는 술을 피하세요",
+    "잠자기 전 따뜻한 물로 샤워하면 몸이 편안해져 잠이 잘 와요",
+    "잠자기 전에는 일을 멈추고, 명상이나 가벼운 스트레칭 같은 이완 활동을 해보세요",
+    "30분이 넘도록 잠이 오지 않으면 잠자리에서 나와 조용한 책을 읽어보세요. 졸릴 때 다시 들어가면 돼요"
+  ];
+
+  // 날짜 기반으로 오늘의 팁 선택
+  const getTodayTip = () => {
+    const today = new Date();
+    const dayOfYear = Math.floor((today.getTime() - new Date(today.getFullYear(), 0, 0).getTime()) / 86400000);
+    return dailySleepTips[dayOfYear % dailySleepTips.length];
+  };
+
+  const todayTip = getTodayTip();
+
+  // 웹에서 예시 데이터 사용
+  const displayHealthData = platform === 'web' ? {
+    heartRate: { value: 72, date: new Date().toISOString() },
+    hrv: { value: 45.5, date: new Date().toISOString() },
+    oxygenSaturation: { value: 98.5, date: new Date().toISOString() }
+  } : healthData;
+
+  const isExampleData = platform === 'web';
+
   return (
     <IonPage className="health-ios-page">
       <IonHeader>
@@ -799,6 +852,8 @@ const Health_ios: React.FC = () => {
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen>
+        {/* 별 배경 효과 (다크모드) */}
+        <div className="stars-background"></div>
 
         {/* 로그인 버튼 */}
         {isSetupComplete && (
@@ -1000,100 +1055,94 @@ const Health_ios: React.FC = () => {
         {(isSetupComplete || platform !== 'ios') && (
           <div style={{ padding: '16px', minHeight: '200px' }}>
             
-            {/* 백그라운드 모니터링 토글 */}
-            <IonCard>
+            {/* 데이터 새로고침 버튼 */}
+            {platform === 'ios' && healthDataPlugin && (
+              <div className="health-refresh-section">
+                <IonButton 
+                  expand="block" 
+                  fill="outline"
+                  onClick={handleRefreshHealthData}
+                  disabled={isRefreshing}
+                  className="health-refresh-button"
+                >
+                  <IonIcon icon={refreshOutline} slot="start" />
+                  {isRefreshing ? '새로고침 중...' : '데이터 새로고침'}
+                </IonButton>
+              </div>
+            )}
+
+            {/* 오늘의 수면 팁 */}
+            <IonCard className="daily-tip-card">
               <IonCardHeader>
-                <IonCardTitle>백그라운드 모니터링</IonCardTitle>
+                <IonCardTitle>오늘의 수면 팁</IonCardTitle>
               </IonCardHeader>
               <IonCardContent>
-                <IonItem>
-                  <IonLabel>백그라운드 모니터링 활성화</IonLabel>
-                  <IonToggle
-                    checked={backgroundMonitoring}
-                    onIonChange={(e) => handleBackgroundMonitoringToggle(e.detail.checked)}
-                    disabled={!healthDataPlugin || platform !== 'ios'}
-                  />
-                </IonItem>
-                {platform === 'android' && (
-                  <IonText style={{ color: '#666666' }}>
-                    <p>Android에서는 서버에서 저장된 건강 데이터를 표시합니다. (iOS에서 수집한 데이터)</p>
-                  </IonText>
-                )}
-                {platform === 'web' && (
-                  <IonText style={{ color: '#ff9500' }}>
-                    <p>웹에서는 HealthData를 사용할 수 없습니다. (iOS/Android에서만 사용 가능)</p>
-                  </IonText>
-                )}
+                <IonText>
+                  <p style={{ fontSize: '15px', lineHeight: '1.6', color: '#66748D', margin: 0 }}>
+                    {todayTip}
+                  </p>
+                </IonText>
               </IonCardContent>
             </IonCard>
+            
+            {/* HealthKit 데이터 표시 - 다양한 레이아웃 */}
+            <div className="health-data-section">
+              {isExampleData && (
+                <div style={{ textAlign: 'center', marginBottom: '12px' }}>
+                  <IonText color="medium" style={{ fontSize: '13px', fontStyle: 'italic' }}>
+                    ※ 웹에서는 예시 데이터가 표시됩니다
+                  </IonText>
+                </div>
+              )}
+              {/* 심박수 - 큰 숫자 중심, 헤더 없음 */}
+              <div className="health-data-main-card heart-rate-main">
+                <div className="health-data-label-large">심박수</div>
+                {displayHealthData.heartRate ? (
+                  <>
+                    <div className="health-data-value-wrapper-large">
+                      <div className="health-data-value-large">{displayHealthData.heartRate.value.toFixed(0)}</div>
+                      <div className="health-data-unit-large">bpm</div>
+                    </div>
+                    <div className="health-data-date-large">{formatDate(displayHealthData.heartRate.date)}</div>
+                  </>
+                ) : (
+                  <div className="health-data-empty-large">데이터 없음</div>
+                )}
+              </div>
 
-            {/* HealthKit 데이터 표시 */}
-            <IonCard>
-              <IonCardHeader>
-                <IonCardTitle>
-                  {platform === 'ios' ? 'HealthKit 데이터' : platform === 'android' ? 'HealthData (서버에서 가져오기)' : 'HealthData (웹 미지원)'}
-                </IonCardTitle>
-              </IonCardHeader>
-              <IonCardContent>
-                <IonGrid>
-                  <IonRow>
-                    {/* 심박수 */}
-                    <IonCol size="4">
-                      <div className="health-data-box heart-rate-box">
-                        <div className="health-data-label">심박수</div>
-                        {healthData.heartRate ? (
-                          <>
-                            <div className="health-data-value-container">
-                              <div className="health-data-value">{healthData.heartRate.value.toFixed(0)}</div>
-                              <div className="health-data-unit">bpm</div>
-                            </div>
-                            <div className="health-data-date">{formatDate(healthData.heartRate.date)}</div>
-                          </>
-                        ) : (
-                          <div className="health-data-empty">데이터 없음</div>
-                        )}
-                      </div>
-                    </IonCol>
+              {/* HRV와 산소포화도 - 가로 배치 */}
+              <div className="health-data-secondary-row">
+                {/* 심박변이 */}
+                <IonCard className="hrv-card">
+                  <IonCardContent>
+                    <div className="health-data-label-small">심박변이</div>
+                    {displayHealthData.hrv ? (
+                      <>
+                        <div className="health-data-value-small">{displayHealthData.hrv.value.toFixed(2)}<span className="health-data-unit-small">ms</span></div>
+                        <div className="health-data-date-small">{formatDate(displayHealthData.hrv.date)}</div>
+                      </>
+                    ) : (
+                      <div className="health-data-empty-small">데이터 없음</div>
+                    )}
+                  </IonCardContent>
+                </IonCard>
 
-                    {/* 심박변이 */}
-                    <IonCol size="4">
-                      <div className="health-data-box hrv-box">
-                        <div className="health-data-label">심박변이</div>
-                        {healthData.hrv ? (
-                          <>
-                            <div className="health-data-value-container">
-                              <div className="health-data-value">{healthData.hrv.value.toFixed(2)}</div>
-                              <div className="health-data-unit">ms</div>
-                            </div>
-                            <div className="health-data-date">{formatDate(healthData.hrv.date)}</div>
-                          </>
-                        ) : (
-                          <div className="health-data-empty">데이터 없음</div>
-                        )}
-                      </div>
-                    </IonCol>
-
-                    {/* 혈중산소포화도 */}
-                    <IonCol size="4">
-                      <div className="health-data-box oxygen-box">
-                        <div className="health-data-label">산소포화도</div>
-                        {healthData.oxygenSaturation ? (
-                          <>
-                            <div className="health-data-value-container">
-                              <div className="health-data-value">{healthData.oxygenSaturation.value.toFixed(1)}</div>
-                              <div className="health-data-unit">%</div>
-                            </div>
-                            <div className="health-data-date">{formatDate(healthData.oxygenSaturation.date)}</div>
-                          </>
-                        ) : (
-                          <div className="health-data-empty">데이터 없음</div>
-                        )}
-                      </div>
-                    </IonCol>
-                  </IonRow>
-                </IonGrid>
-              </IonCardContent>
-            </IonCard>
+                {/* 혈중산소포화도 */}
+                <IonCard className="oxygen-card">
+                  <IonCardContent>
+                    <div className="health-data-label-small">산소포화도</div>
+                    {displayHealthData.oxygenSaturation ? (
+                      <>
+                        <div className="health-data-value-small">{displayHealthData.oxygenSaturation.value.toFixed(1)}<span className="health-data-unit-small">%</span></div>
+                        <div className="health-data-date-small">{formatDate(displayHealthData.oxygenSaturation.date)}</div>
+                      </>
+                    ) : (
+                      <div className="health-data-empty-small">데이터 없음</div>
+                    )}
+                  </IonCardContent>
+                </IonCard>
+              </div>
+            </div>
           </div>
         )}
       </IonContent>

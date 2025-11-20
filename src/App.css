@@ -9,7 +9,7 @@
 }
 
 .disclaimer-modal::part(backdrop) {
-  background: transparent !important;
+  background: rgba(0, 0, 0, 0.5) !important;
 }
 
 .disclaimer-modal::part(wrapper) {
@@ -145,5 +145,42 @@
 
 .disclaimer-modal .disclaimer-button:active {
   transform: translateY(0);
+}
+
+/* 다크모드 지원 - 면책사항 모달 */
+body.dark .disclaimer-modal::part(backdrop) {
+  background: rgba(0, 0, 0, 0.8) !important;
+}
+
+body.dark .disclaimer-modal .disclaimer-card {
+  background: linear-gradient(135deg, #3A3B45 0%, #323340 50%, #2E2F3A 100%) !important;
+  border-color: rgba(124, 136, 169, 0.3) !important;
+}
+
+body.dark .disclaimer-modal .disclaimer-header {
+  background: linear-gradient(135deg, #4A4B55 0%, #3A3B45 25%, #323340 50%, #252630 75%, #1E1F2A 100%) !important;
+  color: #E0E5ED !important;
+}
+
+body.dark .disclaimer-modal .disclaimer-header h1 {
+  color: #E0E5ED !important;
+}
+
+body.dark .disclaimer-modal .disclaimer-body {
+  background: linear-gradient(135deg, #3A3B45 0%, #323340 50%, #2E2F3A 100%) !important;
+}
+
+body.dark .disclaimer-modal .disclaimer-text {
+  color: #E0E5ED !important;
+}
+
+body.dark .disclaimer-modal .disclaimer-text p {
+  color: #E0E5ED !important;
+}
+
+body.dark .disclaimer-modal .disclaimer-button {
+  --background: linear-gradient(135deg, #3A3B45 0%, #323340 50%, #2E2F3A 100%) !important;
+  --color: #E0E5ED !important;
+  --box-shadow: 0 6px 20px rgba(46, 47, 58, 0.4), 0 2px 8px rgba(42, 43, 52, 0.3) !important;
 }
 

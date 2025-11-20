@@ -41,6 +41,14 @@ last_connectivity_error = None
 # Android 앱 건강 로그 저장소 (미들웨어에서 사용하기 위해 여기서 초기화)
 android_app_health_logs = []
 
+# 수면 모드 상태 관리
+sleep_mode_state = {
+    "active": False,
+    "start_time": None,
+    "end_time": None,
+    "duration_hours": None
+}
+
 # 온도 임계값 캐시 모듈 import
 from temperature_threshold_cache import (
     save_temperature_threshold as save_threshold, 
@@ -1903,6 +1911,115 @@ async def get_temperature_range():
         logger.error(f"온도 범위 조회 실패: {str(e)}")
         raise HTTPException(status_code=500, detail=f'온도 범위 조회 실패: {str(e)}')
 
+# ==================== 수면 모드 API ====================
+
+class SleepModeRequest(BaseModel):
+    duration_hours: float  # 수면 시간 (시간 단위)
+
+@app.post("/sleep-mode/start")
+async def start_sleep_mode(data: SleepModeRequest):
+    """
+    수면 모드 시작
+    설정한 시간 동안만 모델 예측과 온도 조절이 동작
+    """
+    try:
+        global sleep_mode_state
+        
+        from datetime import datetime, timedelta
+        
+        start_time = datetime.now()
+        end_time = start_time + timedelta(hours=data.duration_hours)
+        
+        sleep_mode_state = {
+            "active": True,
+            "start_time": start_time.isoformat(),
+            "end_time": end_time.isoformat(),
+            "duration_hours": data.duration_hours
+        }
+        
+        logger.info(f"😴 수면 모드 시작: {data.duration_hours}시간 ({start_time.strftime('%Y-%m-%d %H:%M:%S')} ~ {end_time.strftime('%Y-%m-%d %H:%M:%S')})")
+        
+        return {
+            "success": True,
+            "message": f"수면 모드가 시작되었습니다. {data.duration_hours}시간 동안 자동 조절이 동작합니다.",
+            "start_time": start_time.isoformat(),
+            "end_time": end_time.isoformat(),
+            "duration_hours": data.duration_hours
+        }
+    except Exception as e:
+        logger.error(f"❌ 수면 모드 시작 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f'수면 모드 시작 실패: {str(e)}')
+
+@app.post("/sleep-mode/stop")
+async def stop_sleep_mode():
+    """
+    수면 모드 중지
+    """
+    try:
+        global sleep_mode_state
+        
+        sleep_mode_state = {
+            "active": False,
+            "start_time": None,
+            "end_time": None,
+            "duration_hours": None
+        }
+        
+        logger.info("😴 수면 모드 중지")
+        
+        return {
+            "success": True,
+            "message": "수면 모드가 중지되었습니다."
+        }
+    except Exception as e:
+        logger.error(f"❌ 수면 모드 중지 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f'수면 모드 중지 실패: {str(e)}')
+
+@app.get("/sleep-mode/status")
+async def get_sleep_mode_status():
+    """
+    수면 모드 상태 조회
+    """
+    try:
+        global sleep_mode_state
+        
+        from datetime import datetime
+        
+        # 수면 모드가 활성화되어 있고 종료 시간이 지났으면 자동으로 비활성화
+        if sleep_mode_state["active"] and sleep_mode_state["end_time"]:
+            end_time = datetime.fromisoformat(sleep_mode_state["end_time"])
+            if datetime.now() >= end_time:
+                sleep_mode_state["active"] = False
+                logger.info("😴 수면 모드 자동 종료 (설정된 시간 경과)")
+        
+        if sleep_mode_state["active"]:
+            end_time = datetime.fromisoformat(sleep_mode_state["end_time"])
+            remaining_seconds = (end_time - datetime.now()).total_seconds()
+            remaining_hours = remaining_seconds / 3600.0
+            
+            return {
+                "success": True,
+                "active": True,
+                "start_time": sleep_mode_state["start_time"],
+                "end_time": sleep_mode_state["end_time"],
+                "duration_hours": sleep_mode_state["duration_hours"],
+                "remaining_hours": max(0, remaining_hours),
+                "remaining_minutes": max(0, int(remaining_seconds / 60))
+            }
+        else:
+            return {
+                "success": True,
+                "active": False,
+                "start_time": None,
+                "end_time": None,
+                "duration_hours": None,
+                "remaining_hours": 0,
+                "remaining_minutes": 0
+            }
+    except Exception as e:
+        logger.error(f"❌ 수면 모드 상태 조회 실패: {str(e)}")
+        raise HTTPException(status_code=500, detail=f'수면 모드 상태 조회 실패: {str(e)}')
+
 # ==================== 기본 API ====================
 
 @app.get("/")
@@ -2784,6 +2901,25 @@ def adjust_air_conditioner_wrapper():
     """스케줄러에서 호출할 래퍼 함수"""
     from datetime import datetime
     current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    
+    # 수면 모드 확인
+    global sleep_mode_state
+    if sleep_mode_state["active"]:
+        # 종료 시간 확인
+        if sleep_mode_state["end_time"]:
+            end_time = datetime.fromisoformat(sleep_mode_state["end_time"])
+            if datetime.now() >= end_time:
+                # 수면 모드 자동 종료
+                sleep_mode_state["active"] = False
+                logger.info("😴 수면 모드 자동 종료 (설정된 시간 경과)")
+                return
+        # 수면 모드가 활성화되어 있으면 실행
+        logger.info(f"😴 [{current_time}] 수면 모드 활성화 중 - 에어컨 자동 조절 실행")
+    else:
+        # 수면 모드가 비활성화되어 있으면 실행하지 않음
+        logger.debug(f"⏸️ [{current_time}] 수면 모드 비활성화 - 에어컨 자동 조절 건너뜀")
+        return
+    
     try:
         print("\n" + "=" * 80)
         print(f"⏰ [{current_time}] 스케줄러 실행: 에어컨 자동 조절 시작 (2분 주기)")

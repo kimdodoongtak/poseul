@@ -42,47 +42,32 @@ const DeviceRegistration: React.FC = () => {
       const currentUrl = getServerUrl();
       console.log('🔍 현재 서버 URL:', currentUrl);
       
-      // 10.0.2.2는 에뮬레이터용이므로 실제 기기에서는 작동하지 않음
-      // 무조건 자동 감지 실행 (저장된 URL이 있더라도)
-      if (currentUrl.includes('10.0.2.2') || currentUrl.includes('localhost')) {
-        console.log('🔄 서버 URL 자동 감지 시작 (에뮬레이터용 IP 감지됨)...');
-        setDetectingServer(true);
+      // 항상 자동 감지 실행 (IP가 바뀔 수 있으므로)
+      console.log('🔄 서버 URL 자동 감지 시작...');
+      setDetectingServer(true);
+      
+      try {
+        const detectedUrl = await autoDetectServerUrl();
+        console.log('✅ 자동 감지된 서버 URL:', detectedUrl);
         
-        // localStorage에서 10.0.2.2 제거
-        if (typeof window !== 'undefined') {
-          const savedUrl = localStorage.getItem('server_url');
-          if (savedUrl && savedUrl.includes('10.0.2.2')) {
-            console.log('🗑️ 에뮬레이터용 URL 제거:', savedUrl);
-            localStorage.removeItem('server_url');
-          }
-        }
-        
-        try {
-          const detectedUrl = await autoDetectServerUrl();
-          console.log('✅ 자동 감지된 서버 URL:', detectedUrl);
-          
-          // 빈 문자열이 반환되면 서버를 찾지 못한 것
-          if (!detectedUrl || detectedUrl === '') {
-            console.error('❌ 서버를 찾을 수 없습니다. 수동 입력이 필요합니다.');
-            setConnectionStatus('❌ 서버를 자동으로 찾을 수 없습니다. 서버 IP를 확인해주세요.');
-            // 기본값 유지
-            setServerUrl(currentUrl);
-          } else {
-            setServerUrl(detectedUrl);
-            setConnectionStatus(null); // 성공 시 상태 초기화
-          }
-        } catch (err) {
-          console.error('❌ 서버 URL 자동 감지 실패:', err);
-          setConnectionStatus('❌ 서버 자동 감지 중 오류가 발생했습니다.');
-          // 실패해도 현재 URL 유지
+        // 빈 문자열이 반환되면 서버를 찾지 못한 것
+        if (!detectedUrl || detectedUrl === '') {
+          console.error('❌ 서버를 찾을 수 없습니다. 수동 입력이 필요합니다.');
+          setConnectionStatus('❌ 서버를 자동으로 찾을 수 없습니다. 서버 IP를 확인해주세요.');
+          // 기본값 유지
           setServerUrl(currentUrl);
-        } finally {
-          setDetectingServer(false);
+        } else {
+          setServerUrl(detectedUrl);
+          setConnectionStatus(null); // 성공 시 상태 초기화
+          console.log('✅ 서버 URL 업데이트 완료:', detectedUrl);
         }
-      } else {
-        // 이미 올바른 URL이 있으면 그대로 사용하되, 연결 테스트는 나중에
-        console.log('✅ 저장된 서버 URL 사용:', currentUrl);
+      } catch (err) {
+        console.error('❌ 서버 URL 자동 감지 실패:', err);
+        setConnectionStatus('❌ 서버 자동 감지 중 오류가 발생했습니다.');
+        // 실패해도 현재 URL 유지
         setServerUrl(currentUrl);
+      } finally {
+        setDetectingServer(false);
       }
     };
 
@@ -97,8 +82,16 @@ const DeviceRegistration: React.FC = () => {
   const handlePatTokenChange = (value: string) => {
     setPatToken(value);
     setError(null);
-    // PAT 토큰 형식 검증 (thinqpat_로 시작)
-    setIsValid(value.trim().startsWith('thinqpat_') && value.trim().length > 20);
+    // PAT 토큰 형식 검증 (thinqpat_로 시작하고 최소 길이 체크)
+    const trimmed = value.trim();
+    const valid = trimmed.startsWith('thinqpat_') && trimmed.length > 20;
+    setIsValid(valid);
+    console.log('PAT 토큰 검증:', { 
+      trimmed: trimmed.substring(0, 20) + '...', 
+      length: trimmed.length, 
+      startsWith: trimmed.startsWith('thinqpat_'),
+      isValid: valid 
+    });
   };
 
   const handleOpenPatSite = () => {
@@ -197,14 +190,18 @@ const DeviceRegistration: React.FC = () => {
   };
 
   const handleRegister = async () => {
+    console.log('🔘 확인 버튼 클릭:', { isValid, patToken: patToken.substring(0, 20) + '...', loading });
+    
     if (!isValid) {
-      setError('올바른 PAT 토큰 형식이 아닙니다.');
+      const errorMsg = '올바른 PAT 토큰 형식이 아닙니다. (thinqpat_로 시작하고 20자 이상이어야 합니다)';
+      console.error('❌ PAT 토큰 형식 오류:', errorMsg);
+      setError(errorMsg);
       return;
     }
 
     setLoading(true);
     setError(null);
-    setLoadingMessage('디바이스 목록 조회 중...');
+    setLoadingMessage('서버 연결 확인 중...');
 
     try {
       const baseUrl = serverUrl || getServerUrl();
@@ -216,15 +213,31 @@ const DeviceRegistration: React.FC = () => {
         timestamp: new Date().toISOString()
       });
       
-      // 타임아웃 설정 (15초로 증가 - LG ThinQ API 응답이 느릴 수 있음)
+      // 먼저 서버 연결 확인
+      setLoadingMessage('서버 연결 확인 중...');
+      try {
+        const healthResponse = await fetch(`${baseUrl}/health`, {
+          method: 'GET',
+          signal: AbortSignal.timeout(5000) // 5초
+        });
+        if (!healthResponse.ok) {
+          throw new Error(`서버 응답 오류: ${healthResponse.status}`);
+        }
+        console.log('✅ 서버 연결 확인 성공');
+      } catch (healthError: any) {
+        console.error('❌ 서버 연결 실패:', healthError);
+        throw new Error(`서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요. (${baseUrl})`);
+      }
+      
+      // 타임아웃 설정 (30초로 증가 - LG ThinQ API 응답이 매우 느릴 수 있음)
       const controller = new AbortController();
       const timeoutId = setTimeout(() => {
         const elapsed = ((Date.now() - requestStartTime) / 1000).toFixed(2);
         console.error(`⏱️ 요청 타임아웃 (${elapsed}초 경과)`);
         controller.abort();
-      }, 15000);
+      }, 30000); // 30초로 증가
       
-      setLoadingMessage('서버 연결 중...');
+      setLoadingMessage('PAT 토큰 검증 중...');
       console.log('📤 서버로 요청 전송:', `${baseUrl}/iot/auto-register`);
       
       let response: Response;
@@ -349,14 +362,14 @@ const DeviceRegistration: React.FC = () => {
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen>
-        <div className="container" style={{ padding: '24px', maxWidth: '600px', margin: '0 auto' }}>
+        <div className="container">
           <IonCard>
             <IonCardHeader>
               <IonCardTitle>LG ThinQ 에어컨 등록</IonCardTitle>
             </IonCardHeader>
             <IonCardContent>
               <IonText color="dark">
-                <p style={{ fontSize: '14px', marginBottom: '24px', color: '#333', fontWeight: '500' }}>
+                <p className="description-text">
                   PAT 토큰을 입력하면 자동으로 등록된 에어컨을 찾아 연결합니다.
                 </p>
               </IonText>
@@ -366,7 +379,7 @@ const DeviceRegistration: React.FC = () => {
                 expand="block"
                 fill="outline"
                 onClick={handleOpenPatSite}
-                style={{ marginBottom: '24px' }}
+                className="pat-token-button"
               >
                 <IonIcon icon={openOutline} slot="start" />
                 PAT 토큰 만들러 가기
@@ -381,55 +394,17 @@ const DeviceRegistration: React.FC = () => {
                   placeholder="thinqpat_..."
                   onIonInput={(e) => handlePatTokenChange(e.detail.value!)}
                   disabled={loading}
-                  style={{
-                    '--background': '#ffffff',
-                    '--color': '#000000',
-                    'background': '#ffffff',
-                    'color': '#000000',
-                    'border': '2px solid #333',
-                    'border-radius': '8px',
-                  } as React.CSSProperties}
                 />
               </IonItem>
 
               {patToken && !isValid && (
-                <IonText color="danger" style={{ fontSize: '12px', marginTop: '8px', display: 'block' }}>
+                <IonText color="danger" className="error-text">
                   PAT 토큰은 'thinqpat_'로 시작해야 합니다.
                 </IonText>
               )}
 
-              {/* 연결 테스트 버튼 */}
-              {isValid && !loading && (
-                <IonButton
-                  expand="block"
-                  fill="outline"
-                  color="medium"
-                  onClick={handleTestConnection}
-                  disabled={testingConnection}
-                  style={{ marginTop: '16px' }}
-                >
-                  {testingConnection ? (
-                    <>
-                      <IonSpinner name="crescent" style={{ marginRight: '8px' }} />
-                      연결 테스트 중...
-                    </>
-                  ) : (
-                    '연결 테스트'
-                  )}
-                </IonButton>
-              )}
-
-              {connectionStatus && (
-                <IonText 
-                  color={connectionStatus.startsWith('✅') ? 'success' : 'danger'} 
-                  style={{ fontSize: '14px', marginTop: '12px', display: 'block' }}
-                >
-                  {connectionStatus}
-                </IonText>
-              )}
-
               {error && (
-                <IonText color="danger" style={{ fontSize: '14px', marginTop: '16px', display: 'block' }}>
+                <IonText color="danger" className="error-text">
                   {error}
                 </IonText>
               )}
@@ -440,11 +415,7 @@ const DeviceRegistration: React.FC = () => {
                 color="primary"
                 onClick={handleRegister}
                 disabled={!isValid || loading}
-                style={{ 
-                  marginTop: '24px',
-                  borderRadius: '8px',
-                  '--border-radius': '8px'
-                } as React.CSSProperties}
+                className="confirm-button"
               >
                 {loading ? (
                   <>
@@ -458,97 +429,6 @@ const DeviceRegistration: React.FC = () => {
                   </>
                 )}
               </IonButton>
-
-              <IonText style={{ fontSize: '12px', marginTop: '16px', display: 'block', color: '#666' }}>
-                💡 PAT 토큰은 https://connect-pat.lgthinq.com 에서 발급받을 수 있습니다.
-              </IonText>
-              
-              {/* 서버 URL 표시 및 수동 입력 */}
-              <div style={{ marginTop: '12px' }}>
-                {detectingServer ? (
-                  <IonText style={{ fontSize: '11px', display: 'block', color: '#999' }}>
-                    🔄 서버 자동 감지 중...
-                  </IonText>
-                ) : (
-                  <>
-                    <IonText style={{ fontSize: '11px', display: 'block', color: '#999' }}>
-                      🔗 서버: {serverUrl}
-                      {serverUrl.includes('10.0.2.2') && (
-                        <span style={{ color: '#ff6b6b', marginLeft: '8px' }}>
-                          (에뮬레이터용 - 실제 기기에서는 작동하지 않을 수 있음)
-                        </span>
-                      )}
-                    </IonText>
-                    
-                    {!showManualInput ? (
-                      <IonButton
-                        fill="clear"
-                        size="small"
-                        onClick={() => setShowManualInput(true)}
-                        style={{ 
-                          marginTop: '8px',
-                          fontSize: '12px',
-                          '--padding-start': '0',
-                          '--padding-end': '0'
-                        } as React.CSSProperties}
-                      >
-                        서버 URL 수동 입력
-                      </IonButton>
-                    ) : (
-                      <div style={{ marginTop: '12px' }}>
-                        <IonItem>
-                          <IonLabel position="stacked">서버 URL</IonLabel>
-                          <IonInput
-                            type="text"
-                            value={manualServerUrl}
-                            placeholder="http://192.168.x.x:3000"
-                            onIonInput={(e) => setManualServerUrl(e.detail.value!)}
-                            style={{
-                              '--background': '#ffffff',
-                              '--color': '#000000',
-                              'background': '#ffffff',
-                              'color': '#000000',
-                              'border': '1px solid #ccc',
-                              'border-radius': '4px',
-                            } as React.CSSProperties}
-                          />
-                        </IonItem>
-                        <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-                          <IonButton
-                            size="small"
-                            onClick={() => {
-                              if (manualServerUrl.trim()) {
-                                let url = manualServerUrl.trim();
-                                if (!url.startsWith('http://') && !url.startsWith('https://')) {
-                                  url = `http://${url}`;
-                                }
-                                console.log('📝 수동으로 서버 URL 설정:', url);
-                                setServerUrl(url);
-                                localStorage.setItem('server_url', url);
-                                setShowManualInput(false);
-                                setManualServerUrl('');
-                                setConnectionStatus('✅ 서버 URL이 업데이트되었습니다.');
-                              }
-                            }}
-                          >
-                            적용
-                          </IonButton>
-                          <IonButton
-                            fill="outline"
-                            size="small"
-                            onClick={() => {
-                              setShowManualInput(false);
-                              setManualServerUrl('');
-                            }}
-                          >
-                            취소
-                          </IonButton>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
             </IonCardContent>
           </IonCard>
         </div>

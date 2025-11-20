@@ -20,9 +20,9 @@ import {
   IonButton as IonModalButton,
   IonText,
   IonAlert,
-  IonIcon
+  IonIcon,
 } from '@ionic/react';
-import { refreshOutline } from 'ionicons/icons';
+import { refreshOutline, closeOutline } from 'ionicons/icons';
 import { LocalNotifications, ActionPerformed, LocalNotificationSchema } from '@capacitor/local-notifications';
 import { Capacitor } from '@capacitor/core';
 import SignIn from '../components/SignIn';
@@ -41,7 +41,6 @@ const User: React.FC = () => {
   const [healthDataPlugin, setHealthDataPlugin] = useState<any>(null);
   const [platform, setPlatform] = useState<string>('web');
   const [showSignIn, setShowSignIn] = useState<boolean>(false);
-  const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
   const [showResetAlert, setShowResetAlert] = useState<boolean>(false);
   const [feedbackCount, setFeedbackCount] = useState<number>(0);
   const [isFeedbackDisabled, setIsFeedbackDisabled] = useState<boolean>(false);
@@ -347,12 +346,13 @@ const User: React.FC = () => {
     }
   }, []);
 
+  // 다크모드 상태 불러오기 (Home 탭에서 관리하므로 여기서는 불러오기만)
   useEffect(() => {
-    // 다크모드 상태 불러오기
     const savedDarkMode = localStorage.getItem('darkMode') === 'true';
-    setIsDarkMode(savedDarkMode);
     if (savedDarkMode) {
       document.body.classList.add('dark');
+    } else {
+      document.body.classList.remove('dark');
     }
   }, []);
 
@@ -365,16 +365,6 @@ const User: React.FC = () => {
     }, 30000);
     return () => clearInterval(interval);
   }, []);
-
-  const handleDarkModeToggle = (enabled: boolean) => {
-    setIsDarkMode(enabled);
-    localStorage.setItem('darkMode', enabled.toString());
-    if (enabled) {
-      document.body.classList.add('dark');
-    } else {
-      document.body.classList.remove('dark');
-    }
-  };
 
   const handleResetFeedbackPeriod = async () => {
     try {
@@ -437,9 +427,12 @@ const User: React.FC = () => {
         </IonToolbar>
       </IonHeader>
       <IonContent fullscreen>
+        {/* 별 배경 효과 (다크모드) */}
+        <div className="stars-background"></div>
+        
         {/* 로그인 모달 */}
         {showSignIn && (
-          <div style={{ 
+          <div className="login-modal-backdrop" style={{ 
             position: 'fixed', 
             top: 0, 
             left: 0, 
@@ -455,7 +448,7 @@ const User: React.FC = () => {
           </div>
         )}
 
-        <IonCard>
+        <IonCard className="user-info-card">
           <IonCardHeader>
             <IonCardTitle>사용자 정보</IonCardTitle>
           </IonCardHeader>
@@ -492,7 +485,7 @@ const User: React.FC = () => {
           </IonCardContent>
         </IonCard>
 
-        <IonCard>
+        <IonCard className="feedback-settings-card">
           <IonCardHeader>
             <IonCardTitle>피드백 알림 설정</IonCardTitle>
           </IonCardHeader>
@@ -529,28 +522,24 @@ const User: React.FC = () => {
           </IonCardContent>
         </IonCard>
 
-        <IonCard>
-          <IonCardHeader>
-            <IonCardTitle>온도 범위 관리</IonCardTitle>
-          </IonCardHeader>
-          <IonCardContent>
-            <IonButton 
-              expand="block" 
-              className="reset-feedback-button"
-              onClick={() => setShowResetAlert(true)}
-            >
-              <IonIcon icon={refreshOutline} slot="start" />
-              온도 범위 재갱신
-            </IonButton>
-          </IonCardContent>
-        </IonCard>
+        {/* 온도 범위 관리 - 헤더 없이 버튼만 */}
+        <div className="temperature-range-management-section">
+          <IonButton 
+            expand="block" 
+            className="reset-feedback-button"
+            onClick={() => setShowResetAlert(true)}
+          >
+            <IonIcon icon={refreshOutline} slot="start" />
+            온도 범위 재갱신
+          </IonButton>
+        </div>
 
-        <IonCard>
+        <IonCard className="settings-card">
           <IonCardHeader>
             <IonCardTitle>설정</IonCardTitle>
           </IonCardHeader>
           <IonCardContent>
-            <IonButton expand="block" onClick={() => setShowSignIn(true)}>
+            <IonButton expand="block" onClick={() => setShowSignIn(true)} style={{ marginTop: '16px' }}>
               로그인
             </IonButton>
           </IonCardContent>
@@ -560,66 +549,61 @@ const User: React.FC = () => {
         <div style={{ height: '80px', width: '100%' }}></div>
 
         {/* 피드백 모달 */}
-        <IonModal isOpen={showFeedbackModal} onDidDismiss={() => setShowFeedbackModal(false)}>
-          <IonHeader>
-            <IonToolbar>
-              <IonTitle>온도 피드백</IonTitle>
-              <IonButtons slot="end">
-                <IonModalButton onClick={() => setShowFeedbackModal(false)}>닫기</IonModalButton>
-              </IonButtons>
-            </IonToolbar>
-          </IonHeader>
-          <IonContent className="ion-padding feedback-modal-content">
-            <div style={{ textAlign: 'center', padding: '20px 0' }}>
-              <h2 className="feedback-title">오늘밤 온도는 어땠나요?</h2>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '32px' }}>
-                <IonButton 
-                  expand="block" 
-                  color="danger"
-                  onClick={() => handleFeedbackSubmit('hot')}
-                  disabled={isFeedbackDisabled}
-                  style={{ height: '60px', fontSize: '18px' }}
+        <IonModal 
+          isOpen={showFeedbackModal} 
+          onDidDismiss={() => setShowFeedbackModal(false)}
+          backdropDismiss={true}
+          className="feedback-modal"
+        >
+          <IonContent className="feedback-content-wrapper" scrollY={false}>
+            <div className="feedback-card">
+              <div className="feedback-header">
+                <h1>온도 피드백</h1>
+                <button 
+                  className="feedback-close-button"
+                  onClick={() => setShowFeedbackModal(false)}
+                  aria-label="닫기"
                 >
-                  더웠어요🔥
-                </IonButton>
-                <IonButton 
-                  expand="block" 
-                  onClick={() => handleFeedbackSubmit('comfortable')}
-                  className="comfortable-feedback-button"
-                  disabled={isFeedbackDisabled}
-                  style={{ 
-                    height: '60px', 
-                    fontSize: '18px',
-                    background: 'linear-gradient(135deg, #A0E8A0 0%, #90E890 50%, #88E800 100%)',
-                    borderRadius: '12px',
-                    boxShadow: '0 4px 16px rgba(136, 232, 0, 0.4)',
-                    color: 'white',
-                    fontWeight: '600',
-                    border: 'none',
-                    outline: 'none'
-                  }}
-                >
-                  쾌적했어요🍀
-                </IonButton>
-                <IonButton 
-                  expand="block" 
-                  onClick={() => handleFeedbackSubmit('cold')}
-                  className="cold-feedback-button"
-                  disabled={isFeedbackDisabled}
-                  style={{ 
-                    height: '60px', 
-                    fontSize: '18px',
-                    background: 'linear-gradient(135deg, #E0F6FF 0%, #87CEEB 50%, #B0E0E6 100%)',
-                    borderRadius: '12px',
-                    boxShadow: '0 4px 16px rgba(135, 206, 235, 0.4)',
-                    color: 'white',
-                    fontWeight: '600',
-                    border: 'none',
-                    outline: 'none'
-                  }}
-                >
-                  추웠어요❄️
-                </IonButton>
+                  <IonIcon icon={closeOutline} />
+                </button>
+              </div>
+              <div className="feedback-body">
+                <h2 className="feedback-title">오늘밤 온도는 어땠나요?</h2>
+                <div className="feedback-emoji-container">
+                  <div 
+                    className="feedback-emoji-item hot-feedback"
+                    onClick={() => !isFeedbackDisabled && handleFeedbackSubmit('hot')}
+                    style={{ 
+                      cursor: isFeedbackDisabled ? 'not-allowed' : 'pointer',
+                      opacity: isFeedbackDisabled ? 0.5 : 1
+                    }}
+                  >
+                    <div className="feedback-emoji">🔥</div>
+                    <div className="feedback-text">더웠어요</div>
+                  </div>
+                  <div 
+                    className="feedback-emoji-item comfortable-feedback"
+                    onClick={() => !isFeedbackDisabled && handleFeedbackSubmit('comfortable')}
+                    style={{ 
+                      cursor: isFeedbackDisabled ? 'not-allowed' : 'pointer',
+                      opacity: isFeedbackDisabled ? 0.5 : 1
+                    }}
+                  >
+                    <div className="feedback-emoji">🍀</div>
+                    <div className="feedback-text">쾌적했어요</div>
+                  </div>
+                  <div 
+                    className="feedback-emoji-item cold-feedback"
+                    onClick={() => !isFeedbackDisabled && handleFeedbackSubmit('cold')}
+                    style={{ 
+                      cursor: isFeedbackDisabled ? 'not-allowed' : 'pointer',
+                      opacity: isFeedbackDisabled ? 0.5 : 1
+                    }}
+                  >
+                    <div className="feedback-emoji">❄️</div>
+                    <div className="feedback-text">추웠어요</div>
+                  </div>
+                </div>
               </div>
             </div>
           </IonContent>

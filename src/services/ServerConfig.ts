@@ -6,7 +6,7 @@
 const SERVER_URL_KEY = 'server_url';
 
 // 하드코딩된 서버 IP (우선 사용)
-const HARDCODED_SERVER_IP = '172.30.1.55';
+const HARDCODED_SERVER_IP = '192.168.68.72';
 const HARDCODED_SERVER_URL = `http://${HARDCODED_SERVER_IP}:3000`;
 
 // 동기 버전 (기본값 반환용)

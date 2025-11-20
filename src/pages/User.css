@@ -66,21 +66,37 @@
   margin: 0 auto;
 }
 
-/* 카드 스타일 - Home과 동일한 Silver Mist & Lavender 톤 */
+/* 카드 기본 스타일 - Home과 동일한 Silver Mist & Lavender 톤 */
 .user-page ion-card {
-  margin: 20px 0;
+  margin: 24px 0;
   border-radius: 24px;
-  box-shadow: 0 12px 40px rgba(196, 161, 194, 0.4), 0 4px 16px rgba(102, 116, 141, 0.3), 0 2px 8px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 12px rgba(212, 165, 210, 0.6), 
+              0 0 8px rgba(228, 181, 226, 0.3),
+              0 2px 6px rgba(102, 116, 141, 0.3), 
+              0 1px 3px rgba(0, 0, 0, 0.15);
   transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
   background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%) !important;
-  border: 1px solid rgba(196, 161, 194, 0.35);
+  border: 2px solid rgba(212, 165, 210, 0.5);
+}
+
+/* 사용자 정보, 피드백 알림 설정, 설정 카드 - 헤더 있는 카드 (기본 스타일 유지) */
+
+/* 온도 범위 관리 섹션 - 헤더 없이 버튼만 */
+.user-page .temperature-range-management-section {
+  margin: 24px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .user-page ion-card:hover {
   transform: translateY(-6px) scale(1.01);
-  box-shadow: 0 20px 60px rgba(196, 161, 194, 0.5), 0 8px 24px rgba(102, 116, 141, 0.4), 0 4px 12px rgba(0, 0, 0, 0.2);
-  border-color: rgba(196, 161, 194, 0.5);
+  box-shadow: 0 6px 16px rgba(228, 181, 226, 0.7), 
+              0 0 10px rgba(228, 181, 226, 0.4),
+              0 3px 8px rgba(102, 116, 141, 0.4), 
+              0 2px 4px rgba(0, 0, 0, 0.2);
+  border-color: rgba(228, 181, 226, 0.6);
 }
 
 .user-page ion-card-header {
@@ -97,6 +113,8 @@
   color: #ffffff;
   margin: 0;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  position: relative;
+  z-index: 1;
 }
 
 .user-page ion-card-content {
@@ -177,7 +195,7 @@
   --background-hover: linear-gradient(135deg, #B0A0C0 0%, #A898B8 50%, #A090B0 100%);
   --background-activated: linear-gradient(135deg, #B0A0C0 0%, #A898B8 50%, #A090B0 100%);
   --color: #ffffff;
-  --border-radius: 14px;
+  --border-radius: 16px !important;
   --box-shadow: 0 6px 20px rgba(152, 136, 168, 0.4), 0 2px 8px rgba(144, 128, 176, 0.3);
   margin: 20px 0;
   font-weight: 600;
@@ -188,6 +206,11 @@
   border: 1px solid rgba(255, 255, 255, 0.3);
   position: relative;
   overflow: hidden;
+  border-radius: 16px !important;
+}
+
+.user-page ion-button::part(native) {
+  border-radius: 16px !important;
 }
 
 .user-page ion-button::before {
@@ -243,7 +266,384 @@
   opacity: 0.6;
 }
 
-/* 다크모드 지원 - Home과 동일한 톤 유지 */
+/* 다크모드 지원 - User 페이지에만 적용 (푸른 회색 톤, 노란빛 제거) */
+body.dark .user-page ion-content {
+  --background: linear-gradient(180deg, #4E5055 0%, #4A4C51 50%, #46484D 100%) !important;
+  background: linear-gradient(180deg, #4E5055 0%, #4A4C51 50%, #46484D 100%) !important;
+  background-image: linear-gradient(180deg, #4E5055 0%, #4A4C51 50%, #46484D 100%) !important;
+  color: #E0E5ED !important;
+  position: relative;
+  overflow: hidden;
+}
+
+/* 별 배경 효과 - scroll-content에 적용 */
+body.dark .user-page ion-content .scroll-content::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: 
+    radial-gradient(2px 2px at 20% 30%, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(2px 2px at 60% 70%, rgba(255, 255, 255, 0.6), transparent),
+    radial-gradient(1px 1px at 50% 50%, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(1px 1px at 80% 10%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(2px 2px at 90% 40%, rgba(255, 255, 255, 0.5), transparent),
+    radial-gradient(1px 1px at 33% 60%, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(1px 1px at 15% 80%, rgba(255, 255, 255, 0.6), transparent),
+    radial-gradient(2px 2px at 70% 20%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(1px 1px at 40% 90%, rgba(255, 255, 255, 0.5), transparent),
+    radial-gradient(2px 2px at 10% 50%, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(1px 1px at 85% 60%, rgba(255, 255, 255, 0.6), transparent),
+    radial-gradient(2px 2px at 25% 15%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(1px 1px at 55% 85%, rgba(255, 255, 255, 0.5), transparent),
+    radial-gradient(2px 2px at 75% 30%, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(1px 1px at 45% 70%, rgba(255, 255, 255, 0.6), transparent),
+    radial-gradient(2px 2px at 95% 80%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(1px 1px at 5% 25%, rgba(255, 255, 255, 0.5), transparent),
+    radial-gradient(2px 2px at 35% 45%, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(1px 1px at 65% 10%, rgba(255, 255, 255, 0.6), transparent);
+  background-size: 100% 100%;
+  background-position: 0% 0%;
+  animation: twinkle 8s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* 별 배경 효과 - part(scroll)에도 적용 */
+body.dark .user-page ion-content::part(scroll)::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: 
+    radial-gradient(2px 2px at 20% 30%, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(2px 2px at 60% 70%, rgba(255, 255, 255, 0.6), transparent),
+    radial-gradient(1px 1px at 50% 50%, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(1px 1px at 80% 10%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(2px 2px at 90% 40%, rgba(255, 255, 255, 0.5), transparent),
+    radial-gradient(1px 1px at 33% 60%, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(1px 1px at 15% 80%, rgba(255, 255, 255, 0.6), transparent),
+    radial-gradient(2px 2px at 70% 20%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(1px 1px at 40% 90%, rgba(255, 255, 255, 0.5), transparent),
+    radial-gradient(2px 2px at 10% 50%, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(1px 1px at 85% 60%, rgba(255, 255, 255, 0.6), transparent),
+    radial-gradient(2px 2px at 25% 15%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(1px 1px at 55% 85%, rgba(255, 255, 255, 0.5), transparent),
+    radial-gradient(2px 2px at 75% 30%, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(1px 1px at 45% 70%, rgba(255, 255, 255, 0.6), transparent),
+    radial-gradient(2px 2px at 95% 80%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(1px 1px at 5% 25%, rgba(255, 255, 255, 0.5), transparent),
+    radial-gradient(2px 2px at 35% 45%, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(1px 1px at 65% 10%, rgba(255, 255, 255, 0.6), transparent);
+  background-size: 100% 100%;
+  background-position: 0% 0%;
+  animation: twinkle 8s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+
+@keyframes twinkle {
+  0%, 100% {
+    opacity: 0.6;
+  }
+  25% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+  75% {
+    opacity: 1;
+  }
+}
+
+body.dark .user-page ion-content::part(scroll) {
+  background: linear-gradient(180deg, #4E5055 0%, #4A4C51 50%, #46484D 100%) !important;
+  background-image: linear-gradient(180deg, #4E5055 0%, #4A4C51 50%, #46484D 100%) !important;
+  position: relative;
+  z-index: 1;
+}
+
+/* 별 배경 효과 - 실제 DOM 요소 */
+body.dark .user-page .stars-background {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  background-image: 
+    radial-gradient(5px 5px at 20% 30%, rgba(255, 255, 255, 1), transparent),
+    radial-gradient(4px 4px at 60% 70%, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(4px 4px at 50% 50%, rgba(255, 255, 255, 1), transparent),
+    radial-gradient(4px 4px at 80% 10%, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(5px 5px at 90% 40%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(4px 4px at 33% 60%, rgba(255, 255, 255, 1), transparent),
+    radial-gradient(4px 4px at 15% 80%, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(5px 5px at 70% 20%, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(4px 4px at 40% 90%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(5px 5px at 10% 50%, rgba(255, 255, 255, 1), transparent),
+    radial-gradient(4px 4px at 85% 60%, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(5px 5px at 25% 15%, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(4px 4px at 55% 85%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(5px 5px at 75% 30%, rgba(255, 255, 255, 1), transparent),
+    radial-gradient(4px 4px at 45% 70%, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(5px 5px at 95% 80%, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(4px 4px at 5% 25%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(5px 5px at 35% 45%, rgba(255, 255, 255, 1), transparent),
+    radial-gradient(4px 4px at 65% 10%, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(4px 4px at 12% 35%, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(5px 5px at 42% 65%, rgba(255, 255, 255, 1), transparent),
+    radial-gradient(4px 4px at 88% 75%, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(4px 4px at 18% 55%, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(5px 5px at 62% 25%, rgba(255, 255, 255, 0.8), transparent);
+  background-size: 100% 100%;
+  background-position: 0% 0%;
+  background-repeat: no-repeat;
+  animation: twinkle 8s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0 !important;
+  opacity: 1;
+}
+
+.user-page .stars-background {
+  display: none;
+}
+
+body.dark .user-page .stars-background {
+  display: block !important;
+}
+
+/* 다크모드 로그인 모달 배경 */
+body.dark .login-modal-backdrop {
+  background-color: rgba(0, 0, 0, 0.8) !important;
+}
+
+body.dark .user-page ion-content .scroll-content {
+  background: linear-gradient(180deg, #4E5055 0%, #4A4C51 50%, #46484D 100%) !important;
+  background-image: linear-gradient(180deg, #4E5055 0%, #4A4C51 50%, #46484D 100%) !important;
+}
+
+body.dark .user-page ion-header {
+  --background: linear-gradient(135deg, #3A3B45 0%, #323340 30%, #2E2F3A 60%, #2A2B35 100%) !important;
+  background: linear-gradient(135deg, #3A3B45 0%, #323340 30%, #2E2F3A 60%, #2A2B35 100%) !important;
+  background-image: linear-gradient(135deg, #3A3B45 0%, #323340 30%, #2E2F3A 60%, #2A2B35 100%) !important;
+  box-shadow: 0 4px 12px rgba(46, 47, 58, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+}
+
+body.dark .user-page ion-header::part(native) {
+  background: linear-gradient(135deg, #3A3B45 0%, #323340 30%, #2E2F3A 60%, #2A2B35 100%) !important;
+  background-image: linear-gradient(135deg, #3A3B45 0%, #323340 30%, #2E2F3A 60%, #2A2B35 100%) !important;
+  box-shadow: 0 4px 12px rgba(46, 47, 58, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+}
+
+body.dark .user-page ion-toolbar {
+  --background: linear-gradient(135deg, #3A3B45 0%, #323340 30%, #2E2F3A 60%, #2A2B35 100%) !important;
+  background: linear-gradient(135deg, #3A3B45 0%, #323340 30%, #2E2F3A 60%, #2A2B35 100%) !important;
+  background-image: linear-gradient(135deg, #3A3B45 0%, #323340 30%, #2E2F3A 60%, #2A2B35 100%) !important;
+}
+
+body.dark .user-page ion-toolbar::part(native) {
+  background: linear-gradient(135deg, #3A3B45 0%, #323340 30%, #2E2F3A 60%, #2A2B35 100%) !important;
+  background-image: linear-gradient(135deg, #3A3B45 0%, #323340 30%, #2E2F3A 60%, #2A2B35 100%) !important;
+}
+
+body.dark .user-page ion-card {
+  background: linear-gradient(135deg, #323340 0%, #363744 50%, #3A3B45 100%) !important;
+  border-color: rgba(124, 136, 169, 0.35) !important;
+}
+
+body.dark .user-page ion-card-header {
+  background: linear-gradient(135deg, #4A4B55 0%, #3A3B45 25%, #2E2F3A 50%, #252630 75%, #1E1F2A 100%) !important;
+  box-shadow: 0 4px 12px rgba(46, 47, 58, 0.3), 
+              0 0 20px rgba(124, 136, 169, 0.15),
+              0 0 40px rgba(108, 120, 153, 0.1),
+              inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
+  border-bottom: 1px solid rgba(124, 136, 169, 0.3) !important;
+  position: relative !important;
+}
+
+body.dark .user-page ion-card-header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, rgba(140, 165, 201, 0.08) 0%, rgba(124, 136, 169, 0.05) 50%, rgba(108, 120, 153, 0.03) 100%);
+  pointer-events: none;
+  border-radius: 24px 24px 0 0;
+  z-index: 0;
+}
+
+body.dark .user-page ion-card-content {
+  background: linear-gradient(135deg, #323340 0%, #363744 50%, #3A3B45 100%) !important;
+  color: #E0E5ED !important;
+}
+
+body.dark .user-page ion-item {
+  background: rgba(255, 255, 255, 0.1) !important;
+  background-color: rgba(255, 255, 255, 0.1) !important;
+  color: #E0E5ED !important;
+  border-color: rgba(124, 136, 169, 0.25) !important;
+}
+
+body.dark .user-page ion-item:focus-within {
+  background: rgba(255, 255, 255, 0.12) !important;
+  background-color: rgba(255, 255, 255, 0.12) !important;
+  border-color: rgba(124, 136, 169, 0.4) !important;
+}
+
+body.dark .user-page ion-item::part(native) {
+  background: rgba(255, 255, 255, 0.08) !important;
+  background-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+body.dark .user-page ion-item:focus-within::part(native) {
+  background: rgba(255, 255, 255, 0.12) !important;
+  background-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+body.dark .user-page ion-item ion-label {
+  color: #E0E5ED !important;
+}
+
+body.dark .user-page ion-item ion-input {
+  color: #E0E5ED !important;
+}
+
+body.dark .user-page ion-item ion-input::part(native) {
+  color: #E0E5ED !important;
+}
+
+body.dark .user-page ion-item ion-select {
+  color: #E0E5ED !important;
+}
+
+body.dark .user-page ion-input::placeholder {
+  color: #A0A5B8 !important;
+  opacity: 0.6;
+}
+
+body.dark .user-page ion-select::part(placeholder) {
+  color: #A0A5B8 !important;
+  opacity: 0.6;
+}
+
+body.dark .user-page ion-text {
+  color: #E0E5ED !important;
+}
+
+body.dark .user-page ion-text[color="medium"] {
+  color: #A0A5B8 !important;
+}
+
+body.dark .user-page ion-text[color="primary"] {
+  color: #7C88A9 !important;
+}
+
+/* 피드백 모달 다크모드 */
+body.dark .feedback-modal .feedback-card {
+  background: linear-gradient(135deg, #2A2B35 0%, #2E2F3A 50%, #323340 100%) !important;
+  border-color: rgba(124, 136, 169, 0.25) !important;
+}
+
+body.dark .feedback-modal .feedback-header {
+  background: linear-gradient(135deg, #3A3B45 0%, #323340 100%) !important;
+}
+
+body.dark .feedback-modal .feedback-body {
+  background: linear-gradient(135deg, #2A2B35 0%, #2E2F3A 50%, #323340 100%) !important;
+}
+
+body.dark .feedback-title {
+  color: #E0E5ED !important;
+}
+
+body.dark .feedback-text {
+  color: #E0E5ED !important;
+}
+
+body.dark .hot-feedback {
+  background: linear-gradient(135deg, rgba(255, 152, 152, 0.2) 0%, rgba(255, 132, 132, 0.15) 50%, rgba(255, 112, 112, 0.1) 100%) !important;
+  border-color: rgba(255, 152, 152, 0.3) !important;
+}
+
+body.dark .comfortable-feedback {
+  background: linear-gradient(135deg, rgba(160, 232, 160, 0.2) 0%, rgba(140, 212, 140, 0.15) 50%, rgba(120, 192, 120, 0.1) 100%) !important;
+  border-color: rgba(160, 232, 160, 0.3) !important;
+}
+
+body.dark .cold-feedback {
+  background: linear-gradient(135deg, rgba(184, 224, 240, 0.2) 0%, rgba(164, 204, 220, 0.15) 50%, rgba(144, 184, 200, 0.1) 100%) !important;
+  border-color: rgba(184, 224, 240, 0.3) !important;
+}
+
+/* 버튼 다크모드 (부드러운 어두운 파랑-회색 톤) */
+body.dark .user-page ion-button {
+  --background: linear-gradient(135deg, #3A3B45 0%, #323340 50%, #2E2F3A 100%) !important;
+  --background-hover: linear-gradient(135deg, #424350 0%, #3A3B45 50%, #323340 100%) !important;
+  --background-activated: linear-gradient(135deg, #424350 0%, #3A3B45 50%, #323340 100%) !important;
+  --color: #E0E5ED !important;
+  --box-shadow: 0 6px 20px rgba(46, 47, 58, 0.4), 0 2px 8px rgba(42, 43, 52, 0.3) !important;
+  border-color: rgba(124, 136, 169, 0.3) !important;
+}
+
+body.dark .user-page ion-button::part(native) {
+  background: linear-gradient(135deg, #3A3B45 0%, #323340 50%, #2E2F3A 100%) !important;
+  color: #E0E5ED !important;
+  box-shadow: 0 6px 20px rgba(46, 47, 58, 0.4), 0 2px 8px rgba(42, 43, 52, 0.3) !important;
+  border-color: rgba(124, 136, 169, 0.3) !important;
+}
+
+body.dark .user-page ion-button:hover {
+  --box-shadow: 0 10px 28px rgba(46, 47, 58, 0.5), 0 4px 12px rgba(42, 43, 52, 0.35) !important;
+}
+
+body.dark .user-page ion-button:hover::part(native) {
+  box-shadow: 0 10px 28px rgba(46, 47, 58, 0.5), 0 4px 12px rgba(42, 43, 52, 0.35) !important;
+}
+
+/* 다크모드 토글 스타일 */
+.user-page ion-item {
+  --padding-end: 0 !important;
+}
+
+.user-page ion-item ion-toggle {
+  --background: rgba(196, 161, 194, 0.3) !important;
+  --background-checked: linear-gradient(135deg, #C4A1C2 0%, #B895B6 100%) !important;
+  --handle-background: white !important;
+  --handle-background-checked: white !important;
+  flex-shrink: 0 !important;
+  flex-grow: 0 !important;
+  margin-left: auto !important;
+  margin-right: 0 !important;
+  min-width: 50px;
+  width: 50px;
+}
+
+.user-page ion-item ion-toggle::part(track) {
+  background: rgba(196, 161, 194, 0.3) !important;
+}
+
+.user-page ion-item ion-toggle[checked]::part(track) {
+  background: linear-gradient(135deg, #C4A1C2 0%, #B895B6 100%) !important;
+}
+
+.user-page ion-item ion-toggle::part(handle) {
+  background: white !important;
+}
+
+.user-page ion-item ion-toggle[checked]::part(handle) {
+  background: white !important;
+}
+
+/* 다크모드 지원 - Home과 동일한 톤 유지 (시스템 설정용) */
 @media (prefers-color-scheme: dark) {
   .user-page ion-card {
     background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%) !important;
@@ -317,22 +717,135 @@ ion-modal ion-button {
   color: #ffffff !important;
 }
 
-/* 피드백 모달 콘텐츠 - Home과 동일한 Silver Mist 배경 */
-.feedback-modal-content {
-  --background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%) !important;
-  background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%) !important;
-  background-image: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%) !important;
-  color: #66748D !important;
+/* 피드백 모달 스타일 - 면책사항과 동일한 팝업 형식 */
+.feedback-modal {
+  --width: 100%;
+  --height: 100%;
+  --border-radius: 0;
+  --box-shadow: none;
+  --backdrop-opacity: 0.5;
+  --background: rgba(0, 0, 0, 0.5);
 }
 
-.feedback-modal-content::part(scroll) {
-  background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%) !important;
-  background-image: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%) !important;
+.feedback-modal::part(backdrop) {
+  background: rgba(0, 0, 0, 0.5) !important;
 }
 
-.feedback-modal-content .scroll-content {
-  background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%) !important;
-  background-image: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%) !important;
+.feedback-modal::part(wrapper) {
+  background: transparent !important;
+}
+
+.feedback-modal .feedback-content-wrapper {
+  --background: transparent !important;
+  --padding-start: 0;
+  --padding-end: 0;
+  --padding-top: 0;
+  --padding-bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  height: 100vh;
+  background: transparent !important;
+  background-color: transparent !important;
+  overflow: hidden;
+}
+
+.feedback-modal .feedback-content-wrapper::part(scroll) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+.feedback-modal .feedback-card {
+  background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%);
+  border-radius: 28px;
+  width: 95%;
+  max-width: 500px;
+  margin: auto;
+  overflow: hidden;
+  box-shadow: 0 16px 56px rgba(196, 161, 194, 0.4), 0 4px 16px rgba(102, 116, 141, 0.3), 0 2px 8px rgba(0, 0, 0, 0.15);
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+  border: 1px solid rgba(196, 161, 194, 0.35);
+  transform: scale(1);
+  animation: feedbackPopIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes feedbackPopIn {
+  0% {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.feedback-modal .feedback-header {
+  background: linear-gradient(135deg, #C4A1C2 0%, #7C88A9 100%);
+  color: #ffffff;
+  padding: 24px 28px;
+  text-align: center;
+  border-radius: 28px 28px 0 0;
+  box-shadow: 0 4px 16px rgba(124, 136, 169, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.3);
+  position: relative;
+}
+
+.feedback-modal .feedback-header h1 {
+  margin: 0;
+  padding: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #ffffff;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.feedback-modal .feedback-close-button {
+  position: absolute;
+  top: 50%;
+  right: 20px;
+  transform: translateY(-50%);
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  padding: 0;
+  color: #ffffff;
+}
+
+.feedback-modal .feedback-close-button:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: translateY(-50%) scale(1.1);
+}
+
+.feedback-modal .feedback-close-button:active {
+  transform: translateY(-50%) scale(0.95);
+}
+
+.feedback-modal .feedback-close-button ion-icon {
+  font-size: 24px;
+  color: #ffffff;
+}
+
+.feedback-modal .feedback-body {
+  padding: 32px 28px;
+  padding-bottom: 32px;
+  background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%);
 }
 
 .feedback-title {
@@ -341,82 +854,209 @@ ion-modal ion-button {
   font-weight: 600;
   margin: 0;
   text-shadow: 0 2px 8px rgba(196, 161, 194, 0.3);
+  text-align: center !important;
+  width: 100% !important;
 }
 
-/* 쾌적했어요 버튼 스타일 (연두 그라데이션 - 채도 약간 낮춤) */
+/* 피드백 이모지 컨테이너 */
+.feedback-emoji-container {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-around;
+  align-items: center;
+  gap: 12px;
+  margin-top: 48px;
+  padding: 0 8px;
+  flex-wrap: nowrap;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* 피드백 이모지 아이템 */
+.feedback-emoji-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 8px;
+  border-radius: 20px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.feedback-emoji-item:active {
+  transform: scale(0.95);
+}
+
+/* 이모지 스타일 */
+.feedback-emoji {
+  font-size: 48px;
+  line-height: 1;
+  margin-bottom: 8px;
+  transition: transform 0.3s ease;
+}
+
+.feedback-emoji-item:hover .feedback-emoji {
+  transform: scale(1.15);
+}
+
+/* 텍스트 스타일 */
+.feedback-text {
+  font-size: 14px;
+  font-weight: 600;
+  color: #66748D;
+  margin-top: 4px;
+  white-space: nowrap;
+  text-align: center;
+}
+
+/* 더웠어요 스타일 */
+.hot-feedback {
+  background: linear-gradient(135deg, rgba(255, 184, 184, 0.3) 0%, rgba(255, 168, 168, 0.25) 50%, rgba(255, 152, 152, 0.2) 100%);
+  border: 2px solid rgba(255, 152, 152, 0.4);
+}
+
+.hot-feedback:hover {
+  background: linear-gradient(135deg, rgba(255, 184, 184, 0.4) 0%, rgba(255, 168, 168, 0.35) 50%, rgba(255, 152, 152, 0.3) 100%);
+  border-color: rgba(255, 152, 152, 0.6);
+  box-shadow: 0 8px 24px rgba(255, 152, 152, 0.3);
+  transform: translateY(-4px);
+}
+
+/* 쾌적했어요 스타일 */
+.comfortable-feedback {
+  background: linear-gradient(135deg, rgba(184, 240, 184, 0.3) 0%, rgba(168, 232, 168, 0.25) 50%, rgba(160, 232, 160, 0.2) 100%);
+  border: 2px solid rgba(160, 232, 160, 0.4);
+}
+
+.comfortable-feedback:hover {
+  background: linear-gradient(135deg, rgba(184, 240, 184, 0.4) 0%, rgba(168, 232, 168, 0.35) 50%, rgba(160, 232, 160, 0.3) 100%);
+  border-color: rgba(160, 232, 160, 0.6);
+  box-shadow: 0 8px 24px rgba(160, 232, 160, 0.3);
+  transform: translateY(-4px);
+}
+
+/* 추웠어요 스타일 */
+.cold-feedback {
+  background: linear-gradient(135deg, rgba(232, 244, 255, 0.3) 0%, rgba(184, 224, 240, 0.25) 50%, rgba(200, 232, 240, 0.2) 100%);
+  border: 2px solid rgba(184, 224, 240, 0.4);
+}
+
+.cold-feedback:hover {
+  background: linear-gradient(135deg, rgba(232, 244, 255, 0.4) 0%, rgba(184, 224, 240, 0.35) 50%, rgba(200, 232, 240, 0.3) 100%);
+  border-color: rgba(184, 224, 240, 0.6);
+  box-shadow: 0 8px 24px rgba(184, 224, 240, 0.3);
+  transform: translateY(-4px);
+}
+
+/* 쾌적했어요 버튼 스타일 (밝고 채도 낮춘 연두 그라데이션) */
 .comfortable-feedback-button {
-  --background: linear-gradient(135deg, #A0E8A0 0%, #90E890 50%, #88E800 100%) !important;
-  --background-hover: linear-gradient(135deg, #90E890 0%, #88E800 100%) !important;
-  --background-activated: linear-gradient(135deg, #90E890 0%, #7AD800 100%) !important;
-  --color: white !important;
-  --box-shadow: 0 4px 16px rgba(136, 232, 0, 0.4) !important;
+  --background: linear-gradient(135deg, #B8F0B8 0%, #A8E8A8 50%, #A0E8A0 100%) !important;
+  --background-hover: linear-gradient(135deg, #A8E8A8 0%, #A0E8A0 100%) !important;
+  --background-activated: linear-gradient(135deg, #A8E8A8 0%, #98E098 100%) !important;
+  --color: #4A6B4A !important;
+  --box-shadow: 0 4px 16px rgba(160, 232, 160, 0.3) !important;
   --border-radius: 12px !important;
   font-weight: 600 !important;
+  font-size: 18px !important;
+  height: 60px !important;
   text-transform: none !important;
   transition: all 0.3s ease !important;
 }
 
 .comfortable-feedback-button:hover {
-  --box-shadow: 0 6px 20px rgba(136, 232, 0, 0.5) !important;
+  --box-shadow: 0 6px 20px rgba(160, 232, 160, 0.4) !important;
   transform: translateY(-2px) !important;
 }
 
 .comfortable-feedback-button::part(native) {
-  background: linear-gradient(135deg, #A0E8A0 0%, #90E890 50%, #88E800 100%) !important;
+  background: linear-gradient(135deg, #B8F0B8 0%, #A8E8A8 50%, #A0E8A0 100%) !important;
   border-radius: 12px !important;
-  box-shadow: 0 4px 16px rgba(136, 232, 0, 0.4) !important;
-  color: white !important;
+  box-shadow: 0 4px 16px rgba(160, 232, 160, 0.3) !important;
+  color: #4A6B4A !important;
   font-weight: 600 !important;
 }
 
 ion-button.comfortable-feedback-button {
-  background: linear-gradient(135deg, #A0E8A0 0%, #90E890 50%, #88E800 100%) !important;
+  background: linear-gradient(135deg, #B8F0B8 0%, #A8E8A8 50%, #A0E8A0 100%) !important;
   border-radius: 12px !important;
-  box-shadow: 0 4px 16px rgba(136, 232, 0, 0.4) !important;
-  color: white !important;
+  box-shadow: 0 4px 16px rgba(160, 232, 160, 0.3) !important;
+  color: #4A6B4A !important;
 }
 
 ion-button.comfortable-feedback-button::part(native) {
-  background: linear-gradient(135deg, #A0E8A0 0%, #90E890 50%, #88E800 100%) !important;
-  color: white !important;
+  background: linear-gradient(135deg, #B8F0B8 0%, #A8E8A8 50%, #A0E8A0 100%) !important;
+  color: #4A6B4A !important;
 }
 
-/* 추웠어요 버튼 스타일 (하늘색 그라데이션) */
+/* 추웠어요 버튼 스타일 (밝고 채도 낮춘 하늘색 그라데이션) */
 .cold-feedback-button {
-  --background: linear-gradient(135deg, #E0F6FF 0%, #87CEEB 50%, #B0E0E6 100%) !important;
-  --background-hover: linear-gradient(135deg, #D0E6FF 0%, #7BC4E4 100%) !important;
-  --background-activated: linear-gradient(135deg, #87CEEB 0%, #9FD3E3 100%) !important;
-  --color: white !important;
-  --box-shadow: 0 4px 16px rgba(135, 206, 235, 0.4) !important;
+  --background: linear-gradient(135deg, #E8F4FF 0%, #B8E0F0 50%, #C8E8F0 100%) !important;
+  --background-hover: linear-gradient(135deg, #D8E4FF 0%, #A8D0E0 100%) !important;
+  --background-activated: linear-gradient(135deg, #B8E0F0 0%, #C8E8F0 100%) !important;
+  --color: #4A6B7A !important;
+  --box-shadow: 0 4px 16px rgba(184, 224, 240, 0.3) !important;
   --border-radius: 12px !important;
   font-weight: 600 !important;
+  font-size: 18px !important;
+  height: 60px !important;
   text-transform: none !important;
   transition: all 0.3s ease !important;
 }
 
 .cold-feedback-button:hover {
-  --box-shadow: 0 6px 20px rgba(135, 206, 235, 0.5) !important;
+  --box-shadow: 0 6px 20px rgba(184, 224, 240, 0.4) !important;
   transform: translateY(-2px) !important;
 }
 
 .cold-feedback-button::part(native) {
-  background: linear-gradient(135deg, #E0F6FF 0%, #87CEEB 50%, #B0E0E6 100%) !important;
+  background: linear-gradient(135deg, #E8F4FF 0%, #B8E0F0 50%, #C8E8F0 100%) !important;
   border-radius: 12px !important;
-  box-shadow: 0 4px 16px rgba(135, 206, 235, 0.4) !important;
-  color: white !important;
+  box-shadow: 0 4px 16px rgba(184, 224, 240, 0.3) !important;
+  color: #4A6B7A !important;
   font-weight: 600 !important;
 }
 
 ion-button.cold-feedback-button {
-  background: linear-gradient(135deg, #E0F6FF 0%, #87CEEB 50%, #B0E0E6 100%) !important;
+  background: linear-gradient(135deg, #E8F4FF 0%, #B8E0F0 50%, #C8E8F0 100%) !important;
   border-radius: 12px !important;
-  box-shadow: 0 4px 16px rgba(135, 206, 235, 0.4) !important;
-  color: white !important;
+  box-shadow: 0 4px 16px rgba(184, 224, 240, 0.3) !important;
+  color: #4A6B7A !important;
 }
 
 ion-button.cold-feedback-button::part(native) {
-  background: linear-gradient(135deg, #E0F6FF 0%, #87CEEB 50%, #B0E0E6 100%) !important;
-  color: white !important;
+  background: linear-gradient(135deg, #E8F4FF 0%, #B8E0F0 50%, #C8E8F0 100%) !important;
+  color: #4A6B7A !important;
+}
+
+/* 더웠어요 버튼 스타일 (밝고 채도 낮춘 빨간색 그라데이션) */
+.user-page ion-button[color="danger"]:not(.reset-feedback-button) {
+  --background: linear-gradient(135deg, #FFB8B8 0%, #FFA8A8 50%, #FF9898 100%) !important;
+  --background-hover: linear-gradient(135deg, #FFA8A8 0%, #FF9898 100%) !important;
+  --background-activated: linear-gradient(135deg, #FFA8A8 0%, #FF8888 100%) !important;
+  --color: #7A4A4A !important;
+  --box-shadow: 0 4px 16px rgba(255, 152, 152, 0.3) !important;
+  --border-radius: 12px !important;
+  font-weight: 600 !important;
+  font-size: 18px !important;
+  height: 60px !important;
+  text-transform: none !important;
+  transition: all 0.3s ease !important;
+}
+
+.user-page ion-button[color="danger"]:not(.reset-feedback-button):hover {
+  --box-shadow: 0 6px 20px rgba(255, 152, 152, 0.4) !important;
+  transform: translateY(-2px) !important;
+}
+
+.user-page ion-button[color="danger"]:not(.reset-feedback-button)::part(native) {
+  background: linear-gradient(135deg, #FFB8B8 0%, #FFA8A8 50%, #FF9898 100%) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 16px rgba(255, 152, 152, 0.3) !important;
+  color: #7A4A4A !important;
+  font-weight: 600 !important;
 }
 
 /* 온도 범위 재갱신 버튼 스타일 - 부드러운 청록-파랑 그라데이션 (Dusk Blue 기반) */
