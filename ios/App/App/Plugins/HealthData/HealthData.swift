@@ -106,7 +106,14 @@ public class HealthData: CAPPlugin, CAPBridgedPlugin {
         // 심박수 가져오기
         group.enter()
         let heartRateQuery = HKSampleQuery(sampleType: heartRateType, predicate: nil, limit: 1, sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)]) { _, results, error in
-            if let sample = results?.first as? HKQuantitySample {
+            if let error = error {
+                let errorCode = (error as NSError).code
+                if errorCode == 4 { // HKErrorCodeErrorHealthDataUnavailable
+                    print("🔒 HealthKit 데이터 접근 불가 - 기기가 잠긴 지 10분 이상 지남 (iOS 보안 정책)")
+                } else {
+                    print("❌ 심박수 조회 실패: \(error.localizedDescription) (코드: \(errorCode))")
+                }
+            } else if let sample = results?.first as? HKQuantitySample {
                 heartRate = sample.quantity.doubleValue(for: HKUnit.count().unitDivided(by: HKUnit.minute()))
                 print("✅ 심박수: \(heartRate ?? 0) bpm")
             }
@@ -117,7 +124,14 @@ public class HealthData: CAPPlugin, CAPBridgedPlugin {
         // HRV 가져오기
         group.enter()
         let hrvQuery = HKSampleQuery(sampleType: hrvType, predicate: nil, limit: 1, sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)]) { _, results, error in
-            if let sample = results?.first as? HKQuantitySample {
+            if let error = error {
+                let errorCode = (error as NSError).code
+                if errorCode == 4 { // HKErrorCodeErrorHealthDataUnavailable
+                    print("🔒 HealthKit 데이터 접근 불가 - 기기가 잠긴 지 10분 이상 지남 (iOS 보안 정책)")
+                } else {
+                    print("❌ HRV 조회 실패: \(error.localizedDescription) (코드: \(errorCode))")
+                }
+            } else if let sample = results?.first as? HKQuantitySample {
                 hrv = sample.quantity.doubleValue(for: HKUnit.secondUnit(with: .milli))
                 print("✅ HRV: \(hrv ?? 0) ms")
             }
@@ -128,7 +142,14 @@ public class HealthData: CAPPlugin, CAPBridgedPlugin {
         // 혈중산소포화도 가져오기
         group.enter()
         let oxygenQuery = HKSampleQuery(sampleType: oxygenType, predicate: nil, limit: 1, sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierEndDate, ascending: false)]) { _, results, error in
-            if let sample = results?.first as? HKQuantitySample {
+            if let error = error {
+                let errorCode = (error as NSError).code
+                if errorCode == 4 { // HKErrorCodeErrorHealthDataUnavailable
+                    print("🔒 HealthKit 데이터 접근 불가 - 기기가 잠긴 지 10분 이상 지남 (iOS 보안 정책)")
+                } else {
+                    print("❌ 혈중산소포화도 조회 실패: \(error.localizedDescription) (코드: \(errorCode))")
+                }
+            } else if let sample = results?.first as? HKQuantitySample {
                 oxygenSaturation = sample.quantity.doubleValue(for: HKUnit.percent()) * 100
                 print("✅ 혈중산소포화도: \(oxygenSaturation ?? 0)%")
             }
@@ -147,6 +168,8 @@ public class HealthData: CAPPlugin, CAPBridgedPlugin {
                 self.sendToServer(heartRate: 0, hrv: 0, oxygenSaturation: oxy)
             } else {
                 print("⚠️ 모든 데이터가 없어 서버 전송을 건너뜁니다")
+                print("💡 참고: 기기가 잠긴 지 10분 이상 지나면 HealthKit 데이터 접근이 제한됩니다 (iOS 보안 정책)")
+                print("💡 해결: 기기를 잠금 해제하면 다시 데이터 수집이 가능합니다")
             }
             
             // 다음 백그라운드 작업 예약 (10분 후)
