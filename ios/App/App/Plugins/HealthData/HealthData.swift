@@ -53,13 +53,19 @@ public class HealthData: CAPPlugin, CAPBridgedPlugin {
             if timeSinceLastCollection < minInterval {
                 let remainingSeconds = Int(minInterval - timeSinceLastCollection)
                 print("⏰ 백그라운드 작업 알림 수신했지만 최소 간격(10분) 미달 - \(remainingSeconds)초 남음, 건너뜀")
+                // 다음 작업 예약 (남은 시간 후)
+                let nextInterval = minInterval - timeSinceLastCollection
+                scheduleBackgroundTaskWithInterval(nextInterval)
                 return
             }
         }
         
-        print("📊 백그라운드에서 HealthKit 데이터 가져오기 시작")
+        print("📊 백그라운드에서 HealthKit 데이터 가져오기 시작 (10분 주기)")
         // fetchAndSendHealthDataInBackground 내부에서 lastCollectionTime 업데이트 수행
         fetchAndSendHealthDataInBackground()
+        
+        // 다음 작업 예약 (10분 후)
+        scheduleBackgroundTask()
     }
     
     private func fetchAndSendHealthDataInBackground() {
@@ -434,14 +440,21 @@ public class HealthData: CAPPlugin, CAPBridgedPlugin {
     }
     
     private func scheduleBackgroundTask() {
+        // 10분 간격으로 시도 (iOS는 최소 15분이지만 가능한 한 자주 시도)
+        scheduleBackgroundTaskWithInterval(10 * 60) // 10분
+    }
+    
+    private func scheduleBackgroundTaskWithInterval(_ interval: TimeInterval) {
         let request = BGAppRefreshTaskRequest(identifier: backgroundTaskIdentifier)
         // iOS는 BGAppRefreshTaskRequest의 최소 간격이 15분(900초)입니다
-        // 10분으로 설정해도 실제로는 15분 후에 실행됩니다
-        request.earliestBeginDate = Date(timeIntervalSinceNow: 900) // 15분(900초) 후 - iOS 최소 요구사항
+        // 10분으로 설정해도 실제로는 15분 후에 실행되지만, 가능한 한 자주 시도
+        let actualInterval = max(interval, 900) // 최소 15분
+        request.earliestBeginDate = Date(timeIntervalSinceNow: actualInterval)
         
         do {
             try BGTaskScheduler.shared.submit(request)
-            print("✅ 백그라운드 작업 예약됨: 15분 후 (iOS 최소 요구사항)")
+            let minutes = Int(actualInterval / 60)
+            print("✅ 백그라운드 작업 예약됨: \(minutes)분 후 (요청: \(Int(interval / 60))분, iOS 최소: 15분)")
         } catch {
             print("❌ 백그라운드 작업 예약 실패: \(error.localizedDescription)")
         }
@@ -490,7 +503,7 @@ public class HealthData: CAPPlugin, CAPBridgedPlugin {
             return
         }
         
-        // 기존 observer 제거
+        // 기존 observer 제거 (즉시 감지 제거)
         backgroundQueries.forEach { healthStore.stop($0) }
         backgroundQueries.removeAll()
         if let query = backgroundQuery {
@@ -498,64 +511,29 @@ public class HealthData: CAPPlugin, CAPBridgedPlugin {
             backgroundQuery = nil
         }
         
-        // 데이터 수집 핸들러 (공통)
-        let dataCollectionHandler: (String) -> Void = { [weak self] sampleTypeName in
-            guard let self = self else { return }
-            
-            // 최소 간격(10분) 체크
-            let now = Date()
-            if let lastTime = self.lastCollectionTime {
-                let timeSinceLastCollection = now.timeIntervalSince(lastTime)
-                let minInterval: TimeInterval = 10 * 60 // 10분 (600초)
-                
-                if timeSinceLastCollection < minInterval {
-                    let remainingSeconds = Int(minInterval - timeSinceLastCollection)
-                    print("⏰ 백그라운드 데이터 업데이트 감지(\(sampleTypeName))했지만 최소 간격(10분) 미달 - \(remainingSeconds)초 남음, 건너뜀")
-                    return
-                }
-            }
-            
-            print("📊 백그라운드에서 HealthKit 데이터 업데이트 감지(\(sampleTypeName)) - 데이터 수집 시작")
-            
-            // 백그라운드에서 직접 데이터 가져오기 및 서버 전송
-            self.fetchAndSendHealthDataInBackground()
-        }
-        
-        // 각 샘플 타입에 대해 Observer Query 생성 (데이터 변경 시 즉시 감지)
-        let sampleTypes = [
-            (heartRateType, "HeartRate"),
-            (hrvType, "HRV"),
-            (oxygenType, "OxygenSaturation")
-        ]
-        
-        for (sampleType, name) in sampleTypes {
-            let query = HKObserverQuery(sampleType: sampleType, predicate: nil) { query, completionHandler, error in
-                if let error = error {
-                    print("Background monitoring error for \(name): \(error.localizedDescription)")
-                    completionHandler()
-                    return
-                }
-                
-                dataCollectionHandler(name)
-                completionHandler()
-            }
-            
-            healthStore.execute(query)
-            backgroundQueries.append(query)
-            
-            // 백그라운드 배달 활성화 (가능한 한 자주 알림 받기)
-            // .immediate는 사용 불가, .hourly가 최소이지만 데이터 변경 시 즉시 알림 가능
-            healthStore.enableBackgroundDelivery(for: sampleType, frequency: .hourly) { success, error in
-                if let error = error {
-                    print("Failed to enable background delivery for \(name): \(error.localizedDescription)")
-                } else {
-                    print("✅ \(name) background delivery enabled: \(success)")
-                }
+        // 즉시 감지 제거 - 10분마다 주기적 체크만 수행
+        // 백그라운드 배달 비활성화 (즉시 알림 제거)
+        healthStore.disableBackgroundDelivery(for: heartRateType) { success, error in
+            if let error = error {
+                print("Failed to disable background delivery for HeartRate: \(error.localizedDescription)")
+            } else {
+                print("✅ HeartRate background delivery disabled (주기적 체크만 사용)")
             }
         }
-        
-        // Anchored Query로 주기적 체크 설정 (백그라운드에서도 동작 가능)
-        setupAnchoredQueries()
+        healthStore.disableBackgroundDelivery(for: hrvType) { success, error in
+            if let error = error {
+                print("Failed to disable background delivery for HRV: \(error.localizedDescription)")
+            } else {
+                print("✅ HRV background delivery disabled (주기적 체크만 사용)")
+            }
+        }
+        healthStore.disableBackgroundDelivery(for: oxygenType) { success, error in
+            if let error = error {
+                print("Failed to disable background delivery for OxygenSaturation: \(error.localizedDescription)")
+            } else {
+                print("✅ OxygenSaturation background delivery disabled (주기적 체크만 사용)")
+            }
+        }
         
         // 포그라운드에서 주기적 체크 (10분마다) - 백그라운드에서는 iOS가 제한
         setupPeriodicCheck()
@@ -576,100 +554,10 @@ public class HealthData: CAPPlugin, CAPBridgedPlugin {
         // 기존 anchored query 제거
         anchoredQueries.forEach { healthStore.stop($0) }
         anchoredQueries.removeAll()
+        anchorDictionary.removeAll()
         
-        let sampleTypes = [
-            (heartRateType, "HeartRate"),
-            (hrvType, "HRV"),
-            (oxygenType, "OxygenSaturation")
-        ]
-        
-        // 각 샘플 타입에 대해 Anchored Query 생성
-        for (sampleType, name) in sampleTypes {
-            let anchor = anchorDictionary[sampleType] ?? nil
-            
-            let query = HKAnchoredObjectQuery(
-                type: sampleType,
-                predicate: nil,
-                anchor: anchor,
-                limit: HKObjectQueryNoLimit
-            ) { [weak self] query, samples, deletedObjects, newAnchor, error in
-                guard let self = self else { return }
-                
-                if let error = error {
-                    print("Anchored query error for \(name): \(error.localizedDescription)")
-                    return
-                }
-                
-                // 새 데이터가 있으면 수집
-                if let samples = samples, !samples.isEmpty {
-                    print("📊 Anchored Query - \(name) 새 데이터 감지 (\(samples.count)개)")
-                    
-                    // 최소 간격(10분) 체크
-                    let now = Date()
-                    if let lastTime = self.lastCollectionTime {
-                        let timeSinceLastCollection = now.timeIntervalSince(lastTime)
-                        let minInterval: TimeInterval = 10 * 60 // 10분
-                        
-                        if timeSinceLastCollection >= minInterval {
-                            print("⏰ Anchored Query 체크 (10분 경과) - 데이터 수집 시작")
-                            self.fetchAndSendHealthDataInBackground()
-                        } else {
-                            let remainingSeconds = Int(minInterval - timeSinceLastCollection)
-                            print("⏰ Anchored Query 체크 - 최소 간격 미달, \(remainingSeconds)초 남음")
-                        }
-                    } else {
-                        // 첫 수집
-                        print("⏰ Anchored Query 체크 - 첫 데이터 수집")
-                        self.fetchAndSendHealthDataInBackground()
-                    }
-                }
-                
-                // Anchor 업데이트
-                if let newAnchor = newAnchor {
-                    self.anchorDictionary[sampleType] = newAnchor
-                }
-            }
-            
-            // 업데이트 핸들러 (새 데이터가 추가될 때마다 호출)
-            query.updateHandler = { [weak self] query, samples, deletedObjects, newAnchor, error in
-                guard let self = self else { return }
-                
-                if let error = error {
-                    print("Anchored query update error for \(name): \(error.localizedDescription)")
-                    return
-                }
-                
-                // 새 데이터가 있으면 수집
-                if let samples = samples, !samples.isEmpty {
-                    print("📊 Anchored Query 업데이트 - \(name) 새 데이터 감지 (\(samples.count)개)")
-                    
-                    // 최소 간격(10분) 체크
-                    let now = Date()
-                    if let lastTime = self.lastCollectionTime {
-                        let timeSinceLastCollection = now.timeIntervalSince(lastTime)
-                        let minInterval: TimeInterval = 10 * 60 // 10분
-                        
-                        if timeSinceLastCollection >= minInterval {
-                            print("⏰ Anchored Query 업데이트 (10분 경과) - 데이터 수집 시작")
-                            self.fetchAndSendHealthDataInBackground()
-                        }
-                    } else {
-                        print("⏰ Anchored Query 업데이트 - 첫 데이터 수집")
-                        self.fetchAndSendHealthDataInBackground()
-                    }
-                }
-                
-                // Anchor 업데이트
-                if let newAnchor = newAnchor {
-                    self.anchorDictionary[sampleType] = newAnchor
-                }
-            }
-            
-            healthStore.execute(query)
-            anchoredQueries.append(query)
-        }
-        
-        print("✅ Anchored Query 설정 완료 - 백그라운드에서도 주기적 체크 가능")
+        // Anchored Query 제거 - 즉시 감지하지 않고 BGAppRefreshTask에서만 주기적 체크
+        print("✅ Anchored Query 제거 완료 - BGAppRefreshTask에서만 주기적 체크 (10분 간격 시도, iOS 최소 15분)")
     }
     
     // 포그라운드에서 주기적으로 체크 (10분마다)
