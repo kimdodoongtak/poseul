@@ -505,9 +505,9 @@ async def receive_health_data(data: HealthData):
         comfort_max = None
         
         with engine.connect() as conn:
-            # 기존 사용자 정보 확인 (나이, BMI, 성별이 있는지)
-            # 먼저 테이블 구조 확인
+            # 중복 데이터 체크: 최근 2분 이내 동일한 데이터가 있으면 건너뛰기
             try:
+                # 테이블 구조 확인
                 columns_query = text("""
                     SELECT COLUMN_NAME 
                     FROM INFORMATION_SCHEMA.COLUMNS 
@@ -529,9 +529,82 @@ async def receive_health_data(data: HealthData):
                     order_by = f"ORDER BY {date_column} DESC"
                 else:
                     order_by = "ORDER BY 1 DESC"
+                
+                # 최근 2분 이내 동일한 데이터 확인 (MySQL 형식)
+                if date_column:
+                    duplicate_check_query = text(f"""
+                        SELECT HR_mean, HRV_SDNN, mean_sa02, {date_column}
+                        FROM predicted_results
+                        WHERE HR_mean = :hr 
+                          AND ABS(HRV_SDNN - :hrv) < 0.01
+                          AND ABS(mean_sa02 - :o2) < 0.1
+                          AND {date_column} >= DATE_SUB(NOW(), INTERVAL 2 MINUTE)
+                        {order_by}
+                        LIMIT 1
+                    """)
+                else:
+                    # 날짜 컬럼이 없으면 최근 10개만 확인
+                    duplicate_check_query = text("""
+                        SELECT HR_mean, HRV_SDNN, mean_sa02
+                        FROM predicted_results
+                        WHERE HR_mean = :hr 
+                          AND ABS(HRV_SDNN - :hrv) < 0.01
+                          AND ABS(mean_sa02 - :o2) < 0.1
+                        ORDER BY 1 DESC
+                        LIMIT 10
+                    """)
+                
+                try:
+                    duplicate_result = conn.execute(duplicate_check_query, {
+                        'hr': data.heartRate,
+                        'hrv': data.HRV,
+                        'o2': data.oxygenSaturation
+                    }).fetchone()
+                    
+                    if duplicate_result:
+                        # 중복 데이터 발견
+                        logger.info(f"⏭️ 중복 데이터 감지 - 최근 2분 이내 동일한 데이터가 있습니다. 건너뜀 (HR: {data.heartRate}, HRV: {data.HRV}, O2: {data.oxygenSaturation})")
+                        print(f"⏭️ 중복 데이터 감지 - 건너뜀")
+                        return {
+                            "status": "ok",
+                            "message": "Duplicate data skipped",
+                            "predicted_skin_temp": predicted_skin_temp,
+                            "duplicate": True
+                        }
+                except Exception as dup_e:
+                    # SQLite와 MySQL의 날짜 함수 차이 처리
+                    logger.debug(f"중복 체크 실패 (계속 진행): {dup_e}")
             except Exception as e:
                 logger.warning(f"테이블 구조 확인 실패, 기본 쿼리 사용: {e}")
                 order_by = "ORDER BY 1 DESC"
+            
+            # 기존 사용자 정보 확인 (나이, BMI, 성별이 있는지)
+            if 'order_by' not in locals():
+                try:
+                    columns_query = text("""
+                        SELECT COLUMN_NAME 
+                        FROM INFORMATION_SCHEMA.COLUMNS 
+                        WHERE TABLE_SCHEMA = 'main' 
+                        AND TABLE_NAME = 'predicted_results'
+                    """)
+                    columns_result = conn.execute(columns_query)
+                    columns = [row.COLUMN_NAME for row in columns_result]
+                    
+                    # 날짜 컬럼 찾기
+                    date_column = None
+                    for col in ['created_at', 'timestamp', 'date', 'datetime', 'createdAt']:
+                        if col in columns or col.lower() in [c.lower() for c in columns]:
+                            date_column = col
+                            break
+                    
+                    # ORDER BY 절 생성
+                    if date_column:
+                        order_by = f"ORDER BY {date_column} DESC"
+                    else:
+                        order_by = "ORDER BY 1 DESC"
+                except Exception as e:
+                    logger.warning(f"테이블 구조 확인 실패, 기본 쿼리 사용: {e}")
+                    order_by = "ORDER BY 1 DESC"
             
             # predicted_results에서 기존 사용자 정보 확인 (나이, BMI, 성별만)
             check_query = text(f"""
