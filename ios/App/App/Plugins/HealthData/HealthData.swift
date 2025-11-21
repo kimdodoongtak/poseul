@@ -170,9 +170,11 @@ public class HealthData: CAPPlugin, CAPBridgedPlugin {
                 print("⚠️ 모든 데이터가 없어 서버 전송을 건너뜁니다")
                 print("💡 참고: 기기가 잠긴 지 10분 이상 지나면 HealthKit 데이터 접근이 제한됩니다 (iOS 보안 정책)")
                 print("💡 해결: 기기를 잠금 해제하면 다시 데이터 수집이 가능합니다")
+                print("💡 팁: 수면 중에는 화면을 켜두거나 주기적으로 잠금 해제하면 데이터 수집이 가능합니다")
             }
             
-            // 다음 백그라운드 작업 예약 (10분 후)
+            // 다음 백그라운드 작업 예약 (10분 후, 최소 15분)
+            // 화면이 꺼져있어도 가능한 한 자주 시도
             self.scheduleBackgroundTask()
         }
     }
@@ -546,12 +548,16 @@ public class HealthData: CAPPlugin, CAPBridgedPlugin {
                 if timeSinceLastCollection < minInterval {
                     let remainingSeconds = Int(minInterval - timeSinceLastCollection)
                     print("⏰ 데이터 변경 알림(\(sampleTypeName)) 수신했지만 최소 간격(10분) 미달 - \(remainingSeconds)초 남음, 건너뜀")
+                    // 다음 백그라운드 작업 예약 (남은 시간 후)
+                    let nextInterval = max(minInterval - timeSinceLastCollection, 900) // 최소 15분
+                    self.scheduleBackgroundTaskWithInterval(nextInterval)
                     return
                 }
             }
             
-            print("📊 데이터 변경 알림(\(sampleTypeName)) - 10분 경과, 데이터 수집 시작")
+            print("📊 데이터 변경 알림(\(sampleTypeName)) - 10분 경과, 데이터 수집 시작 (화면 꺼짐 상태에서도 시도)")
             // 백그라운드에서 직접 데이터 가져오기 및 서버 전송
+            // 기기가 잠긴 지 10분 이상 지나면 접근 불가하지만, 가능한 한 시도
             self.fetchAndSendHealthDataInBackground()
         }
         
