@@ -467,7 +467,7 @@ async def receive_health_data(data: HealthData):
     HealthKit 데이터를 받아서 DB에 저장하고 모델로 예측
     """
     try:
-        logger.info(f"💌 받은 데이터: {data.dict()}")
+        logger.info(f"💌 받은 데이터: {data.model_dump()}")
         
         # 필수 데이터 확인
         if data.heartRate is None or data.HRV is None or data.oxygenSaturation is None:
@@ -643,11 +643,31 @@ async def receive_health_data(data: HealthData):
                         new_table_exists = conn.execute(new_table_check).fetchone().count > 0
                         
                         if new_table_exists:
+                            # 컬럼 확인하여 정렬 컬럼 결정
+                            skin_columns_check = text("""
+                                SELECT COLUMN_NAME 
+                                FROM INFORMATION_SCHEMA.COLUMNS 
+                                WHERE TABLE_SCHEMA = 'main' 
+                                AND TABLE_NAME = 'new_skinthreshold'
+                            """)
+                            skin_columns = [row.COLUMN_NAME for row in conn.execute(skin_columns_check).fetchall()]
+                            
+                            # 정렬 컬럼 결정 (no 컬럼 우선 사용)
+                            skin_order_by = ""
+                            if 'no' in skin_columns:
+                                skin_order_by = "ORDER BY no DESC"
+                            elif 'id' in skin_columns:
+                                skin_order_by = "ORDER BY id DESC"
+                            elif 'created_at' in skin_columns:
+                                skin_order_by = "ORDER BY created_at DESC"
+                            else:
+                                skin_order_by = ""  # 정렬 없이 LIMIT만 사용
+                            
                             # 최신 임계값 가져오기
-                            latest_threshold_query = text("""
+                            latest_threshold_query = text(f"""
                                 SELECT min_skinthreshold, max_skinthreshold
                                 FROM new_skinthreshold
-                                ORDER BY id DESC
+                                {skin_order_by}
                                 LIMIT 1
                             """)
                             latest_threshold = conn.execute(latest_threshold_query).fetchone()
@@ -750,10 +770,30 @@ async def receive_health_data(data: HealthData):
                         new_table_exists = conn.execute(new_table_check).fetchone().count > 0
                         
                         if new_table_exists:
-                            latest_threshold_query = text("""
+                            # 컬럼 확인하여 정렬 컬럼 결정
+                            skin_columns_check = text("""
+                                SELECT COLUMN_NAME 
+                                FROM INFORMATION_SCHEMA.COLUMNS 
+                                WHERE TABLE_SCHEMA = 'main' 
+                                AND TABLE_NAME = 'new_skinthreshold'
+                            """)
+                            skin_columns = [row.COLUMN_NAME for row in conn.execute(skin_columns_check).fetchall()]
+                            
+                            # 정렬 컬럼 결정 (no 컬럼 우선 사용)
+                            skin_order_by = ""
+                            if 'no' in skin_columns:
+                                skin_order_by = "ORDER BY no DESC"
+                            elif 'id' in skin_columns:
+                                skin_order_by = "ORDER BY id DESC"
+                            elif 'created_at' in skin_columns:
+                                skin_order_by = "ORDER BY created_at DESC"
+                            else:
+                                skin_order_by = ""  # 정렬 없이 LIMIT만 사용
+                            
+                            latest_threshold_query = text(f"""
                                 SELECT min_skinthreshold, max_skinthreshold
                                 FROM new_skinthreshold
-                                ORDER BY id DESC
+                                {skin_order_by}
                                 LIMIT 1
                             """)
                             latest_threshold = conn.execute(latest_threshold_query).fetchone()
@@ -982,7 +1022,7 @@ async def predict(data: PredictRequest):
         if not model_loaded:
             raise HTTPException(status_code=500, detail="모델이 로드되지 않았습니다.")
         
-        logger.info(f"📱 앱에서 예측 요청 받음: {data.dict()}")
+        logger.info(f"📱 앱에서 예측 요청 받음: {data.model_dump()}")
         
         # 예측 수행
         predicted_temp = predict_temperature_with_model(
@@ -1010,7 +1050,7 @@ async def predict(data: PredictRequest):
             'success': True,
             'predicted_temperature': predicted_temp,
             'temperature_category': temperature_category,
-            'input_data': data.dict()
+            'input_data': data.model_dump()
         }
         logger.info(f"✅ 예측 완료: {predicted_temp:.2f}°C ({temperature_category})")
         return result
@@ -1304,7 +1344,7 @@ async def control_air_conditioner_api(data: AirConditionerControlRequest, reques
         pat_token = device_info['pat_token']
         device_id = device_info['device_id']
         
-        logger.info(f"📱 앱에서 에어컨 제어 요청: {data.dict()} (사용자: {user_id})")
+        logger.info(f"📱 앱에서 에어컨 제어 요청: {data.model_dump()} (사용자: {user_id})")
         
         if not data.action:
             raise HTTPException(status_code=400, detail="action 파라미터가 필요합니다.")
@@ -2146,7 +2186,7 @@ def convert_predicted_temp_to_code(predicted_temp, min_threshold, max_threshold)
 async def save_temperature_feedback(data: TemperatureFeedbackRequest):
     """온도 피드백 저장 API - new_skinthreshold 테이블에 저장하고 예측값과 비교하여 임계값 조정"""
     try:
-        logger.info(f"📝 온도 피드백 저장 요청: {data.dict()}")
+        logger.info(f"📝 온도 피드백 저장 요청: {data.model_dump()}")
         
         # 피드백 값을 코드로 변환 (C: 추움, H: 더움, G: 쾌적)
         feedback_code = None
@@ -2255,11 +2295,31 @@ async def save_temperature_feedback(data: TemperatureFeedbackRequest):
                     new_table_exists = conn.execute(new_table_check).fetchone().count > 0
                     
                     if new_table_exists:
-                        # 최신 임계값 가져오기 (ID로 정렬)
-                        latest_threshold_query = text("""
+                        # 컬럼 확인하여 정렬 컬럼 결정
+                        skin_columns_check = text("""
+                            SELECT COLUMN_NAME 
+                            FROM INFORMATION_SCHEMA.COLUMNS 
+                            WHERE TABLE_SCHEMA = 'main' 
+                            AND TABLE_NAME = 'new_skinthreshold'
+                        """)
+                        skin_columns = [row.COLUMN_NAME for row in conn.execute(skin_columns_check).fetchall()]
+                        
+                        # 정렬 컬럼 결정 (no 컬럼 우선 사용)
+                        skin_order_by = ""
+                        if 'no' in skin_columns:
+                            skin_order_by = "ORDER BY no DESC"
+                        elif 'id' in skin_columns:
+                            skin_order_by = "ORDER BY id DESC"
+                        elif 'created_at' in skin_columns:
+                            skin_order_by = "ORDER BY created_at DESC"
+                        else:
+                            skin_order_by = ""  # 정렬 없이 LIMIT만 사용
+                        
+                        # 최신 임계값 가져오기
+                        latest_threshold_query = text(f"""
                             SELECT min_skinthreshold, max_skinthreshold
                             FROM new_skinthreshold
-                            ORDER BY id DESC
+                            {skin_order_by}
                             LIMIT 1
                         """)
                         latest_threshold = conn.execute(latest_threshold_query).fetchone()
