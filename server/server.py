@@ -689,15 +689,34 @@ async def receive_health_data(data: HealthData):
             # predicted_skin 컬럼이 있는지 확인
             predicted_skin_code = None
             try:
-                # predicted_skin 컬럼 존재 여부 확인
+                # 테이블 컬럼 확인
                 columns_check = text("""
                     SELECT COLUMN_NAME 
                     FROM INFORMATION_SCHEMA.COLUMNS 
                     WHERE TABLE_SCHEMA = 'main' 
                     AND TABLE_NAME = 'predicted_results'
-                    AND COLUMN_NAME = 'predicted_skin'
                 """)
-                has_predicted_skin_column = conn.execute(columns_check).fetchone() is not None
+                columns_result = conn.execute(columns_check)
+                columns = [row.COLUMN_NAME for row in columns_result]
+                
+                # predicted_skin 컬럼 존재 여부 확인
+                has_predicted_skin_column = 'predicted_skin' in columns
+                
+                # created_at 컬럼 존재 여부 확인 및 추가
+                has_created_at_column = 'created_at' in columns
+                if not has_created_at_column:
+                    try:
+                        # created_at 컬럼 추가
+                        alter_query = text("""
+                            ALTER TABLE predicted_results 
+                            ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                        """)
+                        conn.execute(alter_query)
+                        conn.commit()
+                        logger.info("✅ predicted_results 테이블에 created_at 컬럼 추가 완료")
+                        has_created_at_column = True
+                    except Exception as e:
+                        logger.warning(f"⚠️ created_at 컬럼 추가 실패: {str(e)}")
                 
                 # 예측값을 코드로 변환 (임계값 사용)
                 if predicted_skin_temp > 0 and has_predicted_skin_column:
@@ -756,62 +775,152 @@ async def receive_health_data(data: HealthData):
                     logger.info(f"🔮 예측값 코드 변환: {predicted_skin_temp}°C → {predicted_skin_code} (임계값: {temp_min_threshold}~{temp_max_threshold}°C)")
                 
                 data_inserted = False
+                # 현재 시간 가져오기
+                from datetime import datetime
+                current_time = datetime.now()
+                
                 if has_predicted_skin_column and predicted_skin_code is not None:
                     # predicted_skin 컬럼이 있으면 함께 저장
-                    insert_query = text("""
-                        INSERT INTO predicted_results 
-                        (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp, predicted_skin)
-                        VALUES 
-                        (:heart_rate, :hrv, :oxygen_sat, :bmi, :age, :gender, :predicted_temp, :predicted_skin)
-                    """)
-                    conn.execute(insert_query, {
-                        'heart_rate': data.heartRate,
-                        'hrv': data.HRV,
-                        'oxygen_sat': data.oxygenSaturation,
-                        'bmi': bmi,
-                        'age': age,
-                        'gender': gender,
-                        'predicted_temp': predicted_skin_temp,
-                        'predicted_skin': predicted_skin_code
-                    })
+                    if has_created_at_column:
+                        insert_query = text("""
+                            INSERT INTO predicted_results 
+                            (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp, predicted_skin, created_at)
+                            VALUES 
+                            (:heart_rate, :hrv, :oxygen_sat, :bmi, :age, :gender, :predicted_temp, :predicted_skin, :created_at)
+                        """)
+                        conn.execute(insert_query, {
+                            'heart_rate': data.heartRate,
+                            'hrv': data.HRV,
+                            'oxygen_sat': data.oxygenSaturation,
+                            'bmi': bmi,
+                            'age': age,
+                            'gender': gender,
+                            'predicted_temp': predicted_skin_temp,
+                            'predicted_skin': predicted_skin_code,
+                            'created_at': current_time
+                        })
+                    else:
+                        insert_query = text("""
+                            INSERT INTO predicted_results 
+                            (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp, predicted_skin)
+                            VALUES 
+                            (:heart_rate, :hrv, :oxygen_sat, :bmi, :age, :gender, :predicted_temp, :predicted_skin)
+                        """)
+                        conn.execute(insert_query, {
+                            'heart_rate': data.heartRate,
+                            'hrv': data.HRV,
+                            'oxygen_sat': data.oxygenSaturation,
+                            'bmi': bmi,
+                            'age': age,
+                            'gender': gender,
+                            'predicted_temp': predicted_skin_temp,
+                            'predicted_skin': predicted_skin_code
+                        })
                     data_inserted = True
                 else:
                     # predicted_skin 컬럼이 없으면 기존 방식으로 저장
-                    insert_query = text("""
-                        INSERT INTO predicted_results 
-                        (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp)
-                        VALUES 
-                        (:heart_rate, :hrv, :oxygen_sat, :bmi, :age, :gender, :predicted_temp)
-                    """)
-                    conn.execute(insert_query, {
-                        'heart_rate': data.heartRate,
-                        'hrv': data.HRV,
-                        'oxygen_sat': data.oxygenSaturation,
-                        'bmi': bmi,
-                        'age': age,
-                        'gender': gender,
-                        'predicted_temp': predicted_skin_temp
-                    })
+                    if has_created_at_column:
+                        insert_query = text("""
+                            INSERT INTO predicted_results 
+                            (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp, created_at)
+                            VALUES 
+                            (:heart_rate, :hrv, :oxygen_sat, :bmi, :age, :gender, :predicted_temp, :created_at)
+                        """)
+                        conn.execute(insert_query, {
+                            'heart_rate': data.heartRate,
+                            'hrv': data.HRV,
+                            'oxygen_sat': data.oxygenSaturation,
+                            'bmi': bmi,
+                            'age': age,
+                            'gender': gender,
+                            'predicted_temp': predicted_skin_temp,
+                            'created_at': current_time
+                        })
+                    else:
+                        insert_query = text("""
+                            INSERT INTO predicted_results 
+                            (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp)
+                            VALUES 
+                            (:heart_rate, :hrv, :oxygen_sat, :bmi, :age, :gender, :predicted_temp)
+                        """)
+                        conn.execute(insert_query, {
+                            'heart_rate': data.heartRate,
+                            'hrv': data.HRV,
+                            'oxygen_sat': data.oxygenSaturation,
+                            'bmi': bmi,
+                            'age': age,
+                            'gender': gender,
+                            'predicted_temp': predicted_skin_temp
+                        })
                     data_inserted = True
             except Exception as e:
                 logger.warning(f"⚠️ predicted_skin 컬럼 확인 실패, 기존 방식으로 저장: {str(e)}")
                 # 예외 발생 시에만 기존 방식으로 저장 (중복 방지)
                 if not data_inserted:
-                    insert_query = text("""
-                        INSERT INTO predicted_results 
-                        (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp)
-                        VALUES 
-                        (:heart_rate, :hrv, :oxygen_sat, :bmi, :age, :gender, :predicted_temp)
-                    """)
-                    conn.execute(insert_query, {
-                        'heart_rate': data.heartRate,
-                        'hrv': data.HRV,
-                        'oxygen_sat': data.oxygenSaturation,
-                        'bmi': bmi,
-                        'age': age,
-                        'gender': gender,
-                        'predicted_temp': predicted_skin_temp
-                    })
+                    from datetime import datetime
+                    current_time = datetime.now()
+                    
+                    # created_at 컬럼 확인
+                    try:
+                        columns_check = text("""
+                            SELECT COLUMN_NAME 
+                            FROM INFORMATION_SCHEMA.COLUMNS 
+                            WHERE TABLE_SCHEMA = 'main' 
+                            AND TABLE_NAME = 'predicted_results'
+                            AND COLUMN_NAME = 'created_at'
+                        """)
+                        has_created_at = conn.execute(columns_check).fetchone() is not None
+                        
+                        if has_created_at:
+                            insert_query = text("""
+                                INSERT INTO predicted_results 
+                                (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp, created_at)
+                                VALUES 
+                                (:heart_rate, :hrv, :oxygen_sat, :bmi, :age, :gender, :predicted_temp, :created_at)
+                            """)
+                            conn.execute(insert_query, {
+                                'heart_rate': data.heartRate,
+                                'hrv': data.HRV,
+                                'oxygen_sat': data.oxygenSaturation,
+                                'bmi': bmi,
+                                'age': age,
+                                'gender': gender,
+                                'predicted_temp': predicted_skin_temp,
+                                'created_at': current_time
+                            })
+                        else:
+                            insert_query = text("""
+                                INSERT INTO predicted_results 
+                                (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp)
+                                VALUES 
+                                (:heart_rate, :hrv, :oxygen_sat, :bmi, :age, :gender, :predicted_temp)
+                            """)
+                            conn.execute(insert_query, {
+                                'heart_rate': data.heartRate,
+                                'hrv': data.HRV,
+                                'oxygen_sat': data.oxygenSaturation,
+                                'bmi': bmi,
+                                'age': age,
+                                'gender': gender,
+                                'predicted_temp': predicted_skin_temp
+                            })
+                    except Exception as e2:
+                        logger.warning(f"⚠️ created_at 컬럼 확인 실패: {str(e2)}")
+                        insert_query = text("""
+                            INSERT INTO predicted_results 
+                            (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp)
+                            VALUES 
+                            (:heart_rate, :hrv, :oxygen_sat, :bmi, :age, :gender, :predicted_temp)
+                        """)
+                        conn.execute(insert_query, {
+                            'heart_rate': data.heartRate,
+                            'hrv': data.HRV,
+                            'oxygen_sat': data.oxygenSaturation,
+                            'bmi': bmi,
+                            'age': age,
+                            'gender': gender,
+                            'predicted_temp': predicted_skin_temp
+                        })
             
             conn.commit()
             
