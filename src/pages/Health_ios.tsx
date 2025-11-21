@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { App } from '@capacitor/app';
 import {
   IonContent,
   IonHeader,
@@ -55,6 +56,7 @@ const Health_ios: React.FC = () => {
   // 차트 데이터 상태
   const [chartData, setChartData] = useState<NightChartData | null>(null);
   const [lastCollectionTime, setLastCollectionTime] = useState<number>(0);
+  const lastCollectionTimeRef = useRef<number>(0); // useRef로 변경하여 의존성 문제 해결
   const collectionIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
   // 초기 설정 단계 관리
@@ -174,19 +176,56 @@ const Health_ios: React.FC = () => {
       // 초기 로드 후 첫 데이터 가져오기
       const initialTimeout = setTimeout(() => {
         fetchHealthData(healthDataPlugin);
+        const now = Date.now();
+        setLastCollectionTime(now);
+        lastCollectionTimeRef.current = now;
       }, 1000); // 1초 후 첫 데이터 가져오기
       
-      // 30분마다 자동으로 데이터 가져오기
+      // 10분마다 자동으로 데이터 가져오기
       const interval = setInterval(() => {
-        console.log('⏰ 30분 주기 - HealthData 가져오기 시작...');
+        console.log('⏰ 10분 주기 - HealthData 가져오기 시작...');
         fetchHealthData(healthDataPlugin);
-      }, 30 * 60 * 1000); // 30분 = 1800000ms
+        const now = Date.now();
+        setLastCollectionTime(now);
+        lastCollectionTimeRef.current = now;
+      }, 10 * 60 * 1000); // 10분 = 600000ms
       
-      console.log('✅ 30분마다 HealthData 자동 수집 시작');
+      console.log('✅ 10분마다 HealthData 자동 수집 시작');
+
+      // 앱이 포그라운드로 돌아올 때 데이터 수집 확인
+      const handleAppStateChange = async (state: { isActive: boolean }) => {
+        if (state.isActive) {
+          const now = Date.now();
+          const timeSinceLastCollection = now - lastCollectionTimeRef.current;
+          const tenMinutes = 10 * 60 * 1000; // 10분
+          
+          // 마지막 수집 후 10분 이상 지났으면 데이터 수집
+          if (timeSinceLastCollection >= tenMinutes) {
+            const minutesPassed = Math.floor(timeSinceLastCollection / 60000);
+            console.log(`⏰ 앱 포그라운드 복귀 - 마지막 수집 후 ${minutesPassed}분 경과, 데이터 수집 시작...`);
+            fetchHealthData(healthDataPlugin);
+            setLastCollectionTime(now);
+            lastCollectionTimeRef.current = now;
+          } else {
+            const minutesPassed = Math.floor(timeSinceLastCollection / 60000);
+            const minutesRemaining = Math.floor((tenMinutes - timeSinceLastCollection) / 60000);
+            console.log(`⏰ 앱 포그라운드 복귀 - 마지막 수집 후 ${minutesPassed}분 경과, 다음 수집까지 ${minutesRemaining}분 남음`);
+          }
+        }
+      };
+
+      // 앱 상태 변경 리스너 등록
+      let listener: any = null;
+      App.addListener('appStateChange', handleAppStateChange).then((l) => {
+        listener = l;
+      });
 
       return () => {
         clearTimeout(initialTimeout);
         clearInterval(interval);
+        if (listener) {
+          listener.remove();
+        }
       };
     }
     
@@ -195,35 +234,63 @@ const Health_ios: React.FC = () => {
       // UI가 먼저 렌더링되도록 지연 후 데이터 가져오기 (ANR 방지)
       const initialTimeout = setTimeout(() => {
         fetchHealthDataFromServer();
+        const now = Date.now();
+        setLastCollectionTime(now);
+        lastCollectionTimeRef.current = now;
       }, 500); // 500ms 지연으로 UI 먼저 렌더링
       
-      // 30분마다 자동으로 데이터 가져오기
+      // 10분마다 자동으로 데이터 가져오기
       const interval = setInterval(() => {
-        console.log('⏰ 30분 주기 - 서버에서 HealthData 가져오기 시작...');
+        console.log('⏰ 10분 주기 - 서버에서 HealthData 가져오기 시작...');
         fetchHealthDataFromServer();
-      }, 30 * 60 * 1000); // 30분 = 1800000ms
+        const now = Date.now();
+        setLastCollectionTime(now);
+        lastCollectionTimeRef.current = now;
+      }, 10 * 60 * 1000); // 10분 = 600000ms
       
-      console.log('✅ 30분마다 HealthData 자동 수집 시작 (Android)');
+      console.log('✅ 10분마다 HealthData 자동 수집 시작 (Android)');
+
+      // 앱이 포그라운드로 돌아올 때 데이터 수집 확인
+      const handleAppStateChange = async (state: { isActive: boolean }) => {
+        if (state.isActive) {
+          const now = Date.now();
+          const timeSinceLastCollection = now - lastCollectionTimeRef.current;
+          const tenMinutes = 10 * 60 * 1000; // 10분
+          
+          // 마지막 수집 후 10분 이상 지났으면 데이터 수집
+          if (timeSinceLastCollection >= tenMinutes) {
+            const minutesPassed = Math.floor(timeSinceLastCollection / 60000);
+            console.log(`⏰ 앱 포그라운드 복귀 - 마지막 수집 후 ${minutesPassed}분 경과, 데이터 수집 시작...`);
+            fetchHealthDataFromServer();
+            setLastCollectionTime(now);
+            lastCollectionTimeRef.current = now;
+          } else {
+            const minutesPassed = Math.floor(timeSinceLastCollection / 60000);
+            const minutesRemaining = Math.floor((tenMinutes - timeSinceLastCollection) / 60000);
+            console.log(`⏰ 앱 포그라운드 복귀 - 마지막 수집 후 ${minutesPassed}분 경과, 다음 수집까지 ${minutesRemaining}분 남음`);
+          }
+        }
+      };
+
+      // 앱 상태 변경 리스너 등록
+      let listener: any = null;
+      App.addListener('appStateChange', handleAppStateChange).then((l) => {
+        listener = l;
+      });
 
       return () => {
         clearTimeout(initialTimeout);
         clearInterval(interval);
+        if (listener) {
+          listener.remove();
+        }
       };
     }
-  }, [healthDataPlugin, platform]);
+  }, [healthDataPlugin, platform]); // lastCollectionTime 제거 - useRef로 관리
 
 
-  // 백그라운드 모니터링 이벤트 리스너는 제거 (2분마다만 가져오기)
-  // 실시간 업데이트 대신 2분마다만 데이터를 가져오도록 함
-  // useEffect(() => {
-  //   if (!healthDataPlugin || platform !== 'ios' || !backgroundMonitoring) return;
-  //   const listener = healthDataPlugin.addListener('healthDataUpdated', async () => {
-  //     await fetchHealthDataInBackground(healthDataPlugin);
-  //   });
-  //   return () => {
-  //     listener.remove();
-  //   };
-  // }, [healthDataPlugin, platform, backgroundMonitoring]);
+  // 백그라운드 모니터링은 네이티브 코드에서만 처리합니다
+  // JavaScript 리스너는 제거되었습니다 (네이티브에서 직접 데이터 수집 및 서버 전송)
 
   const fetchHealthData = async (HealthData: any) => {
     if (!HealthData) {
@@ -307,7 +374,7 @@ const Health_ios: React.FC = () => {
 
       // 서버로 데이터 전송은 완전히 백그라운드로 처리 (로딩 상태와 무관)
       if (normalizedHeartRate || normalizedHrv || normalizedOxygen) {
-        console.log('📤 서버로 데이터 전송 시작 (30분 주기)...');
+        console.log('📤 서버로 데이터 전송 시작 (10분 주기)...');
         // Promise를 반환하지 않도록 void로 처리하여 완전히 백그라운드로 실행
         void sendToServer({
           heartRate: normalizedHeartRate?.value || null,
@@ -317,7 +384,7 @@ const Health_ios: React.FC = () => {
           age: age ? parseFloat(age) : null,
           gender: gender && gender !== '' ? parseFloat(gender) : 0.0,
         }).then(() => {
-          console.log('✅ 서버 전송 성공 (30분 주기)');
+          console.log('✅ 서버 전송 성공 (10분 주기)');
         }).catch((err) => {
           console.error('❌ 서버 전송 실패 (백그라운드):', err);
         });
@@ -331,62 +398,7 @@ const Health_ios: React.FC = () => {
     }
   };
 
-  // 백그라운드에서 데이터 가져오기 (UI 업데이트 및 서버 전송)
-  const fetchHealthDataInBackground = async (HealthData: any) => {
-    if (!HealthData) {
-      console.log('HealthData 플러그인이 없습니다.');
-      return;
-    }
-    
-    console.log('🔄 백그라운드에서 HealthData 가져오기 시작...');
-    
-    try {
-      const [heartRate, hrv, oxygenSaturation] = await Promise.all([
-        HealthData.getLatestHeartRate().catch(() => null),
-        HealthData.getLatestHeartRateVariability().catch(() => null),
-        HealthData.getLatestOxygenSaturation().catch(() => null),
-      ]);
-
-      // 빈 딕셔너리를 null로 변환
-      const normalizeData = (data: any) => {
-        if (!data || Object.keys(data).length === 0) return null;
-        return data;
-      };
-
-      const normalizedHeartRate = normalizeData(heartRate);
-      const normalizedHrv = normalizeData(hrv);
-      const normalizedOxygen = normalizeData(oxygenSaturation);
-
-      console.log('🔄 백그라운드 HealthData 가져오기 결과:', { 
-        heartRate: normalizedHeartRate ? `${normalizedHeartRate.value} bpm` : '없음',
-        hrv: normalizedHrv ? `${normalizedHrv.value} ms` : '없음',
-        oxygenSaturation: normalizedOxygen ? `${normalizedOxygen.value}%` : '없음'
-      });
-
-      // UI 업데이트 (백그라운드에서도 최신 데이터 표시)
-      setHealthData({
-        heartRate: normalizedHeartRate,
-        hrv: normalizedHrv,
-        oxygenSaturation: normalizedOxygen,
-      });
-
-      // 서버로 전송
-      if (normalizedHeartRate || normalizedHrv || normalizedOxygen) {
-        void sendToServer({
-          heartRate: normalizedHeartRate?.value || null,
-          HRV: normalizedHrv?.value || null,
-          oxygenSaturation: normalizedOxygen?.value || null,
-          bmi: bmi ? parseFloat(bmi) : null,
-          age: age ? parseFloat(age) : null,
-          gender: gender && gender !== '' ? parseFloat(gender) : 0.0,
-        }).catch((err) => {
-          console.error('🔄 백그라운드 서버 전송 실패:', err);
-        });
-      }
-    } catch (err: any) {
-      console.error('🔄 백그라운드 HealthData 가져오기 실패:', err);
-    }
-  };
+  // 백그라운드 데이터 수집은 네이티브 코드에서만 처리합니다
 
   // 안드로이드에서 서버에서 건강 데이터 가져오기
   const fetchHealthDataFromServer = async () => {
@@ -559,8 +571,10 @@ const Health_ios: React.FC = () => {
           console.error('차트 데이터 저장 실패:', error);
         }
       } else {
-        // DB 데이터가 없으면 기존 데이터 로드
-        loadChartData();
+        // DB 데이터가 없으면 localStorage도 비우고 빈 데이터로 설정
+        console.log('⚠️ DB에 데이터가 없습니다. 차트를 비웁니다.');
+        localStorage.removeItem('night_chart_data');
+        setChartData(dbChartData); // 빈 데이터로 설정
       }
     } catch (error) {
       console.error('DB 차트 데이터 로드 실패:', error);
@@ -719,6 +733,24 @@ const Health_ios: React.FC = () => {
         if (response.ok) {
           const result = await response.json();
           console.log('✅ 서버 응답:', result);
+          
+          // iOS에서 서버 URL을 UserDefaults에도 저장 (백그라운드 작업용)
+          if (platform === 'ios' && healthDataPlugin) {
+            try {
+              // baseUrl에서 /healthdata 제거
+              const baseUrl = serverURL.replace('/healthdata', '');
+              await healthDataPlugin.saveUserInfo({
+                age: age || '',
+                bmi: bmi || '',
+                gender: gender || '0',
+                serverURL: baseUrl // 서버 URL도 함께 저장
+              });
+              console.log('✅ 서버 URL을 UserDefaults에 저장 완료:', baseUrl);
+            } catch (err) {
+              console.log('⚠️ UserDefaults에 서버 URL 저장 실패 (무시):', err);
+            }
+          }
+          
           return result;
         } else {
           const errorText = await response.text();
@@ -1267,9 +1299,15 @@ const Health_ios: React.FC = () => {
                   )}
                   
                   {/* 심박수 차트 */}
-                  {chartData && chartData.heartRateData.length > 0 && (
+                  {chartData ? (
                     <div style={{ marginTop: '12px' }}>
                       <HeartRateChart data={chartData.heartRateData} />
+                    </div>
+                  ) : (
+                    <div style={{ padding: '20px', textAlign: 'center', marginTop: '12px' }}>
+                      <IonText color="medium">
+                        <p>데이터가 없습니다. 10분마다 자동으로 데이터가 수집됩니다.</p>
+                      </IonText>
                     </div>
                   )}
                 </IonCardContent>
@@ -1283,12 +1321,12 @@ const Health_ios: React.FC = () => {
         <IonCard className="temperature-chart-card">
           <IonCardContent>
             <div className="temperature-chart-title">하룻밤 온도 변화</div>
-            {chartData && chartData.temperatureData.length > 0 ? (
+            {chartData ? (
               <TemperatureChart data={chartData.temperatureData} />
             ) : (
               <div style={{ padding: '20px', textAlign: 'center' }}>
                 <IonText color="medium">
-                  <p>데이터가 없습니다. 1시간마다 자동으로 데이터가 수집됩니다.</p>
+                  <p>데이터가 없습니다. 10분마다 자동으로 데이터가 수집됩니다.</p>
                 </IonText>
               </div>
             )}
