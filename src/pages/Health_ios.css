@@ -493,9 +493,10 @@ ion-item ion-input {
   border: 1px solid rgba(196, 161, 194, 0.35);
   position: relative;
   overflow: hidden;
-  margin-left: -2px !important;
-  margin-right: -2px !important;
-  width: calc(100% + 4px) !important;
+  margin-left: 20px !important; /* 양옆 패딩 추가 */
+  margin-right: 20px !important; /* 양옆 패딩 추가 */
+  width: calc(100% - 40px) !important; /* 패딩만큼 너비 줄임 */
+  box-sizing: border-box;
 }
 
 .health-ios-page .health-data-main-card ion-card-content {
@@ -575,6 +576,8 @@ ion-item ion-input {
   gap: 15px;
   margin: 0;
   width: 100%;
+  padding: 0 20px; /* 양옆 패딩 추가 */
+  box-sizing: border-box;
 }
 
 .health-ios-page .hrv-card,
