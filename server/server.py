@@ -506,6 +506,9 @@ async def receive_health_data(data: HealthData):
         
         with engine.connect() as conn:
             # 중복 데이터 체크: 최근 2분 이내 동일한 데이터가 있으면 건너뛰기
+            date_column = None
+            order_by = "ORDER BY 1 DESC"
+            
             try:
                 # 테이블 구조 확인
                 columns_query = text("""
@@ -516,18 +519,20 @@ async def receive_health_data(data: HealthData):
                 """)
                 columns_result = conn.execute(columns_query)
                 columns = [row.COLUMN_NAME for row in columns_result]
+                logger.debug(f"📋 predicted_results 테이블 컬럼: {columns}")
                 
                 # 날짜 컬럼 찾기
-                date_column = None
                 for col in ['created_at', 'timestamp', 'date', 'datetime', 'createdAt']:
                     if col in columns or col.lower() in [c.lower() for c in columns]:
                         date_column = col
+                        logger.info(f"✅ 날짜 컬럼 발견: {date_column}")
                         break
                 
                 # ORDER BY 절 생성
                 if date_column:
                     order_by = f"ORDER BY {date_column} DESC"
                 else:
+                    logger.warning("⚠️ 날짜 컬럼을 찾을 수 없습니다. 중복 체크가 제한적일 수 있습니다.")
                     order_by = "ORDER BY 1 DESC"
                 
                 # 최근 2분 이내 동일한 데이터 확인 (MySQL 형식)
@@ -542,6 +547,7 @@ async def receive_health_data(data: HealthData):
                         {order_by}
                         LIMIT 1
                     """)
+                    logger.debug(f"🔍 중복 체크 쿼리 실행 (날짜 컬럼 사용: {date_column})")
                 else:
                     # 날짜 컬럼이 없으면 최근 10개만 확인
                     duplicate_check_query = text("""
@@ -553,6 +559,7 @@ async def receive_health_data(data: HealthData):
                         ORDER BY 1 DESC
                         LIMIT 10
                     """)
+                    logger.debug("🔍 중복 체크 쿼리 실행 (날짜 컬럼 없음, 최근 10개 확인)")
                 
                 try:
                     duplicate_result = conn.execute(duplicate_check_query, {
@@ -571,13 +578,17 @@ async def receive_health_data(data: HealthData):
                             "predicted_skin_temp": predicted_skin_temp,
                             "duplicate": True
                         }
+                    else:
+                        logger.debug(f"✅ 중복 데이터 없음 - 계속 진행 (HR: {data.heartRate}, HRV: {data.HRV}, O2: {data.oxygenSaturation})")
                 except Exception as dup_e:
                     # SQLite와 MySQL의 날짜 함수 차이 처리
                     logger.warning(f"⚠️ 중복 체크 실패 (계속 진행): {dup_e}")
                     import traceback
-                    logger.debug(f"중복 체크 실패 상세: {traceback.format_exc()}")
+                    logger.error(f"❌ 중복 체크 실패 상세: {traceback.format_exc()}")
             except Exception as e:
-                logger.warning(f"테이블 구조 확인 실패, 기본 쿼리 사용: {e}")
+                logger.warning(f"⚠️ 테이블 구조 확인 실패, 기본 쿼리 사용: {e}")
+                import traceback
+                logger.error(f"❌ 테이블 구조 확인 실패 상세: {traceback.format_exc()}")
                 order_by = "ORDER BY 1 DESC"
             
             # 기존 사용자 정보 확인 (나이, BMI, 성별이 있는지)
