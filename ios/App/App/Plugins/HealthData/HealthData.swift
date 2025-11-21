@@ -44,40 +44,40 @@ public class HealthData: CAPPlugin, CAPBridgedPlugin {
     }
     
     @objc private func handleBackgroundFetch() {
-        // 최소 간격(15분) 체크
+        // 최소 간격(10분) 체크
         let now = Date()
         if let lastTime = lastCollectionTime {
             let timeSinceLastCollection = now.timeIntervalSince(lastTime)
-            let minInterval: TimeInterval = 15 * 60 // 15분 (900초)
+            let minInterval: TimeInterval = 10 * 60 // 10분 (600초)
             
             if timeSinceLastCollection < minInterval {
                 let remainingSeconds = Int(minInterval - timeSinceLastCollection)
-                print("⏰ 백그라운드 작업 알림 수신했지만 최소 간격(15분) 미달 - \(remainingSeconds)초 남음, 건너뜀")
-                // 다음 작업 예약 (남은 시간 후)
-                let nextInterval = minInterval - timeSinceLastCollection
+                print("⏰ 백그라운드 작업 알림 수신했지만 최소 간격(10분) 미달 - \(remainingSeconds)초 남음, 건너뜀")
+                // 다음 작업 예약 (남은 시간 후, 최소 15분)
+                let nextInterval = max(minInterval - timeSinceLastCollection, 900) // 최소 15분
                 scheduleBackgroundTaskWithInterval(nextInterval)
                 return
             }
         }
         
-        print("📊 백그라운드에서 HealthKit 데이터 가져오기 시작 (15분 주기)")
+        print("📊 백그라운드에서 HealthKit 데이터 가져오기 시작 (10분 주기)")
         // fetchAndSendHealthDataInBackground 내부에서 lastCollectionTime 업데이트 수행
         fetchAndSendHealthDataInBackground()
         
-        // 다음 작업 예약 (15분 후)
+        // 다음 작업 예약 (10분 후, 최소 15분)
         scheduleBackgroundTask()
     }
     
     private func fetchAndSendHealthDataInBackground() {
-        // 최소 간격(15분) 체크 (중복 방지)
+        // 최소 간격(10분) 체크 (중복 방지)
         let now = Date()
         if let lastTime = lastCollectionTime {
             let timeSinceLastCollection = now.timeIntervalSince(lastTime)
-            let minInterval: TimeInterval = 15 * 60 // 15분 (900초)
+            let minInterval: TimeInterval = 10 * 60 // 10분 (600초)
             
             if timeSinceLastCollection < minInterval {
                 let remainingSeconds = Int(minInterval - timeSinceLastCollection)
-                print("⏰ 데이터 수집 시도했지만 최소 간격(15분) 미달 - \(remainingSeconds)초 남음, 건너뜀")
+                print("⏰ 데이터 수집 시도했지만 최소 간격(10분) 미달 - \(remainingSeconds)초 남음, 건너뜀")
                 return
             }
         }
@@ -440,8 +440,8 @@ public class HealthData: CAPPlugin, CAPBridgedPlugin {
     }
     
     private func scheduleBackgroundTask() {
-        // 15분 간격으로 요청
-        scheduleBackgroundTaskWithInterval(15 * 60) // 15분
+        // 10분 간격으로 요청 (iOS 최소 15분이지만 가능한 한 자주 시도)
+        scheduleBackgroundTaskWithInterval(10 * 60) // 10분
     }
     
     private func scheduleBackgroundTaskWithInterval(_ interval: TimeInterval) {
@@ -502,7 +502,7 @@ public class HealthData: CAPPlugin, CAPBridgedPlugin {
             return
         }
         
-        // 기존 observer 제거 (즉시 감지 제거)
+        // 기존 observer 제거
         backgroundQueries.forEach { healthStore.stop($0) }
         backgroundQueries.removeAll()
         if let query = backgroundQuery {
@@ -510,34 +510,66 @@ public class HealthData: CAPPlugin, CAPBridgedPlugin {
             backgroundQuery = nil
         }
         
-        // 즉시 감지 제거 - 10분마다 주기적 체크만 수행
-        // 백그라운드 배달 비활성화 (즉시 알림 제거)
-        healthStore.disableBackgroundDelivery(for: heartRateType) { success, error in
-            if let error = error {
-                print("Failed to disable background delivery for HeartRate: \(error.localizedDescription)")
-            } else {
-                print("✅ HeartRate background delivery disabled (주기적 체크만 사용)")
+        // 데이터 변경 알림 핸들러 (10분 간격 체크)
+        let dataChangeHandler: (String) -> Void = { [weak self] sampleTypeName in
+            guard let self = self else { return }
+            
+            // 최소 간격(10분) 체크 - 즉시 감지하지 않고 10분마다만 체크
+            let now = Date()
+            if let lastTime = self.lastCollectionTime {
+                let timeSinceLastCollection = now.timeIntervalSince(lastTime)
+                let minInterval: TimeInterval = 10 * 60 // 10분 (600초)
+                
+                if timeSinceLastCollection < minInterval {
+                    let remainingSeconds = Int(minInterval - timeSinceLastCollection)
+                    print("⏰ 데이터 변경 알림(\(sampleTypeName)) 수신했지만 최소 간격(10분) 미달 - \(remainingSeconds)초 남음, 건너뜀")
+                    return
+                }
             }
+            
+            print("📊 데이터 변경 알림(\(sampleTypeName)) - 10분 경과, 데이터 수집 시작")
+            // 백그라운드에서 직접 데이터 가져오기 및 서버 전송
+            self.fetchAndSendHealthDataInBackground()
         }
-        healthStore.disableBackgroundDelivery(for: hrvType) { success, error in
-            if let error = error {
-                print("Failed to disable background delivery for HRV: \(error.localizedDescription)")
-            } else {
-                print("✅ HRV background delivery disabled (주기적 체크만 사용)")
+        
+        // 각 샘플 타입에 대해 Observer Query 생성 (데이터 변경 시 알림 받기)
+        let sampleTypes = [
+            (heartRateType, "HeartRate"),
+            (hrvType, "HRV"),
+            (oxygenType, "OxygenSaturation")
+        ]
+        
+        for (sampleType, name) in sampleTypes {
+            let query = HKObserverQuery(sampleType: sampleType, predicate: nil) { query, completionHandler, error in
+                if let error = error {
+                    print("Background monitoring error for \(name): \(error.localizedDescription)")
+                    completionHandler()
+                    return
+                }
+                
+                // 데이터 변경 알림 수신 - 10분 간격 체크 후 처리
+                dataChangeHandler(name)
+                completionHandler()
             }
-        }
-        healthStore.disableBackgroundDelivery(for: oxygenType) { success, error in
-            if let error = error {
-                print("Failed to disable background delivery for OxygenSaturation: \(error.localizedDescription)")
-            } else {
-                print("✅ OxygenSaturation background delivery disabled (주기적 체크만 사용)")
+            
+            healthStore.execute(query)
+            backgroundQueries.append(query)
+            
+            // 백그라운드 배달 활성화 (데이터 변경 시 알림 받기)
+            // 알림은 받되, 실제 수집은 10분 간격으로만 수행
+            healthStore.enableBackgroundDelivery(for: sampleType, frequency: .hourly) { success, error in
+                if let error = error {
+                    print("Failed to enable background delivery for \(name): \(error.localizedDescription)")
+                } else {
+                    print("✅ \(name) background delivery enabled: \(success) (10분 간격 체크)")
+                }
             }
         }
         
-        // 포그라운드에서 주기적 체크 (10분마다) - 백그라운드에서는 iOS가 제한
+        // 포그라운드에서 주기적 체크 (10분마다)
         setupPeriodicCheck()
         
-        print("✅ 백그라운드 모니터링 설정 완료 - 모든 샘플 타입 감지 활성화")
+        print("✅ 백그라운드 모니터링 설정 완료 - 데이터 변경 알림 활성화 (10분 간격 체크)")
     }
     
     // HKAnchoredObjectQuery로 주기적 체크 (백그라운드에서도 동작)
