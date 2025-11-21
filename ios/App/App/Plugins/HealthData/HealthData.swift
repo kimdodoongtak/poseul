@@ -44,15 +44,15 @@ public class HealthData: CAPPlugin, CAPBridgedPlugin {
     }
     
     @objc private func handleBackgroundFetch() {
-        // 최소 간격(10분) 체크
+        // 최소 간격(15분) 체크
         let now = Date()
         if let lastTime = lastCollectionTime {
             let timeSinceLastCollection = now.timeIntervalSince(lastTime)
-            let minInterval: TimeInterval = 10 * 60 // 10분 (600초)
+            let minInterval: TimeInterval = 15 * 60 // 15분 (900초)
             
             if timeSinceLastCollection < minInterval {
                 let remainingSeconds = Int(minInterval - timeSinceLastCollection)
-                print("⏰ 백그라운드 작업 알림 수신했지만 최소 간격(10분) 미달 - \(remainingSeconds)초 남음, 건너뜀")
+                print("⏰ 백그라운드 작업 알림 수신했지만 최소 간격(15분) 미달 - \(remainingSeconds)초 남음, 건너뜀")
                 // 다음 작업 예약 (남은 시간 후)
                 let nextInterval = minInterval - timeSinceLastCollection
                 scheduleBackgroundTaskWithInterval(nextInterval)
@@ -60,24 +60,24 @@ public class HealthData: CAPPlugin, CAPBridgedPlugin {
             }
         }
         
-        print("📊 백그라운드에서 HealthKit 데이터 가져오기 시작 (10분 주기)")
+        print("📊 백그라운드에서 HealthKit 데이터 가져오기 시작 (15분 주기)")
         // fetchAndSendHealthDataInBackground 내부에서 lastCollectionTime 업데이트 수행
         fetchAndSendHealthDataInBackground()
         
-        // 다음 작업 예약 (10분 후)
+        // 다음 작업 예약 (15분 후)
         scheduleBackgroundTask()
     }
     
     private func fetchAndSendHealthDataInBackground() {
-        // 최소 간격(10분) 체크 (중복 방지)
+        // 최소 간격(15분) 체크 (중복 방지)
         let now = Date()
         if let lastTime = lastCollectionTime {
             let timeSinceLastCollection = now.timeIntervalSince(lastTime)
-            let minInterval: TimeInterval = 10 * 60 // 10분 (600초)
+            let minInterval: TimeInterval = 15 * 60 // 15분 (900초)
             
             if timeSinceLastCollection < minInterval {
                 let remainingSeconds = Int(minInterval - timeSinceLastCollection)
-                print("⏰ 데이터 수집 시도했지만 최소 간격(10분) 미달 - \(remainingSeconds)초 남음, 건너뜀")
+                print("⏰ 데이터 수집 시도했지만 최소 간격(15분) 미달 - \(remainingSeconds)초 남음, 건너뜀")
                 return
             }
         }
@@ -440,21 +440,20 @@ public class HealthData: CAPPlugin, CAPBridgedPlugin {
     }
     
     private func scheduleBackgroundTask() {
-        // 10분 간격으로 시도 (iOS는 최소 15분이지만 가능한 한 자주 시도)
-        scheduleBackgroundTaskWithInterval(10 * 60) // 10분
+        // 15분 간격으로 요청
+        scheduleBackgroundTaskWithInterval(15 * 60) // 15분
     }
     
     private func scheduleBackgroundTaskWithInterval(_ interval: TimeInterval) {
         let request = BGAppRefreshTaskRequest(identifier: backgroundTaskIdentifier)
         // iOS는 BGAppRefreshTaskRequest의 최소 간격이 15분(900초)입니다
-        // 10분으로 설정해도 실제로는 15분 후에 실행되지만, 가능한 한 자주 시도
         let actualInterval = max(interval, 900) // 최소 15분
         request.earliestBeginDate = Date(timeIntervalSinceNow: actualInterval)
         
         do {
             try BGTaskScheduler.shared.submit(request)
             let minutes = Int(actualInterval / 60)
-            print("✅ 백그라운드 작업 예약됨: \(minutes)분 후 (요청: \(Int(interval / 60))분, iOS 최소: 15분)")
+            print("✅ 백그라운드 작업 예약됨: \(minutes)분 후")
         } catch {
             print("❌ 백그라운드 작업 예약 실패: \(error.localizedDescription)")
         }
