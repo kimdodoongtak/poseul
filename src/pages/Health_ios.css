@@ -138,6 +138,19 @@ ion-content ion-header {
   max-width: 100% !important;
 }
 
+/* iOS에서도 건강 데이터 카드에 패딩 적용 */
+.platform-ios .health-ios-page .health-data-secondary-row {
+  padding: 0 20px !important; /* 양옆 패딩 추가 */
+  box-sizing: border-box !important;
+}
+
+.platform-ios .health-ios-page .health-data-main-card {
+  margin-left: 20px !important; /* 양옆 패딩 추가 */
+  margin-right: 20px !important; /* 양옆 패딩 추가 */
+  width: calc(100% - 40px) !important; /* 패딩만큼 너비 줄임 */
+  box-sizing: border-box !important;
+}
+
 .health-ios-page ion-card:hover {
   transform: translateY(-6px) scale(1.01);
   box-shadow: 0 20px 60px rgba(196, 161, 194, 0.5), 0 8px 24px rgba(102, 116, 141, 0.4), 0 4px 12px rgba(0, 0, 0, 0.2);
