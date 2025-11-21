@@ -634,7 +634,6 @@ def adjust_air_conditioner(
                     classification_str = ",".join(feedbacks)
                     
                     # test_script_logs 테이블에 저장
-                    from datetime import datetime
                     current_datetime = datetime.now()
                     test_log_query = text("""
                         INSERT INTO test_script_logs 

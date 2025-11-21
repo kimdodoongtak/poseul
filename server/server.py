@@ -573,7 +573,9 @@ async def receive_health_data(data: HealthData):
                         }
                 except Exception as dup_e:
                     # SQLite와 MySQL의 날짜 함수 차이 처리
-                    logger.debug(f"중복 체크 실패 (계속 진행): {dup_e}")
+                    logger.warning(f"⚠️ 중복 체크 실패 (계속 진행): {dup_e}")
+                    import traceback
+                    logger.debug(f"중복 체크 실패 상세: {traceback.format_exc()}")
             except Exception as e:
                 logger.warning(f"테이블 구조 확인 실패, 기본 쿼리 사용: {e}")
                 order_by = "ORDER BY 1 DESC"
@@ -776,16 +778,32 @@ async def receive_health_data(data: HealthData):
                 
                 # INSERT 전에 한 번 더 중복 체크 (트랜잭션 내에서)
                 try:
-                    if date_column:
+                    # 날짜 컬럼 다시 확인 (created_at 컬럼이 추가되었을 수 있음)
+                    columns_check_final = text("""
+                        SELECT COLUMN_NAME 
+                        FROM INFORMATION_SCHEMA.COLUMNS 
+                        WHERE TABLE_SCHEMA = 'main' 
+                        AND TABLE_NAME = 'predicted_results'
+                    """)
+                    columns_final = [row.COLUMN_NAME for row in conn.execute(columns_check_final)]
+                    
+                    date_column_final = None
+                    for col in ['created_at', 'timestamp', 'date', 'datetime', 'createdAt']:
+                        if col in columns_final or col.lower() in [c.lower() for c in columns_final]:
+                            date_column_final = col
+                            break
+                    
+                    if date_column_final:
                         final_duplicate_check = text(f"""
                             SELECT COUNT(*) as cnt
                             FROM predicted_results
                             WHERE HR_mean = :hr 
                               AND ABS(HRV_SDNN - :hrv) < 0.01
                               AND ABS(mean_sa02 - :o2) < 0.1
-                              AND {date_column} >= DATE_SUB(NOW(), INTERVAL 2 MINUTE)
+                              AND {date_column_final} >= DATE_SUB(NOW(), INTERVAL 2 MINUTE)
                         """)
                     else:
+                        # 날짜 컬럼이 없으면 최근 10개만 확인
                         final_duplicate_check = text("""
                             SELECT COUNT(*) as cnt
                             FROM predicted_results
@@ -803,7 +821,7 @@ async def receive_health_data(data: HealthData):
                     }).fetchone()
                     
                     if duplicate_count and duplicate_count.cnt > 0:
-                        logger.info(f"⏭️ INSERT 전 중복 데이터 재확인 - 최근 2분 이내 동일한 데이터 {duplicate_count.cnt}개 발견. 건너뜀")
+                        logger.info(f"⏭️ INSERT 전 중복 데이터 재확인 - 최근 2분 이내 동일한 데이터 {duplicate_count.cnt}개 발견. 건너뜀 (HR: {data.heartRate}, HRV: {data.HRV}, O2: {data.oxygenSaturation})")
                         print(f"⏭️ INSERT 전 중복 데이터 재확인 - 건너뜀")
                         conn.commit()
                         return {
@@ -813,7 +831,9 @@ async def receive_health_data(data: HealthData):
                             "duplicate": True
                         }
                 except Exception as final_dup_e:
-                    logger.debug(f"INSERT 전 중복 체크 실패 (계속 진행): {final_dup_e}")
+                    logger.warning(f"⚠️ INSERT 전 중복 체크 실패 (계속 진행): {final_dup_e}")
+                    import traceback
+                    logger.debug(f"중복 체크 실패 상세: {traceback.format_exc()}")
                 
                 data_inserted = False
                 # 현재 시간 가져오기
