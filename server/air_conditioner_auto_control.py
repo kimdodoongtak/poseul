@@ -135,7 +135,7 @@ def adjust_air_conditioner(
     update_threshold_callback=None
 ):
     """
-    실시간 데이터 수신 시 또는 스케줄러에 의해 호출되어 predicted_results에서 최근 45분 이내 predicted_skin_temp를 분류하여 다수결로 판단하고 조절
+    실시간 데이터 수신 시 또는 스케줄러에 의해 호출되어 predicted_results에서 최근 30분 이내 predicted_skin_temp를 분류하여 다수결로 판단하고 조절
     - 실시간 데이터 수신 시: 데이터가 들어올 때마다 호출 (최소 10분 간격)
     - 스케줄러: 30분마다 백업용으로 실행
     
@@ -289,7 +289,7 @@ def adjust_air_conditioner(
             except Exception as e:
                 logger.warning(f"⚠️ 피부온도 분류 기준 확인 실패 (계속 진행): {e}")
             
-            # predicted_results 테이블에서 최근 45분 이내 predicted_skin_temp 가져오기
+            # predicted_results 테이블에서 최근 30분 이내 predicted_skin_temp 가져오기
             try:
                 table_check = text("""
                     SELECT COUNT(*) as count
@@ -303,7 +303,7 @@ def adjust_air_conditioner(
                     logger.warning("⚠️ predicted_results 테이블이 존재하지 않습니다.")
                     return
                 
-                # 최근 45분 이내 predicted_skin_temp 가져오기
+                # 최근 30분 이내 predicted_skin_temp 가져오기
                 try:
                     # 테이블 컬럼 확인하여 정렬 컬럼 및 시간 컬럼 찾기
                     columns_check = text("""
@@ -329,19 +329,19 @@ def adjust_air_conditioner(
                     else:
                         logger.warning("⚠️ 정렬 컬럼을 찾을 수 없습니다. 최신 데이터가 아닐 수 있습니다.")
                     
-                    # 시간 필터 조건 (45분 이내)
+                    # 시간 필터 조건 (30분 이내)
                     time_filter = ""
                     if 'created_at' in columns:
-                        time_filter = "AND created_at >= DATE_SUB(NOW(), INTERVAL 45 MINUTE)"
+                        time_filter = "AND created_at >= DATE_SUB(NOW(), INTERVAL 30 MINUTE)"
                     elif 'timestamp' in columns:
-                        time_filter = "AND timestamp >= DATE_SUB(NOW(), INTERVAL 45 MINUTE)"
+                        time_filter = "AND timestamp >= DATE_SUB(NOW(), INTERVAL 30 MINUTE)"
                     elif 'date' in columns:
-                        time_filter = "AND date >= DATE_SUB(NOW(), INTERVAL 45 MINUTE)"
+                        time_filter = "AND date >= DATE_SUB(NOW(), INTERVAL 30 MINUTE)"
                     else:
                         # 시간 컬럼이 없으면 최근 데이터만 가져오기 (기존 방식)
                         logger.warning("⚠️ 시간 컬럼을 찾을 수 없습니다. 최근 데이터만 사용합니다.")
                     
-                    # 최근 45분 이내 데이터 가져오기
+                    # 최근 30분 이내 데이터 가져오기
                     temp_query = text(f"""
                         SELECT predicted_skin_temp 
                         FROM predicted_results 
@@ -357,8 +357,8 @@ def adjust_air_conditioner(
                     return
                 
                 if len(temp_results) < 1:
-                    logger.info(f"⏳ 최근 45분 이내 predicted_skin_temp가 없습니다.")
-                    print(f"⏳ 데이터 부족: 최근 45분 이내 predicted_skin_temp가 없습니다.")
+                    logger.info(f"⏳ 최근 30분 이내 predicted_skin_temp가 없습니다.")
+                    print(f"⏳ 데이터 부족: 최근 30분 이내 predicted_skin_temp가 없습니다.")
                     return
                 
                 # predicted_skin_temp 값을 분류 기준에 따라 분류
@@ -374,8 +374,8 @@ def adjust_air_conditioner(
                     feedbacks.append(classification)
                 
                 temp_values = [float(row.predicted_skin_temp) for row in temp_results]
-                logger.info(f"📊 최근 45분 이내 predicted_skin_temp 분류 결과: {feedbacks} (온도값: {temp_values}, 개수: {len(feedbacks)}개)")
-                print(f"📊 최근 45분 이내 피부온도 데이터 ({len(feedbacks)}개):")
+                logger.info(f"📊 최근 30분 이내 predicted_skin_temp 분류 결과: {feedbacks} (온도값: {temp_values}, 개수: {len(feedbacks)}개)")
+                print(f"📊 최근 30분 이내 피부온도 데이터 ({len(feedbacks)}개):")
                 print(f"   온도값: {temp_values}°C")
                 print(f"   분류 결과: {feedbacks}")
                 
