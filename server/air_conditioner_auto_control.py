@@ -135,7 +135,9 @@ def adjust_air_conditioner(
     update_threshold_callback=None
 ):
     """
-    2분마다 predicted_results에서 최근 3개 predicted_skin_temp를 분류하여 다수결로 판단하고 조절 (테스트 모드)
+    실시간 데이터 수신 시 또는 스케줄러에 의해 호출되어 predicted_results에서 최근 3개 predicted_skin_temp를 분류하여 다수결로 판단하고 조절
+    - 실시간 데이터 수신 시: 데이터가 들어올 때마다 호출 (최소 10분 간격)
+    - 스케줄러: 30분마다 백업용으로 실행
     
     Args:
         engine: SQLAlchemy 엔진
@@ -149,15 +151,20 @@ def adjust_air_conditioner(
     global last_adjustment_time
     
     try:
-        # 마지막 조절 이후 2분이 지났는지 확인 (테스트용: 2분으로 변경)
+        # 마지막 조절 이후 최소 간격 확인 (10분: 데이터가 10분마다 들어오므로)
         now = datetime.now()
         if last_adjustment_time is not None:
             time_diff = (now - last_adjustment_time).total_seconds() / 60.0  # 분 단위
-            if time_diff < 2:
-                logger.info(f"⏰ 조절 대기 중... (마지막 조절 이후 {time_diff:.1f}분 경과, 2분 필요)")
+            if time_diff < 10:
+                logger.info(f"⏰ 조절 대기 중... (마지막 조절 이후 {time_diff:.1f}분 경과, 최소 10분 간격 필요) - 다음 조절까지 {10 - time_diff:.1f}분 남음")
+                print(f"⏰ 조절 대기 중... (마지막 조절 이후 {time_diff:.1f}분 경과, 최소 10분 간격 필요)")
                 return
+        else:
+            logger.info("🔄 첫 번째 제어 실행 (마지막 조절 기록 없음)")
+            print("🔄 첫 번째 제어 실행")
         
         logger.info("🔄 에어컨 자동 조절 시작...")
+        print("🔄 에어컨 자동 조절 시작...")
         
         with engine.connect() as conn:
             # new_skinthreshold 테이블에서 min_skinthreshold, max_skinthreshold 확인 및 전역 변수 갱신
@@ -431,9 +438,10 @@ def adjust_air_conditioner(
                 
                 # 에어컨이 꺼져있으면 조절은 하지 않지만 다수결 결과는 저장
                 actions_taken = []
-                original_target_temp = None
+                # 에어컨 상태와 관계없이 target_temp는 가져올 수 있으므로 초기화
+                original_target_temp = target_temp  # 에어컨이 꺼져있어도 이전 목표 온도 저장
                 temperature_adjusted = False
-                actual_new_temp = None
+                actual_new_temp = target_temp  # 에어컨이 꺼져있어도 현재 목표 온도 저장
                 
                 if not is_power_on:
                     logger.info("⏸️ 에어컨이 꺼져있습니다. 조절은 건너뛰지만 다수결 결과는 저장합니다.")
@@ -605,15 +613,22 @@ def adjust_air_conditioner(
                     
                     # 온도 조절 방향 결정
                     temp_action = "none"
+                    # previous_temperature: 에어컨의 이전 목표 온도 (original_target_temp)
                     previous_temp = original_target_temp if original_target_temp is not None else None
+                    # new_temperature: 에어컨의 새로운 목표 온도 (actual_new_temp, 에어컨 설정 온도)
                     new_temp = actual_new_temp if actual_new_temp is not None else None
                     
                     if is_power_on:
                         # 에어컨이 켜져있을 때만 조절 방향 결정
                         if majority_feedback == 'H':
+                            # 더움 → 온도 낮춤
                             temp_action = "down" if temperature_adjusted else "none"
                         elif majority_feedback == 'C':
+                            # 추움 → 온도 높임
                             temp_action = "up" if temperature_adjusted else "none"
+                        elif majority_feedback == 'G':
+                            # 쾌적 → 조절 없음
+                            temp_action = "none"
                     else:
                         # 에어컨이 꺼져있으면 조절 없음
                         temp_action = "none"
@@ -622,18 +637,21 @@ def adjust_air_conditioner(
                     classification_str = ",".join(feedbacks)
                     
                     # test_script_logs 테이블에 저장
+                    from datetime import datetime
+                    current_datetime = datetime.now()
                     test_log_query = text("""
                         INSERT INTO test_script_logs 
                         (classification_results, majority_result, temperature_action, previous_temperature, new_temperature, created_at)
                         VALUES 
-                        (:classification_results, :majority_result, :temperature_action, :previous_temperature, :new_temperature, NOW())
+                        (:classification_results, :majority_result, :temperature_action, :previous_temperature, :new_temperature, :created_at)
                     """)
                     conn.execute(test_log_query, {
                         'classification_results': classification_str,
                         'majority_result': majority_feedback,
                         'temperature_action': temp_action,
                         'previous_temperature': previous_temp,
-                        'new_temperature': new_temp
+                        'new_temperature': new_temp,
+                        'created_at': current_datetime
                     })
                     conn.commit()
                     logger.info(f"✅ 다수결 결과 저장 완료: 분류={classification_str}, 다수결={majority_feedback}, 조절={temp_action} (에어컨 전원: {'ON' if is_power_on else 'OFF'})")

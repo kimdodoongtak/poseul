@@ -773,28 +773,51 @@ async def receive_health_data(data: HealthData):
                         else:
                             majority_result = 'G'  # 적정
                         
-                        # 실제 건강 데이터 로그 저장
-                        test_log_query = text("""
-                            INSERT INTO test_script_logs 
-                            (classification_results, majority_result, temperature_action, previous_temperature, new_temperature, created_at)
-                            VALUES 
-                            (:classification_results, :majority_result, :temperature_action, :previous_temperature, :new_temperature, NOW())
-                        """)
-                        conn.execute(test_log_query, {
-                            'classification_results': f'HR:{data.heartRate},HRV:{data.HRV},O2:{data.oxygenSaturation}',
-                            'majority_result': majority_result,
-                            'temperature_action': 'none',  # 실제 데이터 로그이므로 조절 없음
-                            'previous_temperature': None,
-                            'new_temperature': predicted_skin_temp
-                        })
-                        conn.commit()
-                        logger.info(f"✅ 실제 건강 데이터 로그 저장 완료: 예측온도={predicted_skin_temp}°C, 분류={majority_result}")
+                        # 실제 건강 데이터 로그 저장 (이 API는 건강 데이터만 받으므로 test_script_logs에 저장하지 않음)
+                        # test_script_logs는 air_conditioner_auto_control.py에서만 저장
+                        # 여기서는 predicted_results에만 저장
+                        logger.info(f"✅ 실제 건강 데이터 저장 완료: 예측온도={predicted_skin_temp}°C, 분류={majority_result} (test_script_logs는 에어컨 조절 시 저장)")
                 else:
                     logger.warning("⚠️ test_script_logs 테이블이 존재하지 않습니다.")
             except Exception as e:
                 logger.warning(f"⚠️ 실제 데이터 로그 저장 실패: {str(e)}")
             
-            # 온도 조절은 스케줄러가 30분마다 자동으로 처리합니다
+            # 실시간 데이터 수신 시 제어 로직 실행 (최소 10분 간격)
+            try:
+                # 수면 모드 확인
+                global sleep_mode_state
+                sleep_mode_active = sleep_mode_state.get("active", False)
+                
+                logger.info(f"🔍 제어 로직 실행 체크 - 수면 모드: {'활성화' if sleep_mode_active else '비활성화'}, 예측온도: {predicted_skin_temp}°C")
+                print(f"🔍 제어 로직 실행 체크 - 수면 모드: {'활성화' if sleep_mode_active else '비활성화'}, 예측온도: {predicted_skin_temp}°C")
+                
+                if sleep_mode_active:
+                    logger.info(f"🔄 실시간 데이터 수신 - 제어 로직 실행 시도 (수면 모드 활성화, 예측온도: {predicted_skin_temp}°C)")
+                    print(f"🔄 실시간 데이터 수신 - 제어 로직 실행 시도")
+                    # 제어 로직 실행 (최소 간격 제한은 adjust_air_conditioner 내부에서 처리)
+                    try:
+                        air_conditioner_auto_control.adjust_air_conditioner(
+                            engine=engine,
+                            air_conditioner_available=AIR_CONDITIONER_AVAILABLE,
+                            get_air_conditioner_state_func=get_air_conditioner_state,
+                            set_temperature_func=set_temperature,
+                            cold_threshold=COLD_THRESHOLD,
+                            hot_threshold=HOT_THRESHOLD,
+                            update_threshold_callback=update_thresholds
+                        )
+                        logger.info("✅ 실시간 제어 로직 실행 완료")
+                        print("✅ 실시간 제어 로직 실행 완료")
+                    except Exception as control_error:
+                        logger.warning(f"⚠️ 제어 로직 실행 중 오류 (최소 간격 제한 또는 기타 오류): {control_error}")
+                        print(f"⚠️ 제어 로직 실행 중 오류: {control_error}")
+                else:
+                    logger.info(f"⏸️ 수면 모드 비활성화 - 제어 로직 건너뜀 (예측온도: {predicted_skin_temp}°C)")
+                    print(f"⏸️ 수면 모드 비활성화 - 제어 로직 건너뜀")
+            except Exception as e:
+                logger.warning(f"⚠️ 실시간 제어 로직 실행 실패 (스케줄러가 처리할 예정): {e}")
+                print(f"⚠️ 실시간 제어 로직 실행 실패: {e}")
+                import traceback
+                logger.debug(f"⚠️ 제어 로직 실행 실패 상세: {traceback.format_exc()}")
         
         logger.info(f"✅ 데이터가 DB에 저장되었습니다. (gender: {gender}, bmi: {bmi}, age: {age}, predicted_skin_temp: {predicted_skin_temp})")
         return {
@@ -2994,9 +3017,9 @@ def adjust_air_conditioner_wrapper():
     
     try:
         print("\n" + "=" * 80)
-        print(f"⏰ [{current_time}] 스케줄러 실행: 에어컨 자동 조절 시작 (2분 주기)")
+        print(f"⏰ [{current_time}] 스케줄러 실행: 에어컨 자동 조절 시작 (30분 주기, 백업용)")
         print("=" * 80)
-        logger.info(f"⏰ [{current_time}] 스케줄러 실행: 에어컨 자동 조절 시작 (2분 주기)")
+        logger.info(f"⏰ [{current_time}] 스케줄러 실행: 에어컨 자동 조절 시작 (30분 주기, 백업용)")
         air_conditioner_auto_control.adjust_air_conditioner(
             engine=engine,
             air_conditioner_available=AIR_CONDITIONER_AVAILABLE,
@@ -3018,9 +3041,9 @@ def adjust_air_conditioner_wrapper():
 
 scheduler.add_job(
     adjust_air_conditioner_wrapper,
-    trigger=IntervalTrigger(minutes=30),  # 30분마다 실행
+    trigger=IntervalTrigger(minutes=30),  # 30분마다 백업용 실행 (실제 제어는 실시간 데이터 수신 시 10분 간격으로 실행)
     id='air_conditioner_adjustment',
-    name='에어컨 자동 온도 조절',
+    name='에어컨 자동 온도 조절 (백업)',
     replace_existing=True
 )
 
@@ -3049,7 +3072,7 @@ async def startup_event():
         set_temperature_func=set_temperature
     )
     scheduler.start()
-    logger.info("✅ 스케줄러 시작 완료 (30분마다 자동 조절)")
+    logger.info("✅ 스케줄러 시작 완료 (30분마다 백업용 자동 조절, 실제 제어는 실시간 데이터 수신 시 10분 간격으로 실행)")
 
 @app.on_event("shutdown")
 async def shutdown_event():
