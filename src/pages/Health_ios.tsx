@@ -567,19 +567,23 @@ const Health_ios: React.FC = () => {
           localStorage.setItem('night_chart_data', JSON.stringify(dbChartData));
           setChartData(dbChartData);
           console.log('✅ DB 데이터를 차트에 반영 완료');
+          return true; // DB 데이터가 있음을 반환
         } catch (error) {
           console.error('차트 데이터 저장 실패:', error);
+          return false;
         }
       } else {
         // DB 데이터가 없으면 localStorage도 비우고 빈 데이터로 설정
         console.log('⚠️ DB에 데이터가 없습니다. 차트를 비웁니다.');
         localStorage.removeItem('night_chart_data');
         setChartData(dbChartData); // 빈 데이터로 설정
+        return false; // DB 데이터가 없음을 반환
       }
     } catch (error) {
       console.error('DB 차트 데이터 로드 실패:', error);
       // 실패 시 기존 데이터 로드
       loadChartData();
+      return false;
     }
   };
 
@@ -910,16 +914,26 @@ const Health_ios: React.FC = () => {
     loadChartData();
 
     // DB에서 차트 데이터 로드 (predicted_results, test_script_logs)
-    loadChartDataFromDB();
-
-    // 테스트 데이터가 없으면 생성 (DB 데이터가 없을 때만)
-    setTimeout(() => {
+    // DB 데이터가 없을 때만 테스트 데이터 생성
+    loadChartDataFromDB().then((hasDbData) => {
+      if (!hasDbData) {
+        // DB 데이터가 없으면 테스트 데이터 생성
+        const existingData = ChartDataService.getTodayData();
+        if (!existingData || existingData.temperatureData.length === 0) {
+          console.log('📊 DB에 데이터가 없어 테스트 데이터 생성 중...');
+          generateTestData();
+        }
+      } else {
+        console.log('✅ DB 데이터가 있어 테스트 데이터를 생성하지 않습니다.');
+      }
+    }).catch((error) => {
+      console.error('DB 데이터 로드 실패, 테스트 데이터 생성:', error);
       const existingData = ChartDataService.getTodayData();
       if (!existingData || existingData.temperatureData.length === 0) {
         console.log('📊 테스트 데이터 생성 중...');
         generateTestData();
       }
-    }, 2000); // DB 로드 후 확인
+    });
 
     // 주기적으로 DB에서 데이터 갱신 (5분마다)
     collectionIntervalRef.current = setInterval(() => {
