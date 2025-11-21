@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   IonContent,
   IonHeader,
@@ -36,6 +36,8 @@ const Home: React.FC = () => {
 
   // 다크모드 관련 상태
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
+  const animationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isAnimatingRef = useRef<boolean>(false);
 
   const handleTestModel = async () => {
     setLoading(true);
@@ -124,6 +126,22 @@ const Home: React.FC = () => {
           hours: Math.floor(data.duration_hours),
           minutes: Math.round((data.duration_hours % 1) * 60)
         });
+        
+        // iOS에서 백그라운드 모니터링 자동 활성화
+        try {
+          const { Capacitor } = await import('@capacitor/core');
+          if (Capacitor.getPlatform() === 'ios') {
+            const { HealthData } = await import('../plugins/healthdata');
+            const result = await HealthData.startBackgroundMonitoring({ enabled: true });
+            if (result.success) {
+              console.log('✅ 백그라운드 모니터링 자동 활성화 완료');
+            }
+          }
+        } catch (bgError) {
+          console.log('⚠️ 백그라운드 모니터링 자동 활성화 실패 (무시):', bgError);
+          // 백그라운드 모니터링 활성화 실패해도 수면 모드는 계속 진행
+        }
+        
         alert(data.message);
       } else {
         const errorData = await response.json();
