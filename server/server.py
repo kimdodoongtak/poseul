@@ -774,6 +774,47 @@ async def receive_health_data(data: HealthData):
                     predicted_skin_code = convert_predicted_temp_to_code(predicted_skin_temp, temp_min_threshold, temp_max_threshold)
                     logger.info(f"🔮 예측값 코드 변환: {predicted_skin_temp}°C → {predicted_skin_code} (임계값: {temp_min_threshold}~{temp_max_threshold}°C)")
                 
+                # INSERT 전에 한 번 더 중복 체크 (트랜잭션 내에서)
+                try:
+                    if date_column:
+                        final_duplicate_check = text(f"""
+                            SELECT COUNT(*) as cnt
+                            FROM predicted_results
+                            WHERE HR_mean = :hr 
+                              AND ABS(HRV_SDNN - :hrv) < 0.01
+                              AND ABS(mean_sa02 - :o2) < 0.1
+                              AND {date_column} >= DATE_SUB(NOW(), INTERVAL 2 MINUTE)
+                        """)
+                    else:
+                        final_duplicate_check = text("""
+                            SELECT COUNT(*) as cnt
+                            FROM predicted_results
+                            WHERE HR_mean = :hr 
+                              AND ABS(HRV_SDNN - :hrv) < 0.01
+                              AND ABS(mean_sa02 - :o2) < 0.1
+                            ORDER BY 1 DESC
+                            LIMIT 10
+                        """)
+                    
+                    duplicate_count = conn.execute(final_duplicate_check, {
+                        'hr': data.heartRate,
+                        'hrv': data.HRV,
+                        'o2': data.oxygenSaturation
+                    }).fetchone()
+                    
+                    if duplicate_count and duplicate_count.cnt > 0:
+                        logger.info(f"⏭️ INSERT 전 중복 데이터 재확인 - 최근 2분 이내 동일한 데이터 {duplicate_count.cnt}개 발견. 건너뜀")
+                        print(f"⏭️ INSERT 전 중복 데이터 재확인 - 건너뜀")
+                        conn.commit()
+                        return {
+                            "status": "ok",
+                            "message": "Duplicate data skipped (final check)",
+                            "predicted_skin_temp": predicted_skin_temp,
+                            "duplicate": True
+                        }
+                except Exception as final_dup_e:
+                    logger.debug(f"INSERT 전 중복 체크 실패 (계속 진행): {final_dup_e}")
+                
                 data_inserted = False
                 # 현재 시간 가져오기
                 from datetime import datetime
@@ -799,6 +840,7 @@ async def receive_health_data(data: HealthData):
                             'predicted_skin': predicted_skin_code,
                             'created_at': current_time
                         })
+                        logger.info(f"✅ 데이터 저장 완료 (predicted_skin 포함, created_at 포함): HR={data.heartRate}, HRV={data.HRV}, O2={data.oxygenSaturation}, 예측온도={predicted_skin_temp}°C, 시간={current_time}")
                     else:
                         insert_query = text("""
                             INSERT INTO predicted_results 
@@ -816,6 +858,7 @@ async def receive_health_data(data: HealthData):
                             'predicted_temp': predicted_skin_temp,
                             'predicted_skin': predicted_skin_code
                         })
+                        logger.info(f"✅ 데이터 저장 완료 (predicted_skin 포함, created_at 없음): HR={data.heartRate}, HRV={data.HRV}, O2={data.oxygenSaturation}, 예측온도={predicted_skin_temp}°C")
                     data_inserted = True
                 else:
                     # predicted_skin 컬럼이 없으면 기존 방식으로 저장
@@ -836,6 +879,7 @@ async def receive_health_data(data: HealthData):
                             'predicted_temp': predicted_skin_temp,
                             'created_at': current_time
                         })
+                        logger.info(f"✅ 데이터 저장 완료 (predicted_skin 없음, created_at 포함): HR={data.heartRate}, HRV={data.HRV}, O2={data.oxygenSaturation}, 예측온도={predicted_skin_temp}°C, 시간={current_time}")
                     else:
                         insert_query = text("""
                             INSERT INTO predicted_results 
@@ -852,6 +896,7 @@ async def receive_health_data(data: HealthData):
                             'gender': gender,
                             'predicted_temp': predicted_skin_temp
                         })
+                        logger.info(f"✅ 데이터 저장 완료 (predicted_skin 없음, created_at 없음): HR={data.heartRate}, HRV={data.HRV}, O2={data.oxygenSaturation}, 예측온도={predicted_skin_temp}°C")
                     data_inserted = True
             except Exception as e:
                 logger.warning(f"⚠️ predicted_skin 컬럼 확인 실패, 기존 방식으로 저장: {str(e)}")
