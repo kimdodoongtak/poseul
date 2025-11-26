@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { App } from '@capacitor/app';
+import { useLocation } from 'react-router-dom';
 import {
   IonContent,
   IonHeader,
@@ -23,9 +24,11 @@ import {
   IonSelect,
   IonSelectOption
 } from '@ionic/react';
-import { personOutline } from 'ionicons/icons';
+import { personOutline, closeOutline } from 'ionicons/icons';
 import SignIn from '../components/SignIn';
+import SignUp from '../components/SignUp';
 import './Health_ios.css';
+import { isAuthenticated, logout } from '../services/AuthService';
 import { getServerUrl, autoDetectServerUrl } from '../services/ServerConfig';
 import ChartDataService, {
   NightChartData,
@@ -66,7 +69,76 @@ const Health_ios: React.FC = () => {
   
   // UI 템플릿 관련 상태
   const [showSignIn, setShowSignIn] = useState<boolean>(false);
+  const [showSignUp, setShowSignUp] = useState<boolean>(false);
+  const [showUserInfo, setShowUserInfo] = useState<boolean>(false);
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
+  const location = useLocation();
+  const loginSuccessRef = useRef<boolean>(false); // 로그인 성공 플래그
+
+  // URL 파라미터 변경 감지 (IoT 페이지에서 로그인 요청 시)
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    if (searchParams.get('showLogin') === 'true') {
+      setShowSignIn(true);
+      // URL에서 파라미터 제거 (뒤로가기 시 다시 열리지 않도록)
+      window.history.replaceState({}, '', '/health_ios');
+    }
+  }, [location.search]);
+
+  useEffect(() => {
+    // 초기 로그인 상태 확인
+    setIsLoggedIn(isAuthenticated());
+    
+    // 로그인 상태 변경 이벤트 리스너 (다른 페이지에서 로그인/로그아웃 시 동기화)
+    const handleAuthStateChanged = (event: CustomEvent) => {
+      // 로그인 성공 직후에는 상태를 변경하지 않음
+      if (loginSuccessRef.current) {
+        console.log('🔍 Health 페이지 - 로그인 성공 직후, 이벤트 무시');
+        return;
+      }
+      const authenticated = event.detail?.authenticated ?? isAuthenticated();
+      setIsLoggedIn(authenticated);
+      console.log(`🔍 Health 페이지 - 로그인 상태 변경 이벤트: ${authenticated}`);
+    };
+    
+    // localStorage storage 이벤트 리스너 (다른 탭에서 로그인/로그아웃 시 동기화)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'auth_token') {
+        // 로그인 성공 직후에는 상태를 변경하지 않음
+        if (loginSuccessRef.current) {
+          console.log('🔍 Health 페이지 - 로그인 성공 직후, storage 이벤트 무시');
+          return;
+        }
+        const authenticated = isAuthenticated();
+        setIsLoggedIn(authenticated);
+        console.log(`🔍 Health 페이지 - localStorage 변경 감지, 로그인 상태: ${authenticated}`);
+      }
+    };
+    
+    // 페이지 포커스 시 상태 확인
+    const handleFocus = () => {
+      // 로그인 성공 직후에는 상태를 변경하지 않음
+      if (loginSuccessRef.current) {
+        console.log('🔍 Health 페이지 - 로그인 성공 직후, 포커스 이벤트 무시');
+        return;
+      }
+      const authenticated = isAuthenticated();
+      setIsLoggedIn(authenticated);
+      console.log(`🔍 Health 페이지 - 포커스 이벤트, 로그인 상태: ${authenticated}`);
+    };
+    
+    window.addEventListener('authStateChanged', handleAuthStateChanged as EventListener);
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('focus', handleFocus);
+    
+    // cleanup 함수
+    return () => {
+      window.removeEventListener('authStateChanged', handleAuthStateChanged as EventListener);
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, []);
 
   useEffect(() => {
     // 초기 설정 완료 여부 확인
@@ -1052,11 +1124,21 @@ const Health_ios: React.FC = () => {
         {/* 별 배경 효과 (다크모드) */}
         <div className="stars-background"></div>
 
-        {/* 로그인 버튼 */}
+        {/* 사용자 아이콘 버튼 */}
         {isSetupComplete && (
           <div 
             className="on-boarding-btn" 
-            onClick={() => setShowSignIn(true)}
+            onClick={() => {
+              // 클릭 시마다 최신 로그인 상태 확인 (state가 아닌 직접 확인)
+              const authenticated = isAuthenticated();
+              console.log(`🔍 Health 페이지 - 아이콘 클릭, 로그인 상태: ${authenticated}`);
+              
+              if (authenticated) {
+                setShowUserInfo(true);
+              } else {
+                setShowSignIn(true);
+              }
+            }}
             style={{
               width: '36px',
               height: '36px',
@@ -1091,7 +1173,184 @@ const Health_ios: React.FC = () => {
             justifyContent: 'center',
             backgroundColor: 'rgba(0, 0, 0, 0.5)'
           }}>
-            <SignIn onClose={() => setShowSignIn(false)} />
+            <SignIn 
+              onClose={() => {
+                // 모달만 닫기 (상태는 onSuccess에서만 관리)
+                setShowSignIn(false);
+              }}
+              onSuccess={() => {
+                console.log('✅ Health 페이지 - onSuccess 호출됨');
+                
+                // 로그인 성공 플래그 설정 (이벤트 리스너가 상태를 덮어쓰지 않도록)
+                loginSuccessRef.current = true;
+                
+                // 모달 닫기
+                setShowSignIn(false);
+                
+                // 약간의 지연 후 사용자 정보 모달 표시 (토큰이 완전히 저장된 후)
+                setTimeout(() => {
+                  // localStorage에서 직접 토큰 확인
+                  const token = localStorage.getItem('auth_token');
+                  console.log(`🔍 Health 페이지 - localStorage 직접 확인: ${token ? `있음 (길이: ${token.length})` : '없음'}`);
+                  
+                  // 토큰 재확인 (안전장치)
+                  const authenticated = isAuthenticated();
+                  console.log(`🔍 Health 페이지 - isAuthenticated() 결과: ${authenticated}`);
+                  
+                  if (authenticated && token) {
+                    // 함수형 업데이트로 확실하게 true 유지
+                    setIsLoggedIn(() => true);
+                    setShowUserInfo(true);
+                    console.log('✅ Health 페이지 - 사용자 정보 모달 표시');
+                    
+                    // 2초 후 플래그 해제 (이제 다른 이벤트가 상태를 업데이트해도 됨)
+                    setTimeout(() => {
+                      loginSuccessRef.current = false;
+                      console.log('✅ Health 페이지 - 로그인 성공 플래그 해제');
+                    }, 2000);
+                  } else {
+                    console.warn('⚠️ Health 페이지 - 토큰이 없음, 상태 재설정');
+                    console.warn(`⚠️ Health 페이지 - token: ${token ? '있음' : '없음'}, authenticated: ${authenticated}`);
+                    setIsLoggedIn(false);
+                    loginSuccessRef.current = false;
+                  }
+                }, 100); // 100ms로 단축 (localStorage는 동기적이므로)
+              }}
+            />
+          </div>
+        )}
+
+        {/* 회원가입 모달 */}
+        {showSignUp && (
+          <div style={{ 
+            position: 'fixed', 
+            top: 0, 
+            left: 0, 
+            right: 0, 
+            bottom: 0, 
+            zIndex: 2000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: 'rgba(0, 0, 0, 0.5)'
+          }}>
+            <SignUp 
+              onClose={() => {
+                setShowSignUp(false);
+                // 로그인 상태 강제 업데이트
+                setIsLoggedIn(isAuthenticated());
+              }}
+              onSuccess={() => {
+                // User 페이지와 동일: 즉시 true로 설정 (토큰은 이미 저장됨)
+                setIsLoggedIn(true);
+                setShowSignUp(false);
+                console.log('✅ Health 페이지 - 회원가입 성공, 상태 업데이트 완료');
+                
+                // 실제 토큰 확인 (안전장치)
+                setTimeout(() => {
+                  const authenticated = isAuthenticated();
+                  if (!authenticated) {
+                    console.warn('⚠️ Health 페이지 - 토큰이 없음, 상태 재설정');
+                    setIsLoggedIn(false);
+                  } else {
+                    setIsLoggedIn(true);
+                    console.log('✅ Health 페이지 - 토큰 확인 완료');
+                  }
+                }, 100);
+              }}
+            />
+          </div>
+        )}
+
+        {/* 사용자 정보 모달 */}
+        {showUserInfo && isAuthenticated() && (
+          <div className="user-info-modal-backdrop" style={{ 
+            position: 'fixed', 
+            top: 0, 
+            left: 0, 
+            right: 0, 
+            bottom: 0, 
+            zIndex: 2000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: 'rgba(0, 0, 0, 0.5)'
+          }}>
+            <div className="user-info-modal" style={{
+              background: 'white',
+              borderRadius: '24px',
+              padding: '24px',
+              width: '90%',
+              maxWidth: '400px',
+              boxShadow: '0 12px 40px rgba(0, 0, 0, 0.3)',
+              position: 'relative'
+            }}>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '20px'
+              }}>
+                <IonText style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#66748D' }}>
+                  사용자 정보
+                </IonText>
+                <button
+                  onClick={() => {
+                    setShowUserInfo(false);
+                    // 모달 닫을 때 로그인 상태 재확인
+                    if (!isAuthenticated()) {
+                      setIsLoggedIn(false);
+                    }
+                  }}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    padding: '8px',
+                    cursor: 'pointer',
+                    borderRadius: '0',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginLeft: 'auto'
+                  }}
+                >
+                  <IonIcon icon={closeOutline} style={{ fontSize: '24px', color: '#66748D' }} />
+                </button>
+              </div>
+              
+              <div style={{ marginBottom: '20px' }}>
+                <IonLabel style={{ color: '#66748D', fontWeight: '600', marginBottom: '8px', display: 'block' }}>나이</IonLabel>
+                <IonText style={{ color: '#66748D', fontSize: '1.1rem', display: 'block' }}>
+                  {age || '미입력'}
+                </IonText>
+              </div>
+              
+              <div style={{ marginBottom: '20px' }}>
+                <IonLabel style={{ color: '#66748D', fontWeight: '600', marginBottom: '8px', display: 'block' }}>BMI</IonLabel>
+                <IonText style={{ color: '#66748D', fontSize: '1.1rem', display: 'block' }}>
+                  {bmi || '미입력'}
+                </IonText>
+              </div>
+              
+              <div style={{ marginBottom: '20px' }}>
+                <IonLabel style={{ color: '#66748D', fontWeight: '600', marginBottom: '8px', display: 'block' }}>성별</IonLabel>
+                <IonText style={{ color: '#66748D', fontSize: '1.1rem', display: 'block' }}>
+                  {gender === '1' ? '남성' : gender === '0' ? '여성' : '미입력'}
+                </IonText>
+              </div>
+              
+              <IonButton 
+                expand="block" 
+                onClick={() => {
+                  logout();
+                  setIsLoggedIn(false);
+                  setShowUserInfo(false);
+                }}
+                style={{ marginTop: '20px' }}
+              >
+                로그아웃
+              </IonButton>
+            </div>
           </div>
         )}
 

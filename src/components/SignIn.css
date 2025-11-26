@@ -45,8 +45,131 @@
   display: block;
 }
 
+.error-message {
+  display: block;
+  color: #eb445a;
+  font-size: 14px;
+  margin-bottom: 16px;
+  padding: 8px;
+  background-color: rgba(235, 68, 90, 0.1);
+  border-radius: 8px;
+}
+
 .sign-in-input-item {
   margin-bottom: 16px;
+  --background: rgba(255, 255, 255, 0.9) !important;
+  background: rgba(255, 255, 255, 0.9) !important;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.sign-in-input-item::part(native) {
+  --background: rgba(255, 255, 255, 0.9) !important;
+  background: rgba(255, 255, 255, 0.9) !important;
+}
+
+.sign-in-input-item ion-input {
+  --background: transparent !important;
+  --color: #000000 !important;
+}
+
+.sign-in-input-item ion-input::part(native) {
+  background: transparent !important;
+  color: #000000 !important;
+}
+
+.sign-in-input-item ion-input input {
+  background: transparent !important;
+  color: #000000 !important;
+}
+
+.sign-in-input-item ion-input input::placeholder {
+  color: rgba(0, 0, 0, 0.4) !important;
+  font-size: 14px !important;
+  font-weight: normal !important;
+  letter-spacing: normal !important;
+}
+
+/* 비밀번호 입력 필드 스타일 - 마스킹 문자 표시 */
+.sign-in-input-item ion-input[type="password"] {
+  --color: #000000 !important;
+  --padding-start: 0 !important;
+  --padding-end: 0 !important;
+}
+
+.sign-in-input-item ion-input[type="password"]::part(native) {
+  color: #000000 !important;
+  --color: #000000 !important;
+}
+
+/* Shadow DOM 내부 input 요소 직접 스타일링 */
+.sign-in-input-item ion-input[type="password"] input,
+.sign-in-input-item ion-input[type="password"] input[type="password"] {
+  color: #000000 !important;
+  font-size: 22px !important;
+  font-weight: 700 !important;
+  letter-spacing: 5px !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  -webkit-text-security: disc !important;
+  text-security: disc !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Helvetica Neue", Arial, sans-serif !important;
+}
+
+.sign-in-input-item ion-input[type="password"] input::placeholder {
+  color: rgba(0, 0, 0, 0.4) !important;
+  font-size: 14px !important;
+  font-weight: normal !important;
+  letter-spacing: normal !important;
+}
+
+/* 다크모드 */
+body.dark .sign-in-input-item {
+  --background: rgba(255, 255, 255, 0.1) !important;
+  background: rgba(255, 255, 255, 0.1) !important;
+  border-color: rgba(124, 136, 169, 0.3) !important;
+}
+
+body.dark .sign-in-input-item::part(native) {
+  --background: rgba(255, 255, 255, 0.1) !important;
+  background: rgba(255, 255, 255, 0.1) !important;
+}
+
+body.dark .sign-in-input-item ion-input {
+  --color: #E0E5ED !important;
+}
+
+body.dark .sign-in-input-item ion-input::part(native) {
+  color: #E0E5ED !important;
+}
+
+body.dark .sign-in-input-item ion-input input {
+  color: #E0E5ED !important;
+}
+
+body.dark .sign-in-input-item ion-input input::placeholder {
+  color: rgba(224, 229, 237, 0.4) !important;
+}
+
+body.dark .sign-in-input-item ion-input[type="password"] {
+  --color: #E0E5ED !important;
+}
+
+body.dark .sign-in-input-item ion-input[type="password"]::part(native) {
+  color: #E0E5ED !important;
+  --color: #E0E5ED !important;
+}
+
+body.dark .sign-in-input-item ion-input[type="password"] input,
+body.dark .sign-in-input-item ion-input[type="password"] input[type="password"] {
+  color: #E0E5ED !important;
+}
+
+body.dark .sign-in-input-item ion-input[type="password"] input::placeholder {
+  color: rgba(224, 229, 237, 0.4) !important;
+  font-size: 14px !important;
+  font-weight: normal !important;
+  letter-spacing: normal !important;
 }
 
 .sign-in-button {
@@ -84,6 +207,32 @@
   display: block;
 }
 
+/* 회원가입 링크 텍스트 버튼 스타일 (User 페이지와 동일) */
+.sign-up-link-text {
+  background: none !important;
+  border: none !important;
+  color: #66748D !important;
+  text-decoration: underline !important;
+  cursor: pointer !important;
+  font-size: 14px !important;
+  padding: 8px !important;
+  font-family: inherit !important;
+  transition: color 0.3s ease !important;
+}
+
+.sign-up-link-text:hover {
+  color: #7C88A9 !important;
+}
+
+.sign-up-link-text:active {
+  color: #C4A1C2 !important;
+}
+
+.sign-up-link-text:disabled {
+  opacity: 0.5;
+  cursor: not-allowed !important;
+}
+
 /* 다크모드 지원 - 로그인 창 */
 body.dark .sign-in-modal {
   background-color: rgba(0, 0, 0, 0.8) !important;
@@ -117,4 +266,22 @@ body.dark .or-text {
 
 body.dark .footer-text {
   color: #C4D0E1 !important;
+}
+
+/* 다크모드 회원가입 링크 */
+body.dark .sign-up-link-text {
+  color: #E0E5ED !important;
+}
+
+body.dark .sign-up-link-text:hover {
+  color: #A0A5B8 !important;
+}
+
+body.dark .sign-up-link-text:active {
+  color: #7C88A9 !important;
+}
+
+body.dark .error-message {
+  color: #ff6b6b !important;
+  background-color: rgba(255, 107, 107, 0.1) !important;
 }

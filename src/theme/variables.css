@@ -377,6 +377,45 @@ ion-button {
   opacity: 1 !important;
 }
 
+/* 비밀번호 입력 필드 - 마스킹 문자 표시 강제 */
+ion-input[type="password"] {
+  --color: #000000 !important;
+}
+
+ion-input[type="password"]::part(native) {
+  color: #000000 !important;
+  --color: #000000 !important;
+}
+
+/* Shadow DOM 내부 input 요소 직접 스타일링 */
+ion-input[type="password"] input,
+ion-input[type="password"] input[type="password"] {
+  color: #000000 !important;
+  font-size: 20px !important;
+  font-weight: 600 !important;
+  letter-spacing: 4px !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  -webkit-text-security: disc !important;
+  text-security: disc !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Helvetica Neue", Arial, sans-serif !important;
+}
+
+/* 다크모드 */
+body.dark ion-input[type="password"] {
+  --color: #E0E5ED !important;
+}
+
+body.dark ion-input[type="password"]::part(native) {
+  color: #E0E5ED !important;
+  --color: #E0E5ED !important;
+}
+
+body.dark ion-input[type="password"] input,
+body.dark ion-input[type="password"] input[type="password"] {
+  color: #E0E5ED !important;
+}
+
 /* Typography - 메모먼트 꾹꾹체 적용 */
 .font-largeTitle {
   font-size: 34px;

@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useHistory } from 'react-router-dom';
 import {
   IonContent,
   IonHeader,
@@ -26,13 +27,17 @@ import { refreshOutline, closeOutline } from 'ionicons/icons';
 import { LocalNotifications, ActionPerformed, LocalNotificationSchema } from '@capacitor/local-notifications';
 import { Capacitor } from '@capacitor/core';
 import SignIn from '../components/SignIn';
+import SignUp from '../components/SignUp';
+import DeviceRegistration from '../components/DeviceRegistration';
 import './User.css';
 import { autoDetectServerUrl, getServerUrl } from '../services/ServerConfig';
 import IotService from '../services/IotService';
 import ModelService from '../services/ModelService';
 import HealthDataService from '../services/HealthDataService';
+import { isAuthenticated, logout, getCurrentUser } from '../services/AuthService';
 
 const User: React.FC = () => {
+  const history = useHistory();
   const [age, setAge] = useState<string>('');
   const [bmi, setBmi] = useState<string>('');
   const [gender, setGender] = useState<string>('0'); // 0: 여성, 1: 남성
@@ -41,9 +46,14 @@ const User: React.FC = () => {
   const [healthDataPlugin, setHealthDataPlugin] = useState<any>(null);
   const [platform, setPlatform] = useState<string>('web');
   const [showSignIn, setShowSignIn] = useState<boolean>(false);
+  const [showSignUp, setShowSignUp] = useState<boolean>(false);
   const [showResetAlert, setShowResetAlert] = useState<boolean>(false);
   const [feedbackCount, setFeedbackCount] = useState<number>(0);
   const [isFeedbackDisabled, setIsFeedbackDisabled] = useState<boolean>(false);
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
+  const [showIotRegistration, setShowIotRegistration] = useState<boolean>(false);
+  const [currentUserId, setCurrentUserId] = useState<string | undefined>(undefined);
+  const loginSuccessRef = useRef<boolean>(false); // 로그인 성공 플래그
 
   const requestNotificationPermission = async () => {
     try {
@@ -93,6 +103,58 @@ const User: React.FC = () => {
   };
 
   useEffect(() => {
+    // 초기 로그인 상태 확인
+    setIsLoggedIn(isAuthenticated());
+    
+    // 로그인 상태 변경 이벤트 리스너 (다른 페이지에서 로그인/로그아웃 시 동기화)
+    const handleAuthStateChanged = (event: CustomEvent) => {
+      // 로그인 성공 직후에는 상태를 변경하지 않음
+      if (loginSuccessRef.current) {
+        console.log('🔍 User 페이지 - 로그인 성공 직후, 이벤트 무시');
+        return;
+      }
+      const authenticated = event.detail?.authenticated ?? isAuthenticated();
+      setIsLoggedIn(authenticated);
+      console.log(`🔍 User 페이지 - 로그인 상태 변경 이벤트: ${authenticated}`);
+    };
+    
+    // localStorage storage 이벤트 리스너 (다른 탭에서 로그인/로그아웃 시 동기화)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'auth_token') {
+        // 로그인 성공 직후에는 상태를 변경하지 않음
+        if (loginSuccessRef.current) {
+          console.log('🔍 User 페이지 - 로그인 성공 직후, storage 이벤트 무시');
+          return;
+        }
+        const authenticated = isAuthenticated();
+        setIsLoggedIn(authenticated);
+        console.log(`🔍 User 페이지 - localStorage 변경 감지, 로그인 상태: ${authenticated}`);
+      }
+    };
+    
+    // 페이지 포커스 시 상태 확인
+    const handleFocus = () => {
+      // 로그인 성공 직후에는 상태를 변경하지 않음
+      if (loginSuccessRef.current) {
+        console.log('🔍 User 페이지 - 로그인 성공 직후, 포커스 이벤트 무시');
+        return;
+      }
+      const authenticated = isAuthenticated();
+      setIsLoggedIn(authenticated);
+      console.log(`🔍 User 페이지 - 포커스 이벤트, 로그인 상태: ${authenticated}`);
+    };
+    
+    window.addEventListener('authStateChanged', handleAuthStateChanged as EventListener);
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('focus', handleFocus);
+    
+    // cleanup 함수
+    const cleanup = () => {
+      window.removeEventListener('authStateChanged', handleAuthStateChanged as EventListener);
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('focus', handleFocus);
+    };
+    
     // 저장된 나이, BMI, 성별, 피드백 시간 불러오기
     try {
       const savedAge = localStorage.getItem('userAge');
@@ -151,6 +213,9 @@ const User: React.FC = () => {
       requestNotificationPermission();
       scheduleDailyNotification();
     }
+    
+    // cleanup 함수 반환
+    return cleanup;
   }, []);
 
   const handleAgeChange = async (value: string) => {
@@ -366,6 +431,39 @@ const User: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
+  const handleLoginSuccess = () => {
+    // 로그인 성공 플래그 설정 (이벤트 리스너가 상태를 덮어쓰지 않도록)
+    loginSuccessRef.current = true;
+    
+    setIsLoggedIn(true);
+    setShowSignIn(false);
+    
+    // 2초 후 플래그 해제 (이제 다른 이벤트가 상태를 업데이트해도 됨)
+    setTimeout(() => {
+      loginSuccessRef.current = false;
+      console.log('✅ User 페이지 - 로그인 성공 플래그 해제');
+    }, 2000);
+  };
+
+  const handleLogout = () => {
+    logout();
+    setIsLoggedIn(false);
+  };
+
+  const handleSignUpSuccess = () => {
+    // 로그인 성공 플래그 설정 (이벤트 리스너가 상태를 덮어쓰지 않도록)
+    loginSuccessRef.current = true;
+    
+    setIsLoggedIn(true);
+    setShowSignUp(false);
+    
+    // 2초 후 플래그 해제 (이제 다른 이벤트가 상태를 업데이트해도 됨)
+    setTimeout(() => {
+      loginSuccessRef.current = false;
+      console.log('✅ User 페이지 - 회원가입 성공 플래그 해제');
+    }, 2000);
+  };
+
   const handleResetFeedbackPeriod = async () => {
     try {
       // ServerConfig에서 URL 가져오기 (localStorage > 환경 변수 > 기본값)
@@ -419,6 +517,54 @@ const User: React.FC = () => {
     }
   };
 
+  // IoT 재등록 화면이 열려있으면 DeviceRegistration만 표시
+  if (showIotRegistration && currentUserId) {
+    return (
+      <DeviceRegistration 
+        userId={currentUserId}
+        hideHeader={false}
+        onSuccess={async () => {
+          setShowIotRegistration(false);
+          setCurrentUserId(undefined);
+          
+          // 재등록 후 IoT 서비스 초기화 및 연결 확인
+          try {
+            // 서버 URL 자동 감지
+            const serverUrl = await autoDetectServerUrl();
+            if (serverUrl) {
+              IotService.updateBaseUrl(serverUrl);
+            }
+            
+            // 잠시 대기 후 IoT 상태 확인 (서버에 반영 시간 필요)
+            setTimeout(async () => {
+              try {
+                const status = await IotService.getStatus();
+                console.log('✅ IoT 재등록 후 연결 확인:', status);
+              } catch (error) {
+                console.error('IoT 연결 확인 실패:', error);
+              }
+            }, 1000);
+            
+            alert('IoT 디바이스가 재등록되었습니다. 기기가 자동으로 연결되었습니다.');
+            // 성공 후 User 페이지로 돌아가기
+            history.push('/user');
+          } catch (error) {
+            console.error('IoT 연결 확인 실패:', error);
+            alert('IoT 디바이스가 재등록되었습니다. IoT 페이지에서 연결 상태를 확인해주세요.');
+            // 실패해도 User 페이지로 돌아가기
+            history.push('/user');
+          }
+        }}
+        onSkip={() => {
+          setShowIotRegistration(false);
+          setCurrentUserId(undefined);
+          history.push('/user');
+        }}
+        required={false}
+      />
+    );
+  }
+
   return (
     <IonPage className="user-page">
       <IonHeader>
@@ -444,7 +590,25 @@ const User: React.FC = () => {
             justifyContent: 'center',
             backgroundColor: 'rgba(0, 0, 0, 0.5)'
           }}>
-            <SignIn onClose={() => setShowSignIn(false)} />
+            <SignIn onClose={() => setShowSignIn(false)} onSuccess={handleLoginSuccess} />
+          </div>
+        )}
+
+        {/* 회원가입 모달 */}
+        {showSignUp && (
+          <div className="login-modal-backdrop" style={{ 
+            position: 'fixed', 
+            top: 0, 
+            left: 0, 
+            right: 0, 
+            bottom: 0, 
+            zIndex: 2000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: 'rgba(0, 0, 0, 0.5)'
+          }}>
+            <SignUp onClose={() => setShowSignUp(false)} onSuccess={handleSignUpSuccess} />
           </div>
         )}
 
@@ -524,21 +688,55 @@ const User: React.FC = () => {
             <IonCardTitle>설정</IonCardTitle>
           </IonCardHeader>
           <IonCardContent>
-            <IonButton expand="block" onClick={() => setShowSignIn(true)} style={{ marginTop: '16px' }}>
-              로그인
-            </IonButton>
+            <IonText color="medium" style={{ display: 'block', textAlign: 'center', marginBottom: '16px', fontSize: '13px' }}>
+              재갱신 시 다시 7번의 피드백이 필요합니다
+            </IonText>
             <IonButton 
               expand="block" 
               className="reset-feedback-button"
               onClick={() => setShowResetAlert(true)}
-              style={{ marginTop: '16px' }}
+              style={{ marginTop: '0' }}
             >
               <IonIcon icon={refreshOutline} slot="start" />
               온도 범위 재갱신
             </IonButton>
-            <IonText color="medium" style={{ display: 'block', textAlign: 'center', marginTop: '8px', fontSize: '13px' }}>
-              재갱신 시 다시 7번의 피드백이 필요합니다
-            </IonText>
+            {isAuthenticated() ? (
+              <>
+                <IonButton 
+                  expand="block" 
+                  onClick={async () => {
+                    try {
+                      const user = await getCurrentUser();
+                      setCurrentUserId(user.id);
+                      setShowIotRegistration(true);
+                    } catch (error) {
+                      console.error('사용자 정보 가져오기 실패:', error);
+                      alert('사용자 정보를 가져올 수 없습니다. 다시 로그인해주세요.');
+                    }
+                  }} 
+                  style={{ marginTop: '16px' }}
+                >
+                  IoT 재등록
+                </IonButton>
+                <IonButton expand="block" onClick={handleLogout} style={{ marginTop: '16px' }}>
+                  로그아웃
+                </IonButton>
+              </>
+            ) : (
+              <>
+                <IonButton expand="block" onClick={() => setShowSignIn(true)} style={{ marginTop: '16px' }}>
+                  로그인
+                </IonButton>
+                <div style={{ textAlign: 'center', marginTop: '12px' }}>
+                  <button 
+                    className="sign-up-link-text"
+                    onClick={() => setShowSignUp(true)}
+                  >
+                    회원가입
+                  </button>
+                </div>
+              </>
+            )}
           </IonCardContent>
         </IonCard>
 
@@ -632,6 +830,7 @@ const User: React.FC = () => {
             }
           ]}
         />
+
       </IonContent>
     </IonPage>
   );

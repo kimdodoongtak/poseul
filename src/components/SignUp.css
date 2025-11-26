@@ -1,0 +1,281 @@
+.sign-up-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 3000;
+  padding: 16px;
+}
+
+.sign-up-container {
+  background: white;
+  border-radius: 20px;
+  padding: 24px;
+  max-width: 400px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  -webkit-overflow-scrolling: touch;
+}
+
+.sign-up-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.sign-up-title {
+  font-size: 24px;
+  font-weight: bold;
+}
+
+.close-button {
+  --color: black;
+  margin: 0;
+}
+
+.sign-up-subtitle {
+  color: #666;
+  font-size: 14px;
+  margin-bottom: 24px;
+  display: block;
+}
+
+.error-message {
+  display: block;
+  color: #eb445a;
+  font-size: 14px;
+  margin-bottom: 16px;
+  padding: 8px;
+  background-color: rgba(235, 68, 90, 0.1);
+  border-radius: 8px;
+}
+
+.sign-up-input-item {
+  margin-bottom: 16px;
+  --background: rgba(255, 255, 255, 0.9) !important;
+  background: rgba(255, 255, 255, 0.9) !important;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.sign-up-input-item::part(native) {
+  --background: rgba(255, 255, 255, 0.9) !important;
+  background: rgba(255, 255, 255, 0.9) !important;
+}
+
+.sign-up-input-item ion-input {
+  --background: transparent !important;
+  --color: #000000 !important;
+}
+
+.sign-up-input-item ion-input::part(native) {
+  background: transparent !important;
+  color: #000000 !important;
+}
+
+.sign-up-input-item ion-input input {
+  background: transparent !important;
+  color: #000000 !important;
+}
+
+.sign-up-input-item ion-input input::placeholder {
+  color: rgba(0, 0, 0, 0.4) !important;
+  font-size: 14px !important;
+  font-weight: normal !important;
+  letter-spacing: normal !important;
+}
+
+/* 비밀번호 입력 필드 스타일 - 마스킹 문자 표시 */
+.sign-up-input-item ion-input[type="password"] {
+  --color: #000000 !important;
+  --padding-start: 0 !important;
+  --padding-end: 0 !important;
+}
+
+.sign-up-input-item ion-input[type="password"]::part(native) {
+  color: #000000 !important;
+  --color: #000000 !important;
+}
+
+/* Shadow DOM 내부 input 요소 직접 스타일링 */
+.sign-up-input-item ion-input[type="password"] input,
+.sign-up-input-item ion-input[type="password"] input[type="password"] {
+  color: #000000 !important;
+  font-size: 22px !important;
+  font-weight: 700 !important;
+  letter-spacing: 5px !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  -webkit-text-security: disc !important;
+  text-security: disc !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Helvetica Neue", Arial, sans-serif !important;
+}
+
+.sign-up-input-item ion-input[type="password"] input::placeholder {
+  color: rgba(0, 0, 0, 0.4) !important;
+  font-size: 14px !important;
+  font-weight: normal !important;
+  letter-spacing: normal !important;
+}
+
+/* 다크모드 */
+body.dark .sign-up-input-item {
+  --background: rgba(255, 255, 255, 0.1) !important;
+  background: rgba(255, 255, 255, 0.1) !important;
+  border-color: rgba(124, 136, 169, 0.3) !important;
+}
+
+body.dark .sign-up-input-item::part(native) {
+  --background: rgba(255, 255, 255, 0.1) !important;
+  background: rgba(255, 255, 255, 0.1) !important;
+}
+
+body.dark .sign-up-input-item ion-input {
+  --color: #E0E5ED !important;
+}
+
+body.dark .sign-up-input-item ion-input::part(native) {
+  color: #E0E5ED !important;
+}
+
+body.dark .sign-up-input-item ion-input input {
+  color: #E0E5ED !important;
+}
+
+body.dark .sign-up-input-item ion-input input::placeholder {
+  color: rgba(224, 229, 237, 0.4) !important;
+}
+
+body.dark .sign-up-input-item ion-input[type="password"] {
+  --color: #E0E5ED !important;
+}
+
+body.dark .sign-up-input-item ion-input[type="password"]::part(native) {
+  color: #E0E5ED !important;
+  --color: #E0E5ED !important;
+}
+
+body.dark .sign-up-input-item ion-input[type="password"] input,
+body.dark .sign-up-input-item ion-input[type="password"] input[type="password"] {
+  color: #E0E5ED !important;
+}
+
+body.dark .sign-up-input-item ion-input[type="password"] input::placeholder {
+  color: rgba(224, 229, 237, 0.4) !important;
+  font-size: 14px !important;
+  font-weight: normal !important;
+  letter-spacing: normal !important;
+}
+
+.sign-up-button {
+  --background: linear-gradient(135deg, #90b0ef 0%, #a090ef 100%);
+  --background-hover: linear-gradient(135deg, #80a0df 0%, #9080df 100%);
+  --background-activated: linear-gradient(135deg, #80a0df 0%, #9080df 100%);
+  --color: white;
+  margin-top: 24px;
+  margin-bottom: 16px;
+  box-shadow: 0 4px 12px rgba(144, 176, 239, 0.3);
+}
+
+/* PAT 토큰 버튼 스타일 - DeviceRegistration과 동일 */
+.sign-up-container .pat-token-button {
+  --border-color: transparent !important;
+  --border-width: 0 !important;
+  --border-style: none !important;
+  --color: #ffffff !important;
+  --background: linear-gradient(135deg, #8CA5C9 0%, #7C88A9 50%, #6C7899 100%) !important;
+  --border-radius: 16px !important;
+  --box-shadow: 0 8px 24px rgba(124, 136, 169, 0.6), 0 4px 12px rgba(102, 116, 141, 0.4), 0 0 0 2px rgba(140, 165, 201, 0.3), inset 0 2px 4px rgba(0, 0, 0, 0.15), inset 0 -2px 4px rgba(0, 0, 0, 0.1) !important;
+  border: none !important;
+  border-radius: 16px !important;
+  font-weight: 700 !important;
+  font-size: 1.1rem !important;
+  height: 56px !important;
+  margin-bottom: 24px !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+.sign-up-container .pat-token-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.25) 0%, transparent 50%, rgba(255, 255, 255, 0.15) 100%);
+  pointer-events: none;
+  z-index: 1;
+  border-radius: 16px;
+}
+
+.sign-up-container .pat-token-button::part(native) {
+  border: none !important;
+  border-color: transparent !important;
+  border-width: 0 !important;
+  border-style: none !important;
+  border-radius: 16px !important;
+  background: linear-gradient(135deg, #8CA5C9 0%, #7C88A9 50%, #6C7899 100%) !important;
+  box-shadow: 0 8px 24px rgba(124, 136, 169, 0.6), 0 4px 12px rgba(102, 116, 141, 0.4), 0 0 0 2px rgba(140, 165, 201, 0.3), inset 0 2px 4px rgba(0, 0, 0, 0.15), inset 0 -2px 4px rgba(0, 0, 0, 0.1) !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2) !important;
+  position: relative !important;
+}
+
+.sign-up-container .pat-token-button:hover {
+  --border-color: transparent !important;
+  --color: #ffffff !important;
+  --background: linear-gradient(135deg, #9CB5D9 0%, #8CA5C9 50%, #7C88A9 100%) !important;
+  --box-shadow: 0 12px 32px rgba(124, 136, 169, 0.7), 0 6px 16px rgba(102, 116, 141, 0.5), 0 0 0 3px rgba(140, 165, 201, 0.4), inset 0 2px 4px rgba(0, 0, 0, 0.2), inset 0 -2px 4px rgba(0, 0, 0, 0.15) !important;
+  transform: translateY(-2px) scale(1.02) !important;
+}
+
+.sign-up-container .pat-token-button:hover::part(native) {
+  background: linear-gradient(135deg, #9CB5D9 0%, #8CA5C9 50%, #7C88A9 100%) !important;
+  box-shadow: 0 12px 32px rgba(124, 136, 169, 0.7), 0 6px 16px rgba(102, 116, 141, 0.5), 0 0 0 3px rgba(140, 165, 201, 0.4), inset 0 2px 4px rgba(0, 0, 0, 0.2), inset 0 -2px 4px rgba(0, 0, 0, 0.15) !important;
+  color: #ffffff !important;
+}
+
+.sign-up-container .pat-token-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 다크모드 지원 */
+body.dark .sign-up-modal {
+  background-color: rgba(0, 0, 0, 0.8) !important;
+}
+
+body.dark .sign-up-container {
+  background: linear-gradient(135deg, #3A3B45 0%, #323340 50%, #2E2F3A 100%) !important;
+  color: #E0E5ED !important;
+  border: 1px solid rgba(124, 136, 169, 0.3) !important;
+}
+
+body.dark .sign-up-title {
+  color: #E0E5ED !important;
+}
+
+body.dark .close-button {
+  --color: #E0E5ED !important;
+}
+
+body.dark .sign-up-subtitle {
+  color: #C4D0E1 !important;
+}
+
+body.dark .error-message {
+  color: #ff6b6b !important;
+  background-color: rgba(255, 107, 107, 0.1) !important;
+}
+

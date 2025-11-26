@@ -22,6 +22,7 @@ import { refreshOutline } from 'ionicons/icons';
 import { useHistory } from 'react-router-dom';
 import { IotService, AirConditionerMode, FanSpeed, getIotServiceBaseUrl } from '../services';
 import { autoDetectServerUrl } from '../services/ServerConfig';
+import { isAuthenticated, getIotDeviceStatus } from '../services/AuthService';
 import './Iot.css';
 
 const Iot: React.FC = () => {
@@ -64,10 +65,35 @@ const Iot: React.FC = () => {
   // 온도 임계값 설정 팝업 관련 상태
   const [showThresholdAlert, setShowThresholdAlert] = useState(false);
   const [pendingTemperature, setPendingTemperature] = useState<number | null>(null);
+  
+  // 로그인 관련 상태
+  const [showLoginAlert, setShowLoginAlert] = useState(false);
 
   const loadStatus = useCallback(async () => {
     setError(null);
     try {
+      // 먼저 로그인 상태 확인
+      const authenticated = isAuthenticated();
+      console.log(`🔍 IoT 페이지 - 로그인 상태 확인: ${authenticated}`);
+      
+      if (!authenticated) {
+        console.log('❌ IoT 페이지 - 로그인되지 않음');
+        setError('로그인이 필요합니다. 먼저 로그인해주세요.');
+        return;
+      }
+
+      // 사용자 정보 확인 (디버깅용)
+      try {
+        const { getCurrentUser } = await import('../services/AuthService');
+        const user = await getCurrentUser();
+        console.log(`✅ IoT 페이지 - 사용자 정보 확인: user_id=${user.id}, user_no=${user.user_no}`);
+      } catch (userError: any) {
+        console.error('❌ IoT 페이지 - 사용자 정보 가져오기 실패:', userError);
+        console.error('❌ 에러 상세:', userError.message, userError.stack);
+        setError('로그인 정보를 확인할 수 없습니다. 다시 로그인해주세요.');
+        return;
+      }
+
       const result = await IotService.getStatus();
       setStatus({
         currentTemperature: result.currentTemperature,
@@ -124,12 +150,10 @@ const Iot: React.FC = () => {
       const errorMessage = error.message || '서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요.';
       setError(errorMessage);
       
-      // 등록되지 않았거나 404 에러인 경우 등록 페이지로 리다이렉트
+      // 등록되지 않았거나 404 에러인 경우 에러 메시지만 표시
       if (errorMessage.includes('등록된 디바이스가 없습니다') || errorMessage.includes('404')) {
-        console.log('🔄 등록되지 않음 - 등록 페이지로 이동');
-        setTimeout(() => {
-          history.replace('/iot/register');
-        }, 1000);
+        console.log('⚠️ 등록된 디바이스가 없습니다. User 페이지에서 IoT 재등록을 진행해주세요.');
+        setError('등록된 디바이스가 없습니다. User 페이지에서 IoT 재등록을 진행해주세요.');
         return;
       }
       
@@ -156,22 +180,112 @@ const Iot: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    // 로그인 상태 확인 함수
+    const checkLoginAndRegistration = async () => {
+      console.log('🔍 IoT 페이지 - 로그인 상태 확인 시작');
+      
+      if (!isAuthenticated()) {
+        console.log('❌ IoT 페이지 - 로그인되지 않음');
+        // 로그인하지 않았으면 안내창 표시
+        setShowLoginAlert(true);
+        return;
+      }
 
-    // 등록 여부 확인
-    const isRegistered = localStorage.getItem('iot_device_registered') === 'true';
-    if (!isRegistered) {
-      // 등록되지 않았으면 등록 페이지로 리다이렉트
-      history.replace('/iot/register');
-      return;
+      console.log('✅ IoT 페이지 - 로그인됨, 사용자 정보 확인 중...');
+      
+      // 사용자 정보 확인
+      try {
+        const { getCurrentUser } = await import('../services/AuthService');
+        const user = await getCurrentUser();
+        console.log(`✅ IoT 페이지 - 사용자 정보 확인: user_id=${user.id}, user_no=${user.user_no}`);
+      } catch (userError) {
+        console.error('❌ IoT 페이지 - 사용자 정보 가져오기 실패:', userError);
+        setShowLoginAlert(true);
+        return;
+      }
+
+      // 로그인했으면 IoT 등록 정보 확인
+      try {
+        console.log('🔍 IoT 페이지 - IoT 등록 정보 확인 중...');
+        const iotStatus = await getIotDeviceStatus();
+        console.log('📋 IoT 페이지 - IoT 등록 정보:', iotStatus);
+        
+        if (iotStatus.success && iotStatus.registered) {
+          // IoT 등록 정보가 있으면 localStorage에 저장
+          localStorage.setItem('thinq_device_id', iotStatus.deviceId || '');
+          localStorage.setItem('thinq_device_name', iotStatus.deviceName || '');
+          localStorage.setItem('iot_device_registered', 'true');
+          console.log('✅ IoT 페이지 - IoT 등록 정보 저장 완료');
+        } else {
+          // 등록되지 않았으면 등록 페이지로 리다이렉트하지 않고 그냥 진행
+          // (등록 화면은 User 페이지에서 IoT 재등록 버튼으로 접근)
+          localStorage.removeItem('iot_device_registered');
+          console.log('⚠️ IoT 페이지 - IoT 등록 정보 없음');
+        }
+      } catch (error) {
+        console.error('❌ IoT 페이지 - IoT 등록 정보 확인 실패:', error);
+      }
+    };
+
+    // Alert가 닫혔을 때만 체크 (Alert가 열려있으면 체크하지 않음)
+    if (!showLoginAlert) {
+      checkLoginAndRegistration();
     }
 
+    // 로그인 상태 변경 이벤트 리스너 (다른 페이지에서 로그인/로그아웃 시 동기화)
+    const handleAuthStateChanged = (event: CustomEvent) => {
+      const authenticated = event.detail?.authenticated ?? isAuthenticated();
+      console.log(`🔍 IoT 페이지 - 로그인 상태 변경 이벤트: ${authenticated}`);
+      if (authenticated) {
+        setShowLoginAlert(false);
+        // 로그인되었으면 다시 확인
+        checkLoginAndRegistration();
+        setTimeout(() => {
+          if (isAuthenticated()) {
+            loadStatus();
+          }
+        }, 500);
+      } else {
+        setShowLoginAlert(true);
+      }
+    };
+    
+    // localStorage storage 이벤트 리스너 (다른 탭에서 로그인/로그아웃 시 동기화)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'auth_token') {
+        const authenticated = isAuthenticated();
+        console.log(`🔍 IoT 페이지 - localStorage 변경 감지, 로그인 상태: ${authenticated}`);
+        if (authenticated) {
+          setShowLoginAlert(false);
+          checkLoginAndRegistration();
+          setTimeout(() => {
+            if (isAuthenticated()) {
+              loadStatus();
+            }
+          }, 500);
+        } else {
+          setShowLoginAlert(true);
+        }
+      }
+    };
+    
+    window.addEventListener('authStateChanged', handleAuthStateChanged as EventListener);
+    window.addEventListener('storage', handleStorageChange);
 
     // UI를 먼저 렌더링하고, 그 다음에 상태 조회
     // 자동 감지는 연결 실패 시에만 실행
     setTimeout(() => {
-      loadStatus();
+      if (isAuthenticated()) {
+        loadStatus();
+      }
     }, 500);
-  }, [loadStatus, history]);
+    
+    // cleanup 함수
+    return () => {
+      window.removeEventListener('authStateChanged', handleAuthStateChanged as EventListener);
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, [loadStatus, history, showLoginAlert]);
 
   const handlePowerToggle = async (power: boolean) => {
     setLoading(true);
@@ -307,16 +421,6 @@ const Iot: React.FC = () => {
     return fanSpeedMap[fanSpeed] || fanSpeed;
   };
 
-  const handleReregister = () => {
-    // 등록 상태 초기화
-    localStorage.removeItem('iot_device_registered');
-    localStorage.removeItem('thinq_pat_token');
-    localStorage.removeItem('thinq_device_id');
-    localStorage.removeItem('thinq_device_name');
-    console.log('🔄 디바이스 재등록을 위해 등록 상태 초기화');
-    // 등록 페이지로 이동
-    history.push('/iot/register');
-  };
 
   return (
     <IonPage className="iot-page">
@@ -330,13 +434,6 @@ const Iot: React.FC = () => {
         <div className="stars-background"></div>
 
         <div className="container" style={{ display: 'block', visibility: 'visible', opacity: 1 }}>
-          {/* 디바이스 등록 버튼 */}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '12px' }}>
-            <IonButton onClick={handleReregister} fill="outline" size="small">
-              <IonIcon icon={refreshOutline} slot="start" />
-              디바이스 등록
-            </IonButton>
-          </div>
           {/* 에러 메시지 */}
           {error && (
             <IonCard>
@@ -618,6 +715,23 @@ const Iot: React.FC = () => {
           ]}
         />
       </IonContent>
+        {/* 로그인 안내 Alert */}
+        <IonAlert
+          isOpen={showLoginAlert}
+          backdropDismiss={false}
+          header="로그인 필요"
+          message="IoT 기기를 사용하려면 로그인이 필요합니다. Health 페이지에서 로그인해주세요."
+          buttons={[
+            {
+              text: '확인',
+              handler: () => {
+                setShowLoginAlert(false);
+                // Health 페이지로 이동하고 로그인 모달을 열기 위해 state 전달
+                history.push('/health_ios?showLogin=true');
+              }
+            }
+          ]}
+        />
     </IonPage>
   );
 };

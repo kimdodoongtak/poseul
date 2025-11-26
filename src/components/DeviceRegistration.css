@@ -97,36 +97,36 @@
   color: #66748D !important;
 }
 
-/* 입력 필드 스타일 - Home과 동일한 스타일 */
+/* 입력 필드 스타일 - 밝은 배경 */
 .device-registration-page ion-item {
   --border-radius: 14px;
   --padding-start: 16px;
   --padding-end: 16px;
   margin: 16px 0;
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.7) !important;
-  background-color: rgba(255, 255, 255, 0.7) !important;
+  background: #ffffff !important;
+  background-color: #ffffff !important;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  border: 2px solid rgba(196, 161, 194, 0.2);
-  backdrop-filter: blur(10px);
+  border: 2px solid rgba(196, 161, 194, 0.3);
+  box-shadow: 0 2px 8px rgba(196, 161, 194, 0.15);
 }
 
 .device-registration-page ion-item::part(native) {
-  background: rgba(255, 255, 255, 0.7) !important;
-  background-color: rgba(255, 255, 255, 0.7) !important;
+  background: #ffffff !important;
+  background-color: #ffffff !important;
 }
 
 .device-registration-page ion-item:focus-within {
-  background: rgba(255, 255, 255, 0.9) !important;
-  background-color: rgba(255, 255, 255, 0.9) !important;
+  background: #ffffff !important;
+  background-color: #ffffff !important;
   border-color: #C4A1C2;
   box-shadow: 0 0 0 4px rgba(196, 161, 194, 0.2), 0 4px 12px rgba(102, 116, 141, 0.2);
   transform: translateY(-2px);
 }
 
 .device-registration-page ion-item:focus-within::part(native) {
-  background: rgba(255, 255, 255, 0.9) !important;
-  background-color: rgba(255, 255, 255, 0.9) !important;
+  background: #ffffff !important;
+  background-color: #ffffff !important;
 }
 
 .device-registration-page ion-item ion-label {
@@ -139,7 +139,7 @@
 .device-registration-page ion-item ion-input {
   --padding-start: 0;
   --padding-end: 0;
-  --background: transparent !important;
+  --background: #ffffff !important;
   --color: #66748D !important;
   color: #66748D !important;
   font-size: 1rem;
@@ -147,7 +147,7 @@
 }
 
 .device-registration-page ion-item ion-input::part(native) {
-  background: transparent !important;
+  background: #ffffff !important;
   color: #66748D !important;
 }
 
@@ -480,38 +480,40 @@ body.dark .device-registration-page ion-card-title {
 }
 
 body.dark .device-registration-page ion-item {
-  background: rgba(255, 255, 255, 0.1) !important;
-  background-color: rgba(255, 255, 255, 0.1) !important;
-  color: #E0E5ED !important;
-  border-color: rgba(124, 136, 169, 0.25) !important;
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+  color: #66748D !important;
+  border-color: rgba(196, 161, 194, 0.3) !important;
 }
 
 body.dark .device-registration-page ion-item:focus-within {
-  background: rgba(255, 255, 255, 0.12) !important;
-  background-color: rgba(255, 255, 255, 0.12) !important;
-  border-color: rgba(124, 136, 169, 0.4) !important;
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+  border-color: #C4A1C2 !important;
 }
 
 body.dark .device-registration-page ion-item::part(native) {
-  background: rgba(255, 255, 255, 0.08) !important;
-  background-color: rgba(255, 255, 255, 0.08) !important;
+  background: #ffffff !important;
+  background-color: #ffffff !important;
 }
 
 body.dark .device-registration-page ion-item:focus-within::part(native) {
-  background: rgba(255, 255, 255, 0.12) !important;
-  background-color: rgba(255, 255, 255, 0.12) !important;
+  background: #ffffff !important;
+  background-color: #ffffff !important;
 }
 
 body.dark .device-registration-page ion-item ion-label {
-  color: #E0E5ED !important;
+  color: #66748D !important;
 }
 
 body.dark .device-registration-page ion-item ion-input {
-  color: #E0E5ED !important;
+  --background: #ffffff !important;
+  color: #66748D !important;
 }
 
 body.dark .device-registration-page ion-item ion-input::part(native) {
-  color: #E0E5ED !important;
+  background: #ffffff !important;
+  color: #66748D !important;
 }
 
 body.dark .device-registration-page ion-input::placeholder {

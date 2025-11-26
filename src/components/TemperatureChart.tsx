@@ -368,7 +368,7 @@ const TemperatureChart: React.FC<TemperatureChartProps> = ({ data }) => {
           {/* 온도 모드: 현재/목표 온도 라인 표시 */}
           {viewMode === 'temperature' && (
             <>
-              {chartData.some((d) => d.current !== null) && (
+              {recentData.some((d) => d.current !== null) && (
                 <Line
                   type="monotone"
                   dataKey="current"
@@ -380,7 +380,7 @@ const TemperatureChart: React.FC<TemperatureChartProps> = ({ data }) => {
                   strokeDasharray="5 5"
                 />
               )}
-              {chartData.some((d) => d.target !== null) && (
+              {recentData.some((d) => d.target !== null) && (
                 <Line
                   type="monotone"
                   dataKey="target"

@@ -20,9 +20,19 @@ import {
 import { openOutline, checkmarkCircleOutline } from 'ionicons/icons';
 import { useHistory } from 'react-router-dom';
 import { getServerUrl, autoDetectServerUrl } from '../services/ServerConfig';
+import IotService from '../services/IotService';
+import { getUserNo, getCurrentUser } from '../services/AuthService';
 import './DeviceRegistration.css';
 
-const DeviceRegistration: React.FC = () => {
+interface DeviceRegistrationProps {
+  onSuccess?: () => void;
+  onSkip?: () => void;
+  userId?: string;
+  required?: boolean; // 필수 등록 여부 (회원가입 시 true)
+  hideHeader?: boolean; // 헤더 숨기기 (모달에서 사용 시)
+}
+
+const DeviceRegistration: React.FC<DeviceRegistrationProps> = ({ onSuccess, onSkip, userId, required = false, hideHeader = false }) => {
   const [patToken, setPatToken] = useState('');
   const [loading, setLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('등록 중...');
@@ -32,9 +42,21 @@ const DeviceRegistration: React.FC = () => {
   const [connectionStatus, setConnectionStatus] = useState<string | null>(null);
   const [serverUrl, setServerUrl] = useState<string>(getServerUrl());
   const [detectingServer, setDetectingServer] = useState(false);
-  const [showManualInput, setShowManualInput] = useState(false);
-  const [manualServerUrl, setManualServerUrl] = useState('');
   const history = useHistory();
+
+  // user_id 가져오기 함수
+  const getUserIdForRegistration = async (): Promise<string> => {
+    if (userId) {
+      return userId;
+    }
+    try {
+      const user = await getCurrentUser();
+      return user.id;
+    } catch (error) {
+      console.error('사용자 정보 가져오기 실패:', error);
+      return 'default';
+    }
+  };
 
   // 컴포넌트 마운트 시 서버 URL 자동 감지
   useEffect(() => {
@@ -58,6 +80,8 @@ const DeviceRegistration: React.FC = () => {
           setServerUrl(currentUrl);
         } else {
           setServerUrl(detectedUrl);
+          // IotService의 baseUrl도 함께 업데이트
+          IotService.updateBaseUrl(detectedUrl);
           setConnectionStatus(null); // 성공 시 상태 초기화
           console.log('✅ 서버 URL 업데이트 완료:', detectedUrl);
         }
@@ -132,7 +156,20 @@ const DeviceRegistration: React.FC = () => {
         }
       } catch (healthError: any) {
         console.error('❌ 서버 연결 실패:', healthError);
-        setConnectionStatus(`❌ 서버에 연결할 수 없습니다. 서버 URL: ${baseUrl}`);
+        console.error('   에러 타입:', healthError?.name || typeof healthError);
+        console.error('   에러 메시지:', healthError?.message || String(healthError));
+        
+        const isNetworkError = healthError?.name === 'TypeError' || 
+                              healthError?.name === 'AbortError' ||
+                              healthError?.message?.includes('Failed to fetch') ||
+                              healthError?.message?.includes('NetworkError');
+        
+        const errorMsg = healthError.name === 'TimeoutError' || healthError.message?.includes('timeout')
+          ? `❌ 서버 연결 시간 초과 (3초). 서버가 실행 중인지 확인해주세요. (${baseUrl})`
+          : isNetworkError
+          ? `❌ 네트워크 연결 실패. Wi-Fi 연결과 서버 실행 상태를 확인해주세요. (${baseUrl})`
+          : `❌ 서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요. (${baseUrl})`;
+        setConnectionStatus(errorMsg);
         setTestingConnection(false);
         return;
       }
@@ -213,10 +250,12 @@ const DeviceRegistration: React.FC = () => {
         try {
           const detectedUrl = await autoDetectServerUrl();
           if (!detectedUrl || detectedUrl === '') {
-            throw new Error('서버 URL 자동 감지 실패');
+            throw new Error('서버 URL 자동 감지 실패. 서버가 실행 중인지 확인해주세요.');
           }
           baseUrl = detectedUrl;
           setServerUrl(detectedUrl);
+          // IotService의 baseUrl도 함께 업데이트
+          IotService.updateBaseUrl(detectedUrl);
           console.log('✅ 서버 자동 감지 성공:', baseUrl);
         } catch (detectError) {
           console.error('❌ 서버 자동 감지 실패:', detectError);
@@ -245,16 +284,34 @@ const DeviceRegistration: React.FC = () => {
         console.log('✅ 서버 연결 확인 성공');
       } catch (healthError: any) {
         console.error('❌ 서버 연결 실패:', healthError);
+        console.error('   에러 타입:', healthError?.name || typeof healthError);
+        console.error('   에러 메시지:', healthError?.message || String(healthError));
+        console.error('   에러 상세:', {
+          name: healthError?.name,
+          message: healthError?.message,
+          stack: healthError?.stack,
+          code: healthError?.code,
+          errno: healthError?.errno,
+          toString: healthError?.toString()
+        });
         
-        // 서버 URL 자동 감지 재시도
-        if (!healthError.message?.includes('자동 감지')) {
-          console.log('🔄 서버 연결 실패 - 서버 URL 자동 감지 재시도...');
+        // 네트워크 오류인 경우 자동 감지 재시도
+        const isNetworkError = healthError?.name === 'TypeError' || 
+                              healthError?.name === 'AbortError' ||
+                              healthError?.message?.includes('Failed to fetch') ||
+                              healthError?.message?.includes('NetworkError') ||
+                              healthError?.message?.includes('Network request failed');
+        
+        if (isNetworkError && !healthError.message?.includes('자동 감지')) {
+          console.log('🔄 네트워크 오류 감지 - 서버 URL 자동 감지 재시도...');
           setLoadingMessage('서버 자동 감지 중...');
           try {
             const detectedUrl = await autoDetectServerUrl();
             if (detectedUrl && detectedUrl !== '' && detectedUrl !== baseUrl) {
               console.log('✅ 새로운 서버 URL 감지:', detectedUrl);
               setServerUrl(detectedUrl);
+              // IotService의 baseUrl도 함께 업데이트
+              IotService.updateBaseUrl(detectedUrl);
               baseUrl = detectedUrl;
               // 재연결 시도
               const retryHealthResponse = await fetch(`${baseUrl}/health`, {
@@ -267,14 +324,17 @@ const DeviceRegistration: React.FC = () => {
                 throw new Error(`서버 응답 오류: ${retryHealthResponse.status}`);
               }
             } else {
-              throw new Error(`서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요. (${baseUrl})`);
+              throw new Error(`서버에 연결할 수 없습니다.\n\n확인 사항:\n1. PC와 모바일 기기가 같은 Wi-Fi 네트워크에 연결되어 있는지\n2. 서버가 실행 중인지 (포트 3000)\n3. Windows 방화벽이 포트 3000을 허용하는지\n\n현재 시도한 URL: ${baseUrl}`);
             }
           } catch (detectError: any) {
             console.error('❌ 서버 URL 자동 감지 실패:', detectError);
-            throw new Error(`서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요. (${baseUrl})`);
+            throw new Error(`서버에 연결할 수 없습니다.\n\n확인 사항:\n1. PC와 모바일 기기가 같은 Wi-Fi 네트워크에 연결되어 있는지\n2. 서버가 실행 중인지 (포트 3000)\n3. Windows 방화벽이 포트 3000을 허용하는지\n\n현재 시도한 URL: ${baseUrl}`);
           }
         } else {
-          throw new Error(`서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요. (${baseUrl})`);
+          const errorMsg = healthError?.name === 'AbortError' || healthError?.message?.includes('timeout')
+            ? `서버 연결 시간 초과 (5초).\n\n확인 사항:\n1. PC와 모바일 기기가 같은 Wi-Fi 네트워크에 연결되어 있는지\n2. 서버가 실행 중인지 (포트 3000)\n3. Windows 방화벽이 포트 3000을 허용하는지\n\n현재 시도한 URL: ${baseUrl}`
+            : `서버에 연결할 수 없습니다.\n\n확인 사항:\n1. PC와 모바일 기기가 같은 Wi-Fi 네트워크에 연결되어 있는지\n2. 서버가 실행 중인지 (포트 3000)\n3. Windows 방화벽이 포트 3000을 허용하는지\n\n현재 시도한 URL: ${baseUrl}`;
+          throw new Error(errorMsg);
         }
       }
       
@@ -289,6 +349,9 @@ const DeviceRegistration: React.FC = () => {
       setLoadingMessage('PAT 토큰 검증 중...');
       console.log('📤 서버로 요청 전송:', `${baseUrl}/iot/auto-register`);
       
+      // user_id 가져오기
+      const finalUserId = userId || await getUserIdForRegistration();
+      
       let response: Response;
       try {
         response = await fetch(`${baseUrl}/iot/auto-register`, {
@@ -298,7 +361,7 @@ const DeviceRegistration: React.FC = () => {
           },
           body: JSON.stringify({
             pat_token: patToken.trim(),
-            user_id: 'default', // 나중에 실제 사용자 ID로 확장
+            user_id: finalUserId,
           }),
           signal: controller.signal,
         });
@@ -347,10 +410,14 @@ const DeviceRegistration: React.FC = () => {
         localStorage.setItem('thinq_device_name', data.deviceName);
         localStorage.setItem('iot_device_registered', 'true');
 
-        // 잠시 후 IoT 페이지로 이동 (사용자가 성공 메시지를 볼 수 있도록)
-        setTimeout(() => {
-          history.push('/iot');
-        }, 500);
+        // onSuccess 콜백이 있으면 호출, 없으면 IoT 페이지로 이동
+        if (onSuccess) {
+          onSuccess();
+        } else {
+          setTimeout(() => {
+            history.push('/iot');
+          }, 500);
+        }
       } else if (data.needsSelection) {
         // 여러 개의 에어컨이 있는 경우 선택 화면 표시
         // 일단 첫 번째 것을 자동 선택하거나, 선택 화면을 만들어야 함
@@ -365,7 +432,7 @@ const DeviceRegistration: React.FC = () => {
             body: JSON.stringify({
               patToken: patToken.trim(),
               deviceId: selectedDevice.deviceId,
-              userId: 'default',
+              userId: finalUserId,
             }),
           });
 
@@ -389,9 +456,26 @@ const DeviceRegistration: React.FC = () => {
       console.error('❌ 등록 실패:', err);
       console.error('   에러 타입:', err.name);
       console.error('   에러 메시지:', err.message);
+      console.error('   에러 상세:', {
+        name: err?.name,
+        message: err?.message,
+        stack: err?.stack,
+        code: err?.code,
+        errno: err?.errno,
+        toString: err?.toString()
+      });
+      
+      // 네트워크 오류 상세 처리
+      const isNetworkError = err?.name === 'TypeError' || 
+                            err?.name === 'AbortError' ||
+                            err?.message?.includes('Failed to fetch') ||
+                            err?.message?.includes('NetworkError') ||
+                            err?.message?.includes('Network request failed');
       
       if (err.name === 'AbortError' || err.message?.includes('시간이 초과')) {
         setError(err.message || '요청 시간이 초과되었습니다. 네트워크 연결을 확인하고 다시 시도해주세요.');
+      } else if (isNetworkError) {
+        setError(`네트워크 연결 실패: 서버(${serverUrl || getServerUrl()})에 연결할 수 없습니다. Wi-Fi 연결과 서버 실행 상태를 확인해주세요.`);
       } else if (err.message?.includes('서버에 연결할 수 없습니다')) {
         setError(err.message);
       } else {
@@ -403,14 +487,16 @@ const DeviceRegistration: React.FC = () => {
     }
   };
 
-  return (
-    <IonPage className="device-registration-page">
-      <IonHeader>
-        <IonToolbar>
-          <IonTitle>IoT 디바이스 등록</IonTitle>
-        </IonToolbar>
-      </IonHeader>
-      <IonContent fullscreen>
+  const content = (
+    <>
+      {!hideHeader && (
+        <IonHeader>
+          <IonToolbar>
+            <IonTitle>IoT 디바이스 등록</IonTitle>
+          </IonToolbar>
+        </IonHeader>
+      )}
+      <IonContent fullscreen={!hideHeader}>
         <div className="container">
           <IonCard>
             <IonCardHeader>
@@ -452,11 +538,27 @@ const DeviceRegistration: React.FC = () => {
                 </IonText>
               )}
 
+              {/* 서버 연결 상태 표시 */}
+              {connectionStatus && (
+                <IonText 
+                  color={connectionStatus.startsWith('✅') ? 'success' : 'danger'} 
+                  className="error-text"
+                  style={{ 
+                    background: connectionStatus.startsWith('✅') 
+                      ? 'rgba(58, 143, 216, 0.1)' 
+                      : 'rgba(255, 0, 0, 0.1)' 
+                  }}
+                >
+                  {connectionStatus}
+                </IonText>
+              )}
+
               {error && (
                 <IonText color="danger" className="error-text">
                   {error}
                 </IonText>
               )}
+
 
               {/* 확인 버튼 */}
               <IonButton
@@ -478,10 +580,33 @@ const DeviceRegistration: React.FC = () => {
                   </>
                 )}
               </IonButton>
+
+              {/* 건너뛰기 버튼 (필수가 아닐 때만 표시) */}
+              {onSkip && !required && (
+                <IonButton
+                  expand="block"
+                  fill="clear"
+                  onClick={onSkip}
+                  disabled={loading}
+                  style={{ marginTop: '12px' }}
+                >
+                  나중에 등록하기
+                </IonButton>
+              )}
             </IonCardContent>
           </IonCard>
         </div>
       </IonContent>
+    </>
+  );
+
+  if (hideHeader) {
+    return content;
+  }
+
+  return (
+    <IonPage className="device-registration-page">
+      {content}
     </IonPage>
   );
 };

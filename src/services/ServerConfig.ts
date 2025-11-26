@@ -5,19 +5,37 @@
 
 const SERVER_URL_KEY = 'server_url';
 
-// 하드코딩된 서버 IP (우선 사용)
-const HARDCODED_SERVER_IP = '192.168.68.77';
-const HARDCODED_SERVER_URL = `http://${HARDCODED_SERVER_IP}:3000`;
+// 하드코딩된 서버 IP 목록 (우선 사용)
+// 현재 네트워크: 172.15.5.x 대역
+const HARDCODED_SERVER_IPS = ['172.15.5.72', '192.168.219.125', '192.168.68.77', '192.168.68.72'];
+const HARDCODED_SERVER_URL = `http://${HARDCODED_SERVER_IPS[0]}:3000`; // 첫 번째를 기본값으로 사용
 
 // 동기 버전 (기본값 반환용)
 let cachedServerUrl: string | null = null;
 
 /**
  * 서버 URL 가져오기 (동기 버전 - 빠른 접근용)
- * 우선순위: 하드코딩된 IP > 캐시 > localStorage > 환경 변수 > 기본값
+ * 우선순위: 웹 환경에서는 localhost > 하드코딩된 IP > 캐시 > localStorage > 환경 변수 > 기본값
  */
 export function getServerUrl(): string {
-  // 하드코딩된 서버 URL 우선 사용
+  // 웹 환경에서는 localhost 우선 사용
+  if (typeof window !== 'undefined') {
+    try {
+      if (!(window as any).Capacitor || !(window as any).Capacitor.isNativePlatform()) {
+        // 웹 브라우저 환경
+        const webUrl = 'http://localhost:3000';
+        cachedServerUrl = webUrl;
+        return webUrl;
+      }
+    } catch (e) {
+      // Capacitor 접근 실패 시 웹으로 간주
+      const webUrl = 'http://localhost:3000';
+      cachedServerUrl = webUrl;
+      return webUrl;
+    }
+  }
+  
+  // 네이티브 앱에서는 하드코딩된 서버 URL 우선 사용
   if (HARDCODED_SERVER_URL) {
     cachedServerUrl = HARDCODED_SERVER_URL;
     return HARDCODED_SERVER_URL;
@@ -112,25 +130,88 @@ export function getServerUrl(): string {
  * 연결 실패 시 여러 IP를 시도하여 자동으로 찾음
  */
 export async function autoDetectServerUrl(): Promise<string> {
-  // 0. 하드코딩된 서버 URL 우선 확인
-  try {
-    const response = await fetch(`${HARDCODED_SERVER_URL}/health`, {
-      method: 'GET',
-      signal: AbortSignal.timeout(2000)
-    });
-    if (response.ok) {
-      const data = await response.json();
-      const serverUrl = data.server_url || HARDCODED_SERVER_URL;
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(SERVER_URL_KEY, serverUrl);
+  // 웹 환경에서는 localhost 우선 시도
+  if (typeof window !== 'undefined') {
+    try {
+      if (!(window as any).Capacitor || !(window as any).Capacitor.isNativePlatform()) {
+        // 웹 브라우저 환경 - localhost 먼저 시도
+        try {
+          const response = await fetch('http://localhost:3000/health', {
+            method: 'GET',
+            signal: AbortSignal.timeout(2000)
+          });
+          if (response.ok) {
+            const data = await response.json();
+            const serverUrl = data.server_url || 'http://localhost:3000';
+            if (typeof window !== 'undefined') {
+              localStorage.setItem(SERVER_URL_KEY, serverUrl);
+            }
+            cachedServerUrl = serverUrl;
+            console.log('✅ 웹 환경에서 localhost 연결 성공:', serverUrl);
+            return serverUrl;
+          }
+        } catch (e) {
+          console.log('⚠️ localhost 연결 실패, 다른 IP 시도...');
+        }
       }
-      cachedServerUrl = serverUrl;
-      console.log('✅ 하드코딩된 서버 URL 연결 성공:', serverUrl);
-      return serverUrl;
+    } catch (e) {
+      // Capacitor 접근 실패 시 웹으로 간주하고 localhost 시도
+      try {
+        const response = await fetch('http://localhost:3000/health', {
+          method: 'GET',
+          signal: AbortSignal.timeout(2000)
+        });
+        if (response.ok) {
+          const serverUrl = 'http://localhost:3000';
+          if (typeof window !== 'undefined') {
+            localStorage.setItem(SERVER_URL_KEY, serverUrl);
+          }
+          cachedServerUrl = serverUrl;
+          console.log('✅ 웹 환경에서 localhost 연결 성공:', serverUrl);
+          return serverUrl;
+        }
+      } catch (err) {
+        console.log('⚠️ localhost 연결 실패, 다른 IP 시도...');
+      }
     }
-  } catch (error) {
-    console.log(`⚠️ 하드코딩된 서버 URL (${HARDCODED_SERVER_URL}) 연결 실패, 다른 IP 시도...`);
   }
+  
+  // 0. 하드코딩된 서버 URL 목록 확인 (병렬로 시도)
+  const hardcodedUrls = HARDCODED_SERVER_IPS.map(ip => `http://${ip}:3000`);
+  console.log(`🔍 하드코딩된 서버 IP 목록 확인 중: ${HARDCODED_SERVER_IPS.join(', ')}`);
+  
+  const hardcodedPromises = hardcodedUrls.map(async (url) => {
+    try {
+      const response = await fetch(`${url}/health`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(3000) // 3초로 증가
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const serverUrl = data.server_url || url;
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(SERVER_URL_KEY, serverUrl);
+        }
+        cachedServerUrl = serverUrl;
+        console.log('✅ 하드코딩된 서버 URL 연결 성공:', serverUrl);
+        return serverUrl;
+      }
+    } catch (error) {
+      // 조용히 실패 처리
+    }
+    return null;
+  });
+  
+  // 첫 번째 성공한 URL 반환
+  const results = await Promise.allSettled(hardcodedPromises);
+  const successResult = results.find(r => 
+    r.status === 'fulfilled' && r.value !== null && r.value !== ''
+  );
+  if (successResult && successResult.status === 'fulfilled' && successResult.value) {
+    return successResult.value;
+  }
+  
+  console.log(`⚠️ 하드코딩된 서버 URL 목록 모두 연결 실패, 다른 IP 시도...`);
   
   // 1. 저장된 URL이 있으면 먼저 확인 (빠른 확인)
   if (typeof window !== 'undefined') {
@@ -224,12 +305,32 @@ export async function autoDetectServerUrl(): Promise<string> {
     
     if (platform === 'android') {
       // 실제 기기에서는 10.0.2.2가 작동하지 않으므로, 실제 IP를 먼저 시도
-      // 하드코딩된 서버 IP 최우선 시도
-      ipCandidates.push(HARDCODED_SERVER_URL);
-      // 현재 서버 IP 최우선 시도 (172.30.1.1 - 사용자 컴퓨터 IP)
+      // 하드코딩된 서버 IP 목록 최우선 시도
+      HARDCODED_SERVER_IPS.forEach(ip => {
+        ipCandidates.push(`http://${ip}:3000`);
+      });
+      // 현재 네트워크 IP 최우선 시도 (172.15.5.72 - 현재 컴퓨터 IP)
+      ipCandidates.push('http://172.15.5.72:3000');
+      // 172.15.5.x 대역 시도 (현재 네트워크)
+      for (const ip of [1, 2, 10, 20, 50, 72, 100, 200, 254]) {
+        const url = `http://172.15.5.${ip}:3000`;
+        if (!ipCandidates.includes(url)) {
+          ipCandidates.push(url);
+        }
+      }
+      
+      // 현재 서버 IP 시도 (172.30.1.1 - 이전 네트워크)
       ipCandidates.push('http://172.30.1.1:3000');
       // 이전 서버 IP도 시도 (192.168.50.27)
       ipCandidates.push('http://192.168.50.27:3000');
+      
+      // 192.168.219.x 대역도 시도
+      for (const ip of [1, 100, 125, 200, 254]) {
+        const url = `http://192.168.219.${ip}:3000`;
+        if (!ipCandidates.includes(url)) {
+          ipCandidates.push(url);
+        }
+      }
       
       // 172.30.x.x 대역도 시도
       const commonIPs172 = [1, 2, 10, 20, 100, 200, 254];
@@ -241,8 +342,8 @@ export async function autoDetectServerUrl(): Promise<string> {
       }
       
       // 일반적인 로컬 네트워크 IP 대역 (더 넓은 범위)
-      const subnets = [0, 1, 50, 68, 100, 192];
-      const commonIPs = [1, 2, 10, 20, 27, 50, 68, 74, 100, 101, 200, 254];
+      const subnets = [0, 1, 50, 68, 100, 192, 219];
+      const commonIPs = [1, 2, 10, 20, 27, 50, 68, 72, 74, 77, 100, 101, 125, 200, 254];
       for (const subnet of subnets) {
         for (const ip of commonIPs) {
           const url = `http://192.168.${subnet}.${ip}:3000`;
@@ -255,15 +356,36 @@ export async function autoDetectServerUrl(): Promise<string> {
       // 마지막에 에뮬레이터용 IP 시도 (실제 기기에서는 실패할 것)
       ipCandidates.push('http://10.0.2.2:3000');
     } else if (platform === 'ios') {
-      // 하드코딩된 서버 IP 최우선 시도
-      ipCandidates.push(HARDCODED_SERVER_URL);
-      // 현재 서버 IP 최우선 시도 (172.30.1.1 - 사용자 컴퓨터 IP)
+      // 하드코딩된 서버 IP 목록 최우선 시도
+      HARDCODED_SERVER_IPS.forEach(ip => {
+        ipCandidates.push(`http://${ip}:3000`);
+      });
+      // 현재 네트워크 IP 최우선 시도 (172.15.5.72 - 현재 컴퓨터 IP)
+      ipCandidates.push('http://172.15.5.72:3000');
+      // 172.15.5.x 대역 시도 (현재 네트워크)
+      for (const ip of [1, 2, 10, 20, 50, 72, 100, 200, 254]) {
+        const url = `http://172.15.5.${ip}:3000`;
+        if (!ipCandidates.includes(url)) {
+          ipCandidates.push(url);
+        }
+      }
+      
+      // 현재 서버 IP 시도 (172.30.1.1 - 이전 네트워크)
       ipCandidates.push('http://172.30.1.1:3000');
       // 이전 서버 IP도 시도 (192.168.50.27)
       ipCandidates.push('http://192.168.50.27:3000');
+      
+      // 192.168.219.x 대역도 시도
+      for (const ip of [1, 100, 125, 200, 254]) {
+        const url = `http://192.168.219.${ip}:3000`;
+        if (!ipCandidates.includes(url)) {
+          ipCandidates.push(url);
+        }
+      }
+      
       // 일반적인 서브넷 대역을 먼저 시도 (더 넓은 범위)
-      const subnets = [0, 1, 50, 68, 100, 192];
-      const commonIPs = [1, 2, 10, 20, 27, 50, 68, 74, 100, 101, 200, 254];
+      const subnets = [0, 1, 50, 68, 100, 192, 219];
+      const commonIPs = [1, 2, 10, 20, 27, 50, 68, 72, 74, 77, 100, 101, 125, 200, 254];
       for (const subnet of subnets) {
         for (const ip of commonIPs) {
           const url = `http://192.168.${subnet}.${ip}:3000`;
@@ -276,15 +398,36 @@ export async function autoDetectServerUrl(): Promise<string> {
       ipCandidates.push('http://localhost:3000');
     } else {
       ipCandidates.push('http://localhost:3000');
-      // 하드코딩된 서버 IP 최우선 시도
-      ipCandidates.push(HARDCODED_SERVER_URL);
-      // 웹에서도 현재 서버 IP 최우선 시도 (172.30.1.1)
+      // 하드코딩된 서버 IP 목록 최우선 시도
+      HARDCODED_SERVER_IPS.forEach(ip => {
+        ipCandidates.push(`http://${ip}:3000`);
+      });
+      // 웹에서도 현재 네트워크 IP 최우선 시도 (172.15.5.72)
+      ipCandidates.push('http://172.15.5.72:3000');
+      // 172.15.5.x 대역 시도 (현재 네트워크)
+      for (const ip of [1, 2, 10, 20, 50, 72, 100, 200, 254]) {
+        const url = `http://172.15.5.${ip}:3000`;
+        if (!ipCandidates.includes(url)) {
+          ipCandidates.push(url);
+        }
+      }
+      
+      // 현재 서버 IP 시도 (172.30.1.1 - 이전 네트워크)
       ipCandidates.push('http://172.30.1.1:3000');
       // 이전 서버 IP도 시도
       ipCandidates.push('http://192.168.50.27:3000');
+      
+      // 192.168.219.x 대역도 시도
+      for (const ip of [1, 100, 125, 200, 254]) {
+        const url = `http://192.168.219.${ip}:3000`;
+        if (!ipCandidates.includes(url)) {
+          ipCandidates.push(url);
+        }
+      }
+      
       // 웹에서도 일반적인 IP 대역 시도
-      const subnets = [0, 1, 50, 68, 100, 192];
-      const commonIPs = [1, 2, 10, 20, 27, 50, 68, 74, 100, 101, 200, 254];
+      const subnets = [0, 1, 50, 68, 100, 192, 219];
+      const commonIPs = [1, 2, 10, 20, 27, 50, 68, 72, 74, 77, 100, 101, 125, 200, 254];
       for (const subnet of subnets) {
         for (const ip of commonIPs) {
           const url = `http://192.168.${subnet}.${ip}:3000`;
@@ -305,7 +448,7 @@ export async function autoDetectServerUrl(): Promise<string> {
         }
         const response = await fetch(`${url}/health`, {
           method: 'GET',
-          signal: AbortSignal.timeout(2000) // 2초로 증가 (서버 응답이 느릴 수 있음)
+          signal: AbortSignal.timeout(3000) // 3초로 증가 (서버 응답이 느릴 수 있음)
         });
         if (response.ok) {
           const data = await response.json();

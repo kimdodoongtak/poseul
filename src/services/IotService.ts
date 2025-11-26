@@ -79,7 +79,19 @@ class IotService {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
       
-      const response = await fetch(`${this.baseUrl}/air_conditioner/state`, {
+      // 현재 로그인한 사용자의 user_id 가져오기
+      let user_id = 'default';
+      try {
+        const { getCurrentUser } = await import('./AuthService');
+        const user = await getCurrentUser();
+        user_id = user.id;
+        console.log(`✅ 사용자 정보 가져오기 성공: user_id=${user_id}`);
+      } catch (error) {
+        console.error('❌ 사용자 정보 가져오기 실패, default 사용:', error);
+        // 에러가 발생해도 계속 진행 (default user_id 사용)
+      }
+      
+      const response = await fetch(`${this.baseUrl}/air_conditioner/state?user_id=${encodeURIComponent(user_id)}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -200,7 +212,19 @@ class IotService {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
       
-      const response = await fetch(`${this.baseUrl}/air_conditioner/control`, {
+      // 현재 로그인한 사용자의 user_id 가져오기
+      let user_id = 'default';
+      try {
+        const { getCurrentUser } = await import('./AuthService');
+        const user = await getCurrentUser();
+        user_id = user.id;
+        console.log(`✅ 사용자 정보 가져오기 성공: user_id=${user_id}`);
+      } catch (error) {
+        console.error('❌ 사용자 정보 가져오기 실패, default 사용:', error);
+        // 에러가 발생해도 계속 진행 (default user_id 사용)
+      }
+      
+      const response = await fetch(`${this.baseUrl}/air_conditioner/control?user_id=${encodeURIComponent(user_id)}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

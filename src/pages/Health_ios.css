@@ -16,7 +16,32 @@
   padding: 16px !important;
 }
 
-/* 모바일 헤더 - Home과 동일한 부드러운 분홍~보라 그라데이션 */
+/* 헤더 기본 스타일 - 모든 화면 크기에서 보라색 그라데이션 */
+.health-ios-page ion-header {
+  --background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+  background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+  background-image: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+  box-shadow: 0 4px 12px rgba(152, 136, 168, 0.4);
+}
+
+.health-ios-page ion-header::part(native) {
+  background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+  background-image: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+}
+
+.health-ios-page ion-toolbar {
+  --background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+  --border-color: transparent !important;
+  background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+  background-image: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+}
+
+.health-ios-page ion-toolbar::part(native) {
+  background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+  background-image: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+}
+
+/* 모바일 헤더 - 추가 보강 */
 @media (max-width: 767px) {
   .health-ios-page ion-header {
     --background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
@@ -43,29 +68,30 @@
   }
 }
 
-/* 웹 헤더 투명 */
+/* 웹 헤더도 보라색 그라데이션 유지 */
 @media (min-width: 768px) {
-  ion-header {
-    --background: transparent !important;
-    background: transparent !important;
-    background-image: none !important;
+  .health-ios-page ion-header {
+    --background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+    background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+    background-image: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+    box-shadow: 0 4px 12px rgba(152, 136, 168, 0.4);
   }
 
-  ion-header::part(native) {
-    background: transparent !important;
-    background-image: none !important;
+  .health-ios-page ion-header::part(native) {
+    background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+    background-image: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
   }
 
-  ion-toolbar {
-    --background: transparent !important;
+  .health-ios-page ion-toolbar {
+    --background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
     --border-color: transparent !important;
-    background: transparent !important;
-    background-image: none !important;
+    background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+    background-image: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
   }
 
-  ion-toolbar::part(native) {
-    background: transparent !important;
-    background-image: none !important;
+  .health-ios-page ion-toolbar::part(native) {
+    background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+    background-image: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
   }
 }
 
@@ -1090,5 +1116,65 @@ body.dark .health-ios-page .stars-background {
   z-index: 0 !important;
   opacity: 1;
   display: block !important;
+}
+
+/* 사용자 정보 모달 스타일 */
+.user-info-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.5);
+}
+
+.user-info-modal {
+  background: white;
+  border-radius: 24px;
+  padding: 24px;
+  width: 90%;
+  max-width: 400px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+  position: relative;
+}
+
+/* 사용자 정보 모달 닫힘 버튼 스타일 */
+.user-info-modal button {
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+.user-info-modal button:focus {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* 다크모드 사용자 정보 모달 */
+body.dark .user-info-modal-backdrop {
+  background-color: rgba(0, 0, 0, 0.8) !important;
+}
+
+body.dark .user-info-modal {
+  background: linear-gradient(135deg, #3A3B45 0%, #323340 50%, #2E2F3A 100%) !important;
+  border: 1px solid rgba(124, 136, 169, 0.3) !important;
+  color: #E0E5ED !important;
+}
+
+body.dark .user-info-modal ion-text {
+  color: #E0E5ED !important;
+}
+
+body.dark .user-info-modal ion-label {
+  color: #E0E5ED !important;
+}
+
+body.dark .user-info-modal ion-icon {
+  color: #E0E5ED !important;
 }
 

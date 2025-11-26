@@ -1,7 +1,8 @@
 /* Iot 페이지 스타일 - 따뜻하고 포근한 아이보리~피치 무드 */
 
 /* IoT 페이지의 IonContent 배경 - Home과 동일한 Silver Mist 그라데이션 */
-.iot-page ion-content {
+.iot-page ion-content,
+ion-content.iot-page {
   --background: linear-gradient(180deg, #D5D7E3 0%, #D0B5CE 50%, #B2BECF 100%) !important;
   background: linear-gradient(180deg, #D5D7E3 0%, #D0B5CE 50%, #B2BECF 100%) !important;
   background-image: linear-gradient(180deg, #D5D7E3 0%, #D0B5CE 50%, #B2BECF 100%) !important;
@@ -15,12 +16,14 @@
 }
 
 /* IoT 페이지의 Shadow DOM 내부 스타일 */
-.iot-page ion-content::part(scroll) {
+.iot-page ion-content::part(scroll),
+ion-content.iot-page::part(scroll) {
   background: linear-gradient(180deg, #D5D7E3 0%, #D0B5CE 50%, #B2BECF 100%) !important;
   background-image: linear-gradient(180deg, #D5D7E3 0%, #D0B5CE 50%, #B2BECF 100%) !important;
 }
 
-.iot-page ion-content .scroll-content {
+.iot-page ion-content .scroll-content,
+ion-content.iot-page .scroll-content {
   background: linear-gradient(180deg, #D5D7E3 0%, #D0B5CE 50%, #B2BECF 100%) !important;
   background-image: linear-gradient(180deg, #D5D7E3 0%, #D0B5CE 50%, #B2BECF 100%) !important;
 }

@@ -1,6 +1,7 @@
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from typing import Optional
 from sqlalchemy import text
@@ -15,6 +16,8 @@ import joblib
 import time
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
+from passlib.context import CryptContext
+from jose import JWTError, jwt
 import air_conditioner_auto_control
 import temperature_control_logic
 import feedback_based_adjustment
@@ -132,6 +135,82 @@ engine = sqlalchemy.create_engine(
     echo=False  # SQL 쿼리 로깅 (디버깅 시 True로 변경)
 )
 
+# ==================== 인증 설정 ====================
+# JWT 설정
+SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-this-in-production")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30 * 24 * 60  # 30일
+
+# 비밀번호 해싱
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# HTTP Bearer 토큰
+security = HTTPBearer()
+
+# ==================== 인증 유틸리티 함수 ====================
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """비밀번호 검증"""
+    # hashed_password가 문자열이 아닌 경우 문자열로 변환
+    if not isinstance(hashed_password, str):
+        hashed_password = str(hashed_password)
+    # 빈 문자열이면 False 반환
+    if not hashed_password or not hashed_password.strip():
+        return False
+    try:
+        return pwd_context.verify(plain_password, hashed_password)
+    except (ValueError, TypeError) as e:
+        logger.error(f"❌ 비밀번호 검증 오류: {str(e)}, 타입: {type(hashed_password)}, 값: {hashed_password[:20] if hashed_password else 'None'}")
+        return False
+
+def get_password_hash(password: str) -> str:
+    """비밀번호 해싱"""
+    return pwd_context.hash(password)
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    """JWT 토큰 생성"""
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """JWT 토큰 검증"""
+    token = credentials.credentials
+    logger.info(f"🔍 verify_token - 토큰 검증 시작: {token[:20] if token else 'None'}...")
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        sub = payload.get("sub")
+        if sub is None:
+            logger.warning(f"⚠️ verify_token - sub가 None입니다. payload: {payload}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authentication credentials",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        # sub는 문자열로 저장되므로 정수로 변환
+        user_no: int = int(sub)
+        logger.info(f"✅ verify_token - 토큰 검증 성공: user_no={user_no}")
+        return user_no
+    except JWTError as e:
+        logger.error(f"❌ verify_token - JWT 검증 실패: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except Exception as e:
+        logger.error(f"❌ verify_token - 예상치 못한 오류: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
 # 모델 로드
 # 서버 디렉토리 기준으로 모델 파일 경로 설정
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -226,14 +305,14 @@ except ImportError as e:
 user_iot_devices = {}  # 메모리 캐시 (빠른 접근용)
 
 def init_iot_devices_table():
-    """IoT 디바이스 등록 테이블 초기화 (없으면 생성)"""
+    """IoT 디바이스 등록 테이블 초기화 (없으면 생성, 있으면 컬럼 확인 및 추가)"""
     try:
         with engine.connect() as conn:
             # 테이블 존재 여부 확인
             table_check = text("""
                 SELECT COUNT(*) as count
                 FROM information_schema.tables 
-                WHERE table_schema = 'main' 
+                WHERE table_schema = DATABASE()
                 AND TABLE_NAME = 'iot_devices'
             """)
             has_table = conn.execute(table_check).fetchone().count > 0
@@ -257,22 +336,164 @@ def init_iot_devices_table():
                 conn.commit()
                 logger.info("✅ iot_devices 테이블 생성 완료")
             else:
-                logger.info("✅ iot_devices 테이블 이미 존재")
+                logger.info("✅ iot_devices 테이블 이미 존재 - 컬럼 확인 중...")
+                # 컬럼 존재 여부 확인 및 추가
+                columns_to_check = [
+                    ('device_name', 'VARCHAR(255)'),
+                    ('model_name', 'VARCHAR(255)'),
+                    ('created_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP'),
+                    ('updated_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP')
+                ]
+                
+                for column_name, column_type in columns_to_check:
+                    column_check = text("""
+                        SELECT COUNT(*) as count
+                        FROM information_schema.columns 
+                        WHERE table_schema = DATABASE()
+                        AND TABLE_NAME = 'iot_devices'
+                        AND COLUMN_NAME = :column_name
+                    """)
+                    result = conn.execute(column_check, {'column_name': column_name})
+                    has_column = result.fetchone().count > 0
+                    
+                    if not has_column:
+                        logger.info(f"📝 iot_devices 테이블에 {column_name} 컬럼 추가 중...")
+                        if column_name in ['created_at', 'updated_at']:
+                            alter_query = text(f"ALTER TABLE iot_devices ADD COLUMN {column_name} {column_type}")
+                        else:
+                            alter_query = text(f"ALTER TABLE iot_devices ADD COLUMN {column_name} {column_type}")
+                        conn.execute(alter_query)
+                        conn.commit()
+                        logger.info(f"✅ {column_name} 컬럼 추가 완료")
+                    else:
+                        logger.info(f"✅ {column_name} 컬럼 이미 존재")
+                
+                # UNIQUE KEY 확인 및 추가
+                unique_key_check = text("""
+                    SELECT COUNT(*) as count
+                    FROM information_schema.table_constraints 
+                    WHERE table_schema = DATABASE()
+                    AND TABLE_NAME = 'iot_devices'
+                    AND CONSTRAINT_NAME = 'unique_user_device'
+                """)
+                result = conn.execute(unique_key_check)
+                has_unique_key = result.fetchone().count > 0
+                
+                if not has_unique_key:
+                    logger.info("📝 iot_devices 테이블에 UNIQUE KEY 추가 중...")
+                    try:
+                        alter_query = text("ALTER TABLE iot_devices ADD UNIQUE KEY unique_user_device (user_id, device_id)")
+                        conn.execute(alter_query)
+                        conn.commit()
+                        logger.info("✅ UNIQUE KEY 추가 완료")
+                    except Exception as e:
+                        logger.warning(f"⚠️ UNIQUE KEY 추가 실패 (이미 존재할 수 있음): {str(e)}")
     except Exception as e:
         logger.error(f"❌ iot_devices 테이블 초기화 실패: {str(e)}")
+        import traceback
+        logger.error(f"❌ 상세 에러: {traceback.format_exc()}")
 
 def load_iot_devices_from_db():
     """DB에서 등록된 IoT 디바이스 정보를 메모리로 로드"""
     global user_iot_devices
-    # 서버 재시작 시마다 등록 정보를 초기화하여 매번 새로 등록하도록 함
     user_iot_devices = {}
-    logger.info("🔄 서버 재시작 - IoT 디바이스 등록 정보 초기화 (매번 새로 등록 필요)")
+    
+    try:
+        with engine.connect() as conn:
+            # 먼저 테이블에 데이터가 있는지 확인
+            count_query = text("SELECT COUNT(*) as count FROM iot_devices")
+            count_result = conn.execute(count_query)
+            total_count = count_result.fetchone().count
+            logger.info(f"🔍 iot_devices 테이블에 총 {total_count}개의 레코드가 있습니다.")
+            
+            if total_count == 0:
+                logger.info("📭 iot_devices 테이블이 비어있습니다.")
+                return
+            
+            # DB에서 모든 IoT 디바이스 정보 조회
+            query = text("""
+                SELECT user_id, pat_token, device_id, device_name, model_name
+                FROM iot_devices
+                ORDER BY updated_at DESC
+            """)
+            result = conn.execute(query)
+            rows = result.fetchall()
+            
+            logger.info(f"📥 DB에서 {len(rows)}개의 레코드를 조회했습니다.")
+            
+            # 메모리 캐시에 로드 (같은 user_id가 여러 개면 최신 것만 사용)
+            for row in rows:
+                user_id = row.user_id
+                # 이미 있으면 스킵 (최신 것이 우선)
+                if user_id not in user_iot_devices:
+                    user_iot_devices[user_id] = {
+                        'pat_token': row.pat_token,
+                        'device_id': row.device_id,
+                        'device_name': row.device_name or '',
+                        'model_name': row.model_name or ''
+                    }
+                    logger.info(f"✅ 메모리 캐시에 로드: user_id={user_id}, device_id={row.device_id[:20] if row.device_id else 'None'}..., device_name={row.device_name or 'None'}")
+            
+            logger.info(f"✅ DB에서 {len(user_iot_devices)}개의 사용자 IoT 디바이스 정보 로드 완료")
+    except Exception as e:
+        logger.error(f"❌ DB에서 IoT 디바이스 정보 로드 실패: {str(e)}")
+        import traceback
+        logger.error(f"❌ 상세 에러: {traceback.format_exc()}")
+        logger.info("🔄 메모리 캐시 초기화만 수행 (빈 상태로 시작)")
 
 def save_iot_device_to_db(user_id: str, pat_token: str, device_id: str, device_name: str, model_name: str = ''):
-    """IoT 디바이스 등록 정보를 메모리에만 저장 (서버 재시작 시 초기화됨)"""
-    # DB 저장 없이 메모리에만 저장 (서버 재시작 시 자동으로 초기화됨)
-    logger.info(f"✅ IoT 디바이스 등록 정보 메모리 저장 완료: {user_id} (디바이스: {device_name})")
-    logger.info(f"   ⚠️  서버 재시작 시 등록 정보가 초기화됩니다 (매번 새로 등록 필요)")
+    """IoT 디바이스 등록 정보를 DB와 메모리에 저장"""
+    try:
+        logger.info(f"💾 IoT 디바이스 DB 저장 시작: user_id={user_id}, device_id={device_id[:20] if device_id else 'None'}..., device_name={device_name}")
+        
+        with engine.connect() as conn:
+            # UPSERT 쿼리 (이미 있으면 업데이트, 없으면 삽입)
+            query = text("""
+                INSERT INTO iot_devices (user_id, pat_token, device_id, device_name, model_name, updated_at)
+                VALUES (:user_id, :pat_token, :device_id, :device_name, :model_name, NOW())
+                ON DUPLICATE KEY UPDATE
+                    pat_token = VALUES(pat_token),
+                    device_id = VALUES(device_id),
+                    device_name = VALUES(device_name),
+                    model_name = VALUES(model_name),
+                    updated_at = NOW()
+            """)
+            result = conn.execute(query, {
+                'user_id': user_id,
+                'pat_token': pat_token,
+                'device_id': device_id,
+                'device_name': device_name,
+                'model_name': model_name
+            })
+            conn.commit()
+            
+            # 저장 확인
+            check_query = text("""
+                SELECT user_id, device_id, device_name FROM iot_devices WHERE user_id = :user_id
+            """)
+            check_result = conn.execute(check_query, {'user_id': user_id})
+            saved_row = check_result.fetchone()
+            
+            logger.info(f"🔍 DB 저장 확인 쿼리 실행: user_id={user_id}")
+            
+            if saved_row:
+                logger.info(f"✅ IoT 디바이스 등록 정보 DB 저장 완료 및 확인: user_id={user_id}, device_id={saved_row.device_id[:20] if saved_row.device_id else 'None'}..., device_name={saved_row.device_name}")
+            else:
+                logger.warning(f"⚠️ IoT 디바이스 DB 저장 후 확인 실패: user_id={user_id} - 저장된 레코드를 찾을 수 없습니다.")
+    except Exception as e:
+        logger.error(f"❌ IoT 디바이스 DB 저장 실패: user_id={user_id}, error={str(e)}")
+        import traceback
+        logger.error(f"❌ 상세 에러: {traceback.format_exc()}")
+        raise
+    
+    # 메모리 캐시도 업데이트
+    user_iot_devices[user_id] = {
+        'pat_token': pat_token,
+        'device_id': device_id,
+        'device_name': device_name,
+        'model_name': model_name
+    }
+    logger.info(f"✅ IoT 디바이스 등록 정보 메모리 캐시 업데이트 완료: {user_id}")
 
 # ==================== 쾌적 온도 계산 함수 ====================
 
@@ -439,6 +660,22 @@ class TemperatureFeedbackRequest(BaseModel):
     feedback: str  # 'hot', 'cold', 'comfortable'
     date: Optional[str] = None  # ISO format date string
 
+# ==================== 인증 관련 모델 ====================
+
+class RegisterRequest(BaseModel):
+    id: str  # 이메일 또는 사용자 아이디
+    password: str
+    device: Optional[str] = None  # IoT 디바이스 정보 (PAT 토큰 또는 device_id)
+
+class LoginRequest(BaseModel):
+    id: str  # 이메일 또는 사용자 아이디
+    password: str
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user_no: int
+
 class AndroidAppHealthMetrics(BaseModel):
     """Android 앱 건강 지표 모델"""
     timestamp: Optional[str] = None
@@ -458,6 +695,246 @@ class AndroidAppHealthMetrics(BaseModel):
     load_avg_5min: Optional[float] = None
     load_avg_15min: Optional[float] = None
     error_log: Optional[str] = None
+
+# ==================== 인증 API ====================
+
+@app.post("/auth/register", response_model=TokenResponse)
+async def register(data: RegisterRequest):
+    """
+    회원가입 API
+    """
+    try:
+        with engine.connect() as conn:
+            # 이메일 중복 확인
+            check_query = text("""
+                SELECT no FROM login WHERE id = :id
+            """)
+            result = conn.execute(check_query, {"id": data.id})
+            existing_user = result.fetchone()
+            
+            if existing_user:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="이미 등록된 아이디입니다."
+                )
+            
+            # 비밀번호 해싱
+            hashed_password = get_password_hash(data.password)
+            
+            # login 테이블에 device 컬럼이 있는지 확인하고 없으면 추가
+            try:
+                column_check = text("""
+                    SELECT COUNT(*) as count
+                    FROM information_schema.columns 
+                    WHERE table_schema = DATABASE()
+                    AND TABLE_NAME = 'login'
+                    AND COLUMN_NAME = 'device'
+                """)
+                result = conn.execute(column_check)
+                has_device_column = result.fetchone().count > 0
+                
+                if not has_device_column:
+                    logger.info("📝 login 테이블에 device 컬럼 추가 중...")
+                    alter_query = text("ALTER TABLE login ADD COLUMN device VARCHAR(255) DEFAULT NULL")
+                    conn.execute(alter_query)
+                    conn.commit()
+                    logger.info("✅ login 테이블 device 컬럼 추가 완료")
+            except Exception as e:
+                logger.warning(f"⚠️ login 테이블 device 컬럼 확인/추가 실패: {str(e)}")
+            
+            # 사용자 등록
+            if data.device:
+                insert_query = text("""
+                    INSERT INTO login (id, password, device)
+                    VALUES (:id, :password, :device)
+                """)
+                conn.execute(insert_query, {
+                    "id": data.id,
+                    "password": hashed_password,
+                    "device": data.device
+                })
+            else:
+                insert_query = text("""
+                    INSERT INTO login (id, password)
+                    VALUES (:id, :password)
+                """)
+                conn.execute(insert_query, {
+                    "id": data.id,
+                    "password": hashed_password
+                })
+            conn.commit()
+            
+            # 등록된 사용자 정보 가져오기
+            get_user_query = text("""
+                SELECT no FROM login WHERE id = :id
+            """)
+            user_result = conn.execute(get_user_query, {"id": data.id})
+            user = user_result.fetchone()
+            
+            if not user:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="회원가입 후 사용자 정보를 가져올 수 없습니다."
+                )
+            
+            # JWT 토큰 생성
+            access_token = create_access_token(data={"sub": str(user.no)})
+            
+            logger.info(f"✅ 회원가입 성공: {data.id} (no: {user.no})")
+            
+            return TokenResponse(
+                access_token=access_token,
+                token_type="bearer",
+                user_no=user.no
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 회원가입 실패: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"회원가입 실패: {str(e)}"
+        )
+
+@app.post("/auth/login", response_model=TokenResponse)
+async def login(data: LoginRequest):
+    """
+    로그인 API
+    """
+    try:
+        with engine.connect() as conn:
+            # 사용자 조회
+            query = text("""
+                SELECT no, id, CAST(password AS CHAR) as password FROM login WHERE id = :id
+            """)
+            result = conn.execute(query, {"id": data.id})
+            user = result.fetchone()
+            
+            if not user:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="아이디 또는 비밀번호가 올바르지 않습니다."
+                )
+            
+            # 비밀번호 검증 (DB에서 가져온 값을 문자열로 변환)
+            stored_password = str(user.password) if user.password is not None else ""
+            logger.debug(f"🔍 로그인 시도 - 사용자: {data.id}, 저장된 비밀번호 타입: {type(user.password)}, 길이: {len(stored_password) if stored_password else 0}")
+            
+            if not stored_password or not stored_password.strip():
+                logger.error(f"❌ 저장된 비밀번호가 비어있음: {data.id}")
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="아이디 또는 비밀번호가 올바르지 않습니다."
+                )
+            
+            if not verify_password(data.password, stored_password):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="아이디 또는 비밀번호가 올바르지 않습니다."
+                )
+            
+            # 마지막 로그인 시간 업데이트 (컬럼이 있다면)
+            try:
+                update_query = text("""
+                    UPDATE login SET last_login = NOW() WHERE no = :no
+                """)
+                conn.execute(update_query, {"no": user.no})
+                conn.commit()
+            except Exception as e:
+                # last_login 컬럼이 없어도 계속 진행
+                logger.debug(f"last_login 업데이트 실패 (무시): {e}")
+            
+            # JWT 토큰 생성
+            access_token = create_access_token(data={"sub": str(user.no)})
+            
+            logger.info(f"✅ 로그인 성공: {data.id} (no: {user.no})")
+            
+            return TokenResponse(
+                access_token=access_token,
+                token_type="bearer",
+                user_no=user.no
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 로그인 실패: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"로그인 실패: {str(e)}"
+        )
+
+@app.get("/auth/me")
+async def get_current_user_info(user_no: int = Depends(verify_token)):
+    """
+    현재 로그인한 사용자 정보 조회 API
+    """
+    try:
+        with engine.connect() as conn:
+            query = text("""
+                SELECT no, id FROM login WHERE no = :no
+            """)
+            result = conn.execute(query, {"no": user_no})
+            user = result.fetchone()
+            
+            if not user:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="사용자를 찾을 수 없습니다."
+                )
+            
+            return {
+                "user_no": user.no,
+                "id": user.id
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 사용자 정보 조회 실패: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"사용자 정보 조회 실패: {str(e)}"
+        )
+
+@app.get("/auth/me")
+async def get_current_user(user_no: int = Depends(verify_token)):
+    """
+    현재 로그인한 사용자 정보 조회 (내부 함수)
+    """
+    try:
+        with engine.connect() as conn:
+            query = text("""
+                SELECT no, id FROM login WHERE no = :no
+            """)
+            result = conn.execute(query, {"no": user_no})
+            user = result.fetchone()
+            
+            if not user:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="사용자를 찾을 수 없습니다."
+                )
+            
+            return {
+                "user_no": user.no,
+                "id": user.id
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 사용자 정보 조회 실패: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"사용자 정보 조회 실패: {str(e)}"
+        )
+
+@app.get("/auth/me")
+async def get_current_user_info(user_no: int = Depends(verify_token)):
+    """
+    현재 로그인한 사용자 정보 조회 API
+    """
+    return await get_current_user(user_no)
 
 # ==================== Health Data API ====================
 
@@ -1532,9 +2009,38 @@ async def get_air_conditioner_state_api(request: Request):
         # 쿼리 파라미터에서 user_id 가져오기 (없으면 기본값)
         user_id = request.query_params.get('user_id', 'default')
         
-        # 사용자별 등록 정보 확인
-        device_info = user_iot_devices.get(user_id)
-        if not device_info:
+        # 항상 DB에서 직접 조회 (캐시 사용 안 함)
+        logger.info(f"🔍 DB에서 직접 조회: user_id={user_id}")
+        try:
+            with engine.connect() as conn:
+                device_query = text("""
+                    SELECT user_id, pat_token, device_id, device_name, model_name
+                    FROM iot_devices
+                    WHERE user_id = :user_id
+                    ORDER BY updated_at DESC
+                    LIMIT 1
+                """)
+                device_result = conn.execute(device_query, {'user_id': user_id})
+                device_row = device_result.fetchone()
+                
+                if not device_row:
+                    logger.warning(f"❌ 등록된 디바이스 없음: user_id={user_id}")
+                    raise HTTPException(status_code=404, detail="등록된 디바이스가 없습니다. 먼저 PAT 토큰을 등록해주세요.")
+                
+                # DB에서 조회한 정보 사용
+                device_info = {
+                    'pat_token': device_row.pat_token,
+                    'device_id': device_row.device_id,
+                    'device_name': device_row.device_name or '',
+                    'model_name': device_row.model_name or ''
+                }
+                logger.info(f"✅ DB에서 조회 성공: user_id={user_id}, device_id={device_row.device_id[:20] if device_row.device_id else 'None'}...")
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"❌ DB 조회 실패: {str(e)}")
+            import traceback
+            logger.error(f"❌ 상세 에러: {traceback.format_exc()}")
             raise HTTPException(status_code=404, detail="등록된 디바이스가 없습니다. 먼저 PAT 토큰을 등록해주세요.")
         
         pat_token = device_info['pat_token']
@@ -1594,9 +2100,38 @@ async def control_air_conditioner_api(data: AirConditionerControlRequest, reques
         # 쿼리 파라미터에서 user_id 가져오기 (없으면 기본값)
         user_id = request.query_params.get('user_id', 'default')
         
-        # 사용자별 등록 정보 확인
-        device_info = user_iot_devices.get(user_id)
-        if not device_info:
+        # 항상 DB에서 직접 조회 (캐시 사용 안 함)
+        logger.info(f"🔍 DB에서 직접 조회: user_id={user_id}")
+        try:
+            with engine.connect() as conn:
+                device_query = text("""
+                    SELECT user_id, pat_token, device_id, device_name, model_name
+                    FROM iot_devices
+                    WHERE user_id = :user_id
+                    ORDER BY updated_at DESC
+                    LIMIT 1
+                """)
+                device_result = conn.execute(device_query, {'user_id': user_id})
+                device_row = device_result.fetchone()
+                
+                if not device_row:
+                    logger.warning(f"❌ 등록된 디바이스 없음: user_id={user_id}")
+                    raise HTTPException(status_code=404, detail="등록된 디바이스가 없습니다. 먼저 PAT 토큰을 등록해주세요.")
+                
+                # DB에서 조회한 정보 사용
+                device_info = {
+                    'pat_token': device_row.pat_token,
+                    'device_id': device_row.device_id,
+                    'device_name': device_row.device_name or '',
+                    'model_name': device_row.model_name or ''
+                }
+                logger.info(f"✅ DB에서 조회 성공: user_id={user_id}, device_id={device_row.device_id[:20] if device_row.device_id else 'None'}...")
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"❌ DB 조회 실패: {str(e)}")
+            import traceback
+            logger.error(f"❌ 상세 에러: {traceback.format_exc()}")
             raise HTTPException(status_code=404, detail="등록된 디바이스가 없습니다. 먼저 PAT 토큰을 등록해주세요.")
         
         pat_token = device_info['pat_token']
@@ -1887,15 +2422,51 @@ async def auto_register_device_api(data: PatTokenRequest):
             device_id = device['deviceId']
             device_name = device['alias']
             
+            logger.info(f"💾 IoT 디바이스 저장 시작: user_id={user_id}, device_id={device_id[:20] if device_id else 'None'}..., device_name={device_name}")
+            
+            # login 테이블에 해당 user_id가 있는지 확인
+            try:
+                with engine.connect() as conn:
+                    user_check_query = text("""
+                        SELECT COUNT(*) as count FROM login WHERE id = :user_id
+                    """)
+                    user_check_result = conn.execute(user_check_query, {'user_id': user_id})
+                    user_exists = user_check_result.fetchone().count > 0
+                    
+                    if not user_exists:
+                        logger.warning(f"⚠️ login 테이블에 user_id={user_id}가 없습니다. IoT 등록을 건너뜁니다.")
+                        return {
+                            'success': False,
+                            'message': f'사용자 {user_id}가 등록되지 않았습니다. 먼저 회원가입을 완료해주세요.'
+                        }
+                    else:
+                        logger.info(f"✅ login 테이블에 user_id={user_id} 존재 확인")
+            except Exception as e:
+                logger.error(f"❌ 사용자 확인 실패: {str(e)}")
+                return {
+                    'success': False,
+                    'message': '사용자 확인 중 오류가 발생했습니다.'
+                }
+            
             # 사용자별로 저장 (DB + 메모리 캐시)
-            save_iot_device_to_db(user_id, pat_token, device_id, device_name, device['modelName'])
-            # 메모리 캐시도 업데이트
-            user_iot_devices[user_id] = {
-                'pat_token': pat_token,
-                'device_id': device_id,
-                'device_name': device_name,
-                'model_name': device['modelName']
-            }
+            try:
+                save_iot_device_to_db(user_id, pat_token, device_id, device_name, device['modelName'])
+                logger.info(f"✅ IoT 디바이스 저장 성공: user_id={user_id}")
+            except Exception as e:
+                logger.error(f"❌ IoT 디바이스 저장 실패: user_id={user_id}, error={str(e)}")
+                import traceback
+                logger.error(f"❌ 상세 에러: {traceback.format_exc()}")
+                # 저장 실패해도 응답은 반환 (나중에 재시도 가능)
+            # 메모리 캐시는 save_iot_device_to_db() 내부에서 업데이트되므로 여기서는 중복 업데이트하지 않음
+            # (save_iot_device_to_db()가 실패한 경우에만 여기서 업데이트)
+            if user_id not in user_iot_devices:
+                user_iot_devices[user_id] = {
+                    'pat_token': pat_token,
+                    'device_id': device_id,
+                    'device_name': device_name,
+                    'model_name': device['modelName']
+                }
+                logger.info(f"✅ 메모리 캐시 업데이트 완료 (DB 저장 실패 시): user_id={user_id}")
             
             logger.info(f"✅ 에어컨 자동 등록 완료: {device_name} (ID: {device_id[:20]}...)")
             
@@ -2050,6 +2621,88 @@ async def get_device_registration_status_from_db_api(user_id: Optional[str] = "d
             'error': str(e),
             'storage_type': 'database',
             'memory_cache': user_iot_devices.get(user_id) is not None
+        }
+
+@app.get("/iot/device-status/by-user-no")
+async def get_device_registration_status_by_user_no(user_no: int = Depends(verify_token)):
+    """
+    user_no로 사용자의 디바이스 등록 상태를 조회합니다 (인증 필요)
+    """
+    try:
+        with engine.connect() as conn:
+            # user_no로 user_id 조회
+            user_query = text("""
+                SELECT id FROM login WHERE no = :user_no
+            """)
+            user_result = conn.execute(user_query, {'user_no': user_no})
+            user = user_result.fetchone()
+            
+            if not user:
+                return {
+                    'success': False,
+                    'registered': False,
+                    'message': '사용자를 찾을 수 없습니다.'
+                }
+            
+            user_id = user.id
+            
+            # user_id로 IoT 디바이스 조회
+            device_query = text("""
+                SELECT user_id, pat_token, device_id, device_name, model_name, created_at, updated_at
+                FROM iot_devices
+                WHERE user_id = :user_id
+                ORDER BY updated_at DESC
+                LIMIT 1
+            """)
+            device_result = conn.execute(device_query, {'user_id': user_id})
+            device_row = device_result.fetchone()
+            
+            if not device_row:
+                # 메모리 캐시도 확인
+                device_info = user_iot_devices.get(user_id)
+                if device_info:
+                    return {
+                        'success': True,
+                        'registered': True,
+                        'deviceId': device_info['device_id'],
+                        'deviceName': device_info['device_name'],
+                        'modelName': device_info.get('model_name', ''),
+                        'patToken': device_info.get('pat_token', ''),
+                        'storage_type': 'memory'
+                    }
+                
+                return {
+                    'success': False,
+                    'registered': False,
+                    'message': '등록된 디바이스가 없습니다.'
+                }
+            
+            # 메모리 캐시도 업데이트
+            user_iot_devices[user_id] = {
+                'pat_token': device_row.pat_token,
+                'device_id': device_row.device_id,
+                'device_name': device_row.device_name,
+                'model_name': device_row.model_name or ''
+            }
+            
+            return {
+                'success': True,
+                'registered': True,
+                'deviceId': device_row.device_id,
+                'deviceName': device_row.device_name,
+                'modelName': device_row.model_name or '',
+                'patToken': device_row.pat_token or '',
+                'createdAt': device_row.created_at.isoformat() if device_row.created_at else None,
+                'updatedAt': device_row.updated_at.isoformat() if device_row.updated_at else None,
+                'storage_type': 'database'
+            }
+    except Exception as e:
+        logger.error(f"❌ user_no로 디바이스 등록 상태 조회 실패: {str(e)}")
+        return {
+            'success': False,
+            'error': str(e),
+            'registered': False,
+            'message': f'디바이스 등록 상태 조회 실패: {str(e)}'
         }
 
 @app.post("/iot/test-pat-token")
@@ -3379,6 +4032,9 @@ scheduler.add_job(
 async def startup_event():
     """서버 시작 시 초기 세팅 및 스케줄러 시작"""
     logger.info("🚀 서버 시작 중...")
+    
+    # IoT 디바이스 테이블 초기화 (없으면 생성)
+    init_iot_devices_table()
     
     # IoT 디바이스 등록 정보 초기화 (서버 재시작 시마다 매번 새로 등록하도록)
     load_iot_devices_from_db()  # 이 함수는 이제 등록 정보를 초기화만 함

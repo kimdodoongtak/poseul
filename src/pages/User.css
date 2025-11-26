@@ -1258,3 +1258,37 @@ ion-button.feedback-submit-button[disabled] {
 .user-page ion-text[color="primary"] {
   color: #C4A1C2 !important;
 }
+
+/* 회원가입 링크 텍스트 버튼 스타일 */
+.sign-up-link-text {
+  background: none !important;
+  border: none !important;
+  color: #66748D !important;
+  text-decoration: underline !important;
+  cursor: pointer !important;
+  font-size: 14px !important;
+  padding: 8px !important;
+  font-family: inherit !important;
+  transition: color 0.3s ease !important;
+}
+
+.sign-up-link-text:hover {
+  color: #7C88A9 !important;
+}
+
+.sign-up-link-text:active {
+  color: #C4A1C2 !important;
+}
+
+/* 다크모드 회원가입 링크 */
+body.dark .sign-up-link-text {
+  color: #E0E5ED !important;
+}
+
+body.dark .sign-up-link-text:hover {
+  color: #A0A5B8 !important;
+}
+
+body.dark .sign-up-link-text:active {
+  color: #7C88A9 !important;
+}
