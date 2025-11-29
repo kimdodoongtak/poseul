@@ -17,11 +17,16 @@ interface HeartRateChartProps {
 
 const HeartRateChart: React.FC<HeartRateChartProps> = ({ data }) => {
   // 차트 데이터 포맷팅
-  const chartData = data.map((point) => ({
-    time: `${point.hour}:${point.minute.toString().padStart(2, '0')}`,
-    hour: point.hour,
-    heartRate: point.heartRate,
-  }));
+  // 마지막 데이터 시간 기준으로 12시간 그래프를 표시하므로 모든 데이터를 사용
+  const chartData = data
+    .filter((point) => point != null) // null/undefined 제거
+    .map((point) => ({
+      time: `${point.hour.toString().padStart(2, '0')}:${point.minute.toString().padStart(2, '0')}`,
+      hour: point.hour,
+      minute: point.minute,
+      // 0인 경우 null로 처리하여 선이 끊기지 않도록 함 (데이터가 없는 경우)
+      heartRate: point.heartRate && point.heartRate > 0 ? point.heartRate : null,
+    }));
 
   // 커스텀 툴팁
   const CustomTooltip = ({ active, payload }: any) => {
@@ -41,7 +46,7 @@ const HeartRateChart: React.FC<HeartRateChartProps> = ({ data }) => {
             {`시간: ${data.time}`}
           </p>
           <p style={{ margin: '8px 0 0 0', color: '#ff6b6b', fontWeight: '600', fontSize: '15px' }}>
-            심박수: <strong>{data.heartRate?.toFixed(0)} bpm</strong>
+            심박수: <strong>{data.heartRate ? `${data.heartRate.toFixed(0)} bpm` : '데이터 없음'}</strong>
           </p>
         </div>
       );
@@ -49,16 +54,17 @@ const HeartRateChart: React.FC<HeartRateChartProps> = ({ data }) => {
     return null;
   };
 
-  if (chartData.length === 0) {
+  // 최근 12시간 데이터만 표시 (서버에서 이미 12시간 데이터를 반환하지만 안전을 위해)
+  const recentData = chartData.slice(-12);
+
+  // 데이터가 없거나 유효한 데이터가 없는 경우
+  if (chartData.length === 0 || recentData.length === 0) {
     return (
       <div style={{ padding: '20px', textAlign: 'center', color: '#888' }}>
-        데이터가 없습니다. 1시간마다 자동으로 데이터가 수집됩니다.
+        데이터가 없습니다. 10분마다 자동으로 데이터가 수집됩니다.
       </div>
     );
   }
-
-  // 최근 12시간 데이터만 표시
-  const recentData = chartData.slice(-12);
 
   return (
     <ResponsiveContainer width="100%" height={180}>
@@ -66,8 +72,9 @@ const HeartRateChart: React.FC<HeartRateChartProps> = ({ data }) => {
         <CartesianGrid strokeDasharray="3 3" stroke="#E0E0E0" opacity={0.5} />
         <XAxis
           dataKey="time"
-          tick={{ fontSize: 12 }}
-          interval="preserveStartEnd"
+          tick={{ fontSize: 11, fill: '#666' }}
+          interval={1} // 2시간 단위로 표시 (0, 2, 4, 6, 8, 10, 12번째 인덱스)
+          tickMargin={8}
         />
         <YAxis
           domain={['dataMin - 10', 'dataMax + 10']}

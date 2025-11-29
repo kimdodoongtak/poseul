@@ -35,16 +35,31 @@ const TemperatureChart: React.FC<TemperatureChartProps> = ({ data }) => {
   }
 
   // 차트 데이터 포맷팅
-  const chartData = data.map((point) => ({
-    time: `${point.hour}:${point.minute.toString().padStart(2, '0')}`,
-    hour: point.hour,
-    predicted: point.predictedTemperature,
-    current: point.currentTemperature,
-    target: point.targetTemperature,
-    category: point.temperatureCategory,
-    categoryColor: getCategoryColor(point.temperatureCategory),
-  }));
-
+  const chartData = data
+    .filter((point) => point != null) // null/undefined 제거
+    .map((point) => {
+      // 분류 모드: 분류에 따라 고정된 y축 위치 설정
+      // 추움: 33.5도, 적정: 35.0도, 더움: 36.5도 (논리적 순서)
+      let categoryYValue = 35.0; // 기본값 (적정)
+      if (point.temperatureCategory === '추움') {
+        categoryYValue = 33.5;
+      } else if (point.temperatureCategory === '더움') {
+        categoryYValue = 36.5;
+      } else if (point.temperatureCategory === '적정') {
+        categoryYValue = 35.0;
+      }
+      
+      return {
+        time: `${point.hour}:${point.minute.toString().padStart(2, '0')}`,
+        hour: point.hour,
+        // predicted 제거 (분류 모드에서 불필요)
+        categoryY: categoryYValue, // 분류 모드 y축 위치
+        current: point.currentTemperature,
+        target: point.targetTemperature,
+        category: point.temperatureCategory,
+        categoryColor: getCategoryColor(point.temperatureCategory),
+      };
+    });
 
   // 현재온도 커스텀 도트
   const CustomCurrentDot = (props: any) => {
@@ -165,16 +180,17 @@ const TemperatureChart: React.FC<TemperatureChartProps> = ({ data }) => {
     return null;
   };
 
-  if (chartData.length === 0) {
+  // 최근 12시간 데이터만 표시
+  const recentData = chartData.slice(-12);
+
+  // 데이터가 없거나 유효한 데이터가 없는 경우
+  if (chartData.length === 0 || recentData.length === 0) {
     return (
       <div style={{ padding: '20px', textAlign: 'center', color: '#888' }}>
-        데이터가 없습니다. 1시간마다 자동으로 데이터가 수집됩니다.
+        데이터가 없습니다. 10분마다 자동으로 데이터가 수집됩니다.
       </div>
     );
   }
-
-  // 최근 12시간 데이터만 표시
-  const recentData = chartData.slice(-12);
 
   // Y축 범위 계산
   let minTemp: number;
@@ -201,24 +217,11 @@ const TemperatureChart: React.FC<TemperatureChartProps> = ({ data }) => {
       maxTemp = 35;
     }
   } else {
-    // 분류 모드: 예측 체온 범위 (33~37도)
-    const predictedTemps = recentData
-      .map(d => d.predicted)
-      .filter((v): v is number => typeof v === 'number' && !isNaN(v) && isFinite(v));
-    
-    if (predictedTemps.length > 0) {
-      const minPredicted = Math.min(...predictedTemps);
-      const maxPredicted = Math.max(...predictedTemps);
-      const tempRange = maxPredicted - minPredicted;
-      
-      minTemp = Math.max(33, minPredicted - Math.max(tempRange * 0.2, 0.3));
-      maxTemp = Math.min(37, maxPredicted + Math.max(tempRange * 0.2, 0.3));
-      paddingTop = 0.2;
-      paddingBottom = 0.2;
-    } else {
-      minTemp = 33;
-      maxTemp = 37;
-    }
+    // 분류 모드: 고정 범위 (33~37도) - 실제 예측값 사용 안 함
+    minTemp = 33;
+    maxTemp = 37;
+    paddingTop = 0.2;
+    paddingBottom = 0.2;
   }
 
   return (
@@ -300,7 +303,7 @@ const TemperatureChart: React.FC<TemperatureChartProps> = ({ data }) => {
           {viewMode === 'category' && (
             <Line
               type="monotone"
-              dataKey="predicted"
+              dataKey="categoryY"
               name="분류"
               stroke="#7C88A9"
               strokeWidth={3}
@@ -368,19 +371,26 @@ const TemperatureChart: React.FC<TemperatureChartProps> = ({ data }) => {
           {/* 온도 모드: 현재/목표 온도 라인 표시 */}
           {viewMode === 'temperature' && (
             <>
-              {recentData.some((d) => d.current !== null) && (
+              {recentData.some((d) => d.current !== null && d.current !== undefined) && (
                 <Line
                   type="monotone"
                   dataKey="current"
                   name="현재 온도"
                   stroke="#7C88A9"
                   strokeWidth={2.5}
-                  dot={<CustomCurrentDot />}
+                  dot={(props: any) => {
+                    // null이나 undefined인 경우 도트 표시 안 함
+                    if (props.payload.current === null || props.payload.current === undefined) {
+                      return null;
+                    }
+                    return <CustomCurrentDot {...props} />;
+                  }}
                   activeDot={{ r: 7 }}
                   strokeDasharray="5 5"
+                  connectNulls={false}
                 />
               )}
-              {recentData.some((d) => d.target !== null) && (
+              {recentData.some((d) => d.target !== null && d.target !== undefined) && (
                 <Line
                   type="monotone"
                   dataKey="target"
@@ -389,6 +399,10 @@ const TemperatureChart: React.FC<TemperatureChartProps> = ({ data }) => {
                   strokeWidth={2.5}
                   dot={(props: any) => {
                     const { cx, cy, payload } = props;
+                    // null이나 undefined인 경우 도트 표시 안 함
+                    if (payload.target === null || payload.target === undefined) {
+                      return null;
+                    }
                     const isHovered = showTargetDetails;
                     return (
                       <g
@@ -420,6 +434,7 @@ const TemperatureChart: React.FC<TemperatureChartProps> = ({ data }) => {
                   }}
                   activeDot={{ r: 7 }}
                   strokeDasharray="3 3"
+                  connectNulls={false}
                 />
               )}
             </>

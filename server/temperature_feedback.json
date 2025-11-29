@@ -6,9 +6,81 @@
     "timestamp": "2025-11-18T19:17:07.145850"
   },
   {
+    "feedback": "G",
+    "feedback_text": "comfortable",
+    "date": "2025-11-23T11:05:48.767Z",
+    "timestamp": "2025-11-23T20:05:48.834177"
+  },
+  {
+    "feedback": "C",
+    "feedback_text": "cold",
+    "date": "2025-11-23T11:07:35.136Z",
+    "timestamp": "2025-11-23T20:07:35.214965"
+  },
+  {
+    "feedback": "G",
+    "feedback_text": "comfortable",
+    "date": "2025-11-23T11:14:47.685Z",
+    "timestamp": "2025-11-23T20:14:47.770673"
+  },
+  {
+    "feedback": "G",
+    "feedback_text": "comfortable",
+    "date": "2025-11-23T11:16:42.355Z",
+    "timestamp": "2025-11-23T20:16:42.403499"
+  },
+  {
+    "feedback": "G",
+    "feedback_text": "comfortable",
+    "date": "2025-11-23T11:21:39.313Z",
+    "timestamp": "2025-11-23T20:21:39.352092"
+  },
+  {
+    "feedback": "G",
+    "feedback_text": "comfortable",
+    "date": "2025-11-24T08:26:35.411Z",
+    "timestamp": "2025-11-24T17:26:35.347950"
+  },
+  {
+    "feedback": "G",
+    "feedback_text": "comfortable",
+    "date": "2025-11-24T08:38:51.026Z",
+    "timestamp": "2025-11-24T17:38:50.921317"
+  },
+  {
+    "feedback": "G",
+    "feedback_text": "comfortable",
+    "date": "2025-11-24T08:39:33.769Z",
+    "timestamp": "2025-11-24T17:39:33.751705"
+  },
+  {
     "feedback": "H",
     "feedback_text": "hot",
-    "date": "2025-11-23T04:45:34.455Z",
-    "timestamp": "2025-11-23T13:45:34.919162"
+    "date": "2025-11-24T08:40:49.239Z",
+    "timestamp": "2025-11-24T17:40:49.119635"
+  },
+  {
+    "feedback": "H",
+    "feedback_text": "hot",
+    "date": "2025-11-24T08:50:57.556Z",
+    "timestamp": "2025-11-24T17:50:57.399365"
+  },
+  {
+    "feedback": "H",
+    "feedback_text": "hot",
+    "date": "2025-11-24T09:14:32.106Z",
+    "timestamp": "2025-11-24T18:14:32.028523"
+  },
+  {
+    "feedback": "C",
+    "feedback_text": "cold",
+    "date": "2025-11-24T09:26:10.862Z",
+    "timestamp": "2025-11-24T18:26:10.668428"
+  },
+  {
+    "feedback": "H",
+    "feedback_text": "hot",
+    "date": "2025-11-28T02:55:12.687Z",
+    "timestamp": "2025-11-28T11:55:12.791137"
   }
 ]

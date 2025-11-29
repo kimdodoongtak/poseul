@@ -125,12 +125,18 @@ ion-content {
   --padding-end: 16px !important;
 }
 
-/* iOS - 기존 디자인 유지 */
+/* iOS - 하단 빈 공간 제거 */
 .platform-ios ion-content {
   --padding-top: 16px !important;
-  --padding-bottom: 16px !important;
+  --padding-bottom: 0 !important;
   --padding-start: 16px !important;
   --padding-end: 16px !important;
+  padding-bottom: 0 !important;
+}
+
+.platform-ios ion-content::part(scroll) {
+  padding-bottom: 0 !important;
+  margin-bottom: 0 !important;
 }
 
 /* Shadow DOM 내부 스타일 강제 적용 */
@@ -144,6 +150,17 @@ ion-content .scroll-content {
   color: #000000 !important;
 }
 
+/* iOS에서 모든 ion-content 하단 여백 제거 */
+.platform-ios ion-content::part(scroll) {
+  padding-bottom: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+.platform-ios ion-content .scroll-content {
+  padding-bottom: 0 !important;
+  margin-bottom: 0 !important;
+}
+
 /* Shadow DOM 내부의 실제 스크롤 컨테이너 */
 ion-content .inner-scroll {
   background-color: #ffffff !important;
@@ -153,9 +170,19 @@ ion-content .inner-scroll {
 ion-tabs {
   --background: #ffffff !important;
   background-color: #ffffff !important;
-  display: block !important;
+  display: flex !important;
+  flex-direction: column !important;
   width: 100% !important;
-  height: 100% !important;
+  height: 100vh !important;
+  height: 100dvh !important; /* 동적 뷰포트 높이 */
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+/* iOS에서 ion-tabs 하단 여백 제거 */
+.platform-ios ion-tabs {
+  padding-bottom: 0 !important;
+  margin-bottom: 0 !important;
 }
 
 /* 탭 바를 하단에 고정 - 페이지 색상 톤 적용 */
@@ -170,11 +197,27 @@ ion-tab-bar {
   background-color: #E8E9F0 !important;
   border-top: 1px solid rgba(196, 161, 194, 0.3) !important;
   box-shadow: 0 -4px 12px rgba(196, 161, 194, 0.2) !important;
+  padding-top: 0 !important;
   padding-bottom: env(safe-area-inset-bottom, 0px) !important;
   padding-left: env(safe-area-inset-left, 0px) !important;
   padding-right: env(safe-area-inset-right, 0px) !important;
   margin: 0 !important;
-  transform: none !important;
+  transform: translateY(0) !important;
+  display: flex !important;
+  align-items: center !important;
+  flex-shrink: 0 !important;
+}
+
+/* iOS에서 탭바 하단 여백 (최소한의 공간만) */
+.platform-ios ion-tab-bar {
+  padding-top: 0 !important;
+  padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+  margin-bottom: 0 !important;
+  height: calc(44px + env(safe-area-inset-bottom, 0px)) !important;
+  min-height: 44px !important;
+  max-height: calc(44px + env(safe-area-inset-bottom, 0px)) !important;
+  /* 추가 여백 제거 */
+  box-sizing: border-box !important;
 }
 
 /* 탭 버튼 색상 - 페이지 톤에 맞춤 */
@@ -185,11 +228,18 @@ ion-tab-button {
   --background-hover: transparent !important;
   --background-activated: transparent !important;
   background: transparent !important;
+  padding-top: 2px !important;
+  padding-bottom: 2px !important;
+  margin: 0 !important;
+  min-height: auto !important;
+  height: auto !important;
 }
 
 ion-tab-button ion-label {
   color: #7C88A9 !important;
-  font-size: 0.75rem !important;
+  font-size: 0.7rem !important;
+  margin-top: 2px !important;
+  margin-bottom: 0 !important;
 }
 
 ion-tab-button.tab-selected ion-label {
@@ -285,10 +335,14 @@ body.dark ion-tab-button.tab-selected ion-icon {
   height: calc(56px + env(safe-area-inset-bottom, 0px)) !important;
 }
 
-/* iOS - Safe area 처리 (홈 인디케이터 고려) */
+/* iOS - Safe area 처리 (최소한의 공간만) */
 .platform-ios ion-tab-bar {
-  height: calc(56px + env(safe-area-inset-bottom, 0px)) !important;
-  min-height: 56px !important;
+  height: calc(44px + env(safe-area-inset-bottom, 0px)) !important;
+  min-height: 44px !important;
+  max-height: calc(44px + env(safe-area-inset-bottom, 0px)) !important;
+  padding-top: 0 !important;
+  padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+  margin-bottom: 0 !important;
 }
 
 /* 탭 바가 하단에 있을 때 콘텐츠 영역 조정 */
@@ -309,10 +363,25 @@ ion-router-outlet {
   padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px)) !important;
 }
 
-/* iOS - 기존 디자인 유지 */
+/* iOS - 하단 빈 공간 완전히 제거 */
 .platform-ios ion-router-outlet {
   min-height: calc(100vh - 56px) !important;
-  padding-bottom: calc(56px + env(safe-area-inset-bottom, 0px)) !important;
+  padding-bottom: 0 !important;
+  margin-bottom: 0 !important;
+  height: calc(100vh - 56px) !important;
+}
+
+.platform-ios ion-router-outlet > * {
+  padding-bottom: 0 !important;
+  margin-bottom: 0 !important;
+  height: 100% !important;
+}
+
+.platform-ios ion-page {
+  padding-bottom: 0 !important;
+  margin-bottom: 0 !important;
+  height: 100% !important;
+  min-height: 100% !important;
 }
 
 /* IonPage 스타일 */
@@ -324,6 +393,15 @@ ion-page {
   color: #000000 !important;
   position: relative !important;
   z-index: 1 !important;
+}
+
+/* iOS에서 ion-page 하단 여백 제거 */
+.platform-ios ion-page {
+  padding-bottom: 0 !important;
+  margin-bottom: 0 !important;
+  height: 100% !important;
+  min-height: 100% !important;
+  max-height: 100% !important;
 }
 
 ion-content,

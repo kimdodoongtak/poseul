@@ -172,21 +172,8 @@ public class HealthData: CAPPlugin {
         
         if let query = backgroundQuery {
             healthStore.execute(query)
-            healthStore.enableBackgroundDelivery(for: heartRateType, frequency: .immediate) { success, error in
-                if let error = error {
-                    print("Failed to enable background delivery: \(error.localizedDescription)")
-                }
-            }
-            healthStore.enableBackgroundDelivery(for: hrvType, frequency: .immediate) { success, error in
-                if let error = error {
-                    print("Failed to enable background delivery: \(error.localizedDescription)")
-                }
-            }
-            healthStore.enableBackgroundDelivery(for: oxygenType, frequency: .immediate) { success, error in
-                if let error = error {
-                    print("Failed to enable background delivery: \(error.localizedDescription)")
-                }
-            }
+            // 백그라운드 배달 비활성화 (워치 배터리 절약)
+            // enableBackgroundDelivery 호출 제거
         }
     }
     

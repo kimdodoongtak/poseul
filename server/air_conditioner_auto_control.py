@@ -13,8 +13,8 @@ from temperature_threshold_cache import get_temperature_threshold
 
 logger = logging.getLogger(__name__)
 
-# 마지막 조절 시간 추적
-last_adjustment_time = None
+# 마지막 조절 시간 추적 (사용자별)
+last_adjustment_times = {}  # {user_no: datetime}
 
 
 def initialize_air_conditioner_settings(engine, air_conditioner_available: bool, get_air_conditioner_state_func, set_temperature_func):
@@ -132,12 +132,14 @@ def adjust_air_conditioner(
     set_temperature_func,
     cold_threshold: float = 34.5,
     hot_threshold: float = 35.6,
-    update_threshold_callback=None
+    update_threshold_callback=None,
+    min_interval_minutes: float = 10.0,
+    user_no: int = None
 ):
     """
     실시간 데이터 수신 시 또는 스케줄러에 의해 호출되어 predicted_results에서 최근 30분 이내 predicted_skin_temp를 분류하여 다수결로 판단하고 조절
-    - 실시간 데이터 수신 시: 데이터가 들어올 때마다 호출 (최소 10분 간격)
-    - 스케줄러: 30분마다 백업용으로 실행
+    - 실시간 데이터 수신 시: 데이터가 들어올 때마다 호출 (최소 30분 간격으로 제한)
+    - 스케줄러: 30분마다 백업용으로 실행 (30분 간격)
     
     Args:
         engine: SQLAlchemy 엔진
@@ -147,21 +149,25 @@ def adjust_air_conditioner(
         cold_threshold: 추움 분류 기준 (기본값: 34.5)
         hot_threshold: 더움 분류 기준 (기본값: 35.6)
         update_threshold_callback: 전역 변수 갱신 콜백 함수 (cold_threshold, hot_threshold) -> None
+        min_interval_minutes: 최소 조절 간격 (분 단위, 기본값: 10.0, 실제 사용 시 30.0으로 설정됨)
     """
-    global last_adjustment_time
+    global last_adjustment_times
     
     try:
-        # 마지막 조절 이후 최소 간격 확인 (10분: 데이터가 10분마다 들어오므로)
+        # 사용자별 마지막 조절 시간 확인 (user_no가 None이면 기본 키 사용)
+        user_key = user_no if user_no is not None else "default"
         now = datetime.now()
-        if last_adjustment_time is not None:
-            time_diff = (now - last_adjustment_time).total_seconds() / 60.0  # 분 단위
-            if time_diff < 10:
-                logger.info(f"⏰ 조절 대기 중... (마지막 조절 이후 {time_diff:.1f}분 경과, 최소 10분 간격 필요) - 다음 조절까지 {10 - time_diff:.1f}분 남음")
-                print(f"⏰ 조절 대기 중... (마지막 조절 이후 {time_diff:.1f}분 경과, 최소 10분 간격 필요)")
+        
+        if user_key in last_adjustment_times:
+            last_time = last_adjustment_times[user_key]
+            time_diff = (now - last_time).total_seconds() / 60.0  # 분 단위
+            if time_diff < min_interval_minutes:
+                logger.info(f"⏰ 조절 대기 중... (user_no={user_no}, 마지막 조절 이후 {time_diff:.1f}분 경과, 최소 {min_interval_minutes}분 간격 필요) - 다음 조절까지 {min_interval_minutes - time_diff:.1f}분 남음")
+                print(f"⏰ 조절 대기 중... (user_no={user_no}, 마지막 조절 이후 {time_diff:.1f}분 경과, 최소 {min_interval_minutes}분 간격 필요)")
                 return
         else:
-            logger.info("🔄 첫 번째 제어 실행 (마지막 조절 기록 없음)")
-            print("🔄 첫 번째 제어 실행")
+            logger.info(f"🔄 첫 번째 제어 실행 (user_no={user_no}, 마지막 조절 기록 없음)")
+            print(f"🔄 첫 번째 제어 실행 (user_no={user_no})")
         
         logger.info("🔄 에어컨 자동 조절 시작...")
         print("🔄 에어컨 자동 조절 시작...")
@@ -199,13 +205,33 @@ def adjust_air_conditioner(
                     else:
                         logger.warning("⚠️ new_skinthreshold 테이블에 정렬 컬럼을 찾을 수 없습니다. 최신 데이터가 아닐 수 있습니다.")
                     
+                    # user_no 필터링 추가 (해당 사용자 우선, 없으면 NULL 데이터)
+                    user_filter = ""
+                    query_params = {}
+                    if user_no is not None:
+                        # 정렬 순서: 해당 사용자 데이터 우선, 그 다음 NULL 데이터
+                        if skin_order_by:
+                            # ORDER BY 절에서 user_no 우선순위 추가
+                            order_column = skin_order_by.replace("ORDER BY ", "").split()[0]  # no, id, created_at 등
+                            skin_order_by = f"ORDER BY CASE WHEN user_no = :user_no THEN 0 ELSE 1 END, {order_column} DESC"
+                            user_filter = "AND (user_no = :user_no OR user_no IS NULL)"
+                        else:
+                            user_filter = "AND (user_no = :user_no OR user_no IS NULL)"
+                        query_params['user_no'] = user_no
+                    else:
+                        user_filter = "AND user_no IS NULL"
+                    
                     skin_threshold_query = text(f"""
                         SELECT min_skinthreshold, max_skinthreshold 
                         FROM new_skinthreshold 
+                        WHERE 1=1 {user_filter}
                         {skin_order_by}
                         LIMIT 1
                     """)
-                    skin_threshold_result = conn.execute(skin_threshold_query).fetchone()
+                    if query_params:
+                        skin_threshold_result = conn.execute(skin_threshold_query, query_params).fetchone()
+                    else:
+                        skin_threshold_result = conn.execute(skin_threshold_query).fetchone()
                     
                     if skin_threshold_result and skin_threshold_result.min_skinthreshold is not None and skin_threshold_result.max_skinthreshold is not None:
                         db_cold_threshold = float(skin_threshold_result.min_skinthreshold)
@@ -226,23 +252,24 @@ def adjust_air_conditioner(
                         else:
                             logger.debug(f"ℹ️ DB 피부온도 분류 기준 변경 없음: cold={cold_threshold}°C, hot={hot_threshold}°C")
                     else:
-                        # 테이블은 있지만 레코드가 없으면 기본값 저장 (34.6, 35.6)
+                        # 테이블은 있지만 레코드가 없으면 기본값 저장 (34.6, 35.6, user_no 포함)
                         db_cold_threshold = 34.6
                         db_hot_threshold = 35.6
-                        logger.info(f"ℹ️ new_skinthreshold 테이블에 레코드가 없습니다. 기본값 저장: cold={db_cold_threshold}°C, hot={db_hot_threshold}°C")
+                        logger.info(f"ℹ️ new_skinthreshold 테이블에 레코드가 없습니다. 기본값 저장: cold={db_cold_threshold}°C, hot={db_hot_threshold}°C, user_no={user_no}")
                         
-                        # 기본값을 DB에 저장
+                        # 기본값을 DB에 저장 (user_no 포함, room_threshold와 일관성 유지)
                         try:
                             insert_query = text("""
-                                INSERT INTO new_skinthreshold (min_skinthreshold, max_skinthreshold)
-                                VALUES (:min_skin, :max_skin)
+                                INSERT INTO new_skinthreshold (min_skinthreshold, max_skinthreshold, user_no)
+                                VALUES (:min_skin, :max_skin, :user_no)
                             """)
                             conn.execute(insert_query, {
                                 'min_skin': db_cold_threshold,
-                                'max_skin': db_hot_threshold
+                                'max_skin': db_hot_threshold,
+                                'user_no': user_no
                             })
                             conn.commit()
-                            logger.info(f"✅ 기본값 저장 완료: cold={db_cold_threshold}°C, hot={db_hot_threshold}°C")
+                            logger.info(f"✅ 기본값 저장 완료: cold={db_cold_threshold}°C, hot={db_hot_threshold}°C, user_no={user_no}")
                         except Exception as insert_error:
                             logger.warning(f"⚠️ 기본값 저장 실패: {insert_error}")
                         
@@ -263,21 +290,40 @@ def adjust_air_conditioner(
                             CREATE TABLE IF NOT EXISTS new_skinthreshold (
                                 no INT AUTO_INCREMENT PRIMARY KEY,
                                 min_skinthreshold DECIMAL(4,1) NOT NULL DEFAULT 34.6,
-                                max_skinthreshold DECIMAL(4,1) NOT NULL DEFAULT 35.6
+                                max_skinthreshold DECIMAL(4,1) NOT NULL DEFAULT 35.6,
+                                user_no INT DEFAULT NULL
                             )
                         """)
                         conn.execute(create_table_query)
                         
+                        # user_no 컬럼이 없으면 추가
+                        try:
+                            columns_check = text("""
+                                SELECT COLUMN_NAME 
+                                FROM INFORMATION_SCHEMA.COLUMNS 
+                                WHERE TABLE_SCHEMA = 'main' 
+                                AND TABLE_NAME = 'new_skinthreshold'
+                                AND COLUMN_NAME = 'user_no'
+                            """)
+                            has_user_no = conn.execute(columns_check).fetchone() is not None
+                            if not has_user_no:
+                                alter_query = text("ALTER TABLE new_skinthreshold ADD COLUMN user_no INT DEFAULT NULL")
+                                conn.execute(alter_query)
+                                logger.info("✅ new_skinthreshold 테이블에 user_no 컬럼 추가 완료")
+                        except Exception as e:
+                            logger.warning(f"⚠️ user_no 컬럼 확인/추가 실패: {str(e)}")
+                        
                         insert_query = text("""
-                            INSERT INTO new_skinthreshold (min_skinthreshold, max_skinthreshold)
-                            VALUES (:min_skin, :max_skin)
+                            INSERT INTO new_skinthreshold (min_skinthreshold, max_skinthreshold, user_no)
+                            VALUES (:min_skin, :max_skin, :user_no)
                         """)
                         conn.execute(insert_query, {
                             'min_skin': db_cold_threshold,
-                            'max_skin': db_hot_threshold
+                            'max_skin': db_hot_threshold,
+                            'user_no': user_no
                         })
                         conn.commit()
-                        logger.info(f"✅ 테이블 생성 및 기본값 저장 완료: cold={db_cold_threshold}°C, hot={db_hot_threshold}°C")
+                        logger.info(f"✅ 테이블 생성 및 기본값 저장 완료: cold={db_cold_threshold}°C, hot={db_hot_threshold}°C, user_no={user_no}")
                     except Exception as create_error:
                         logger.warning(f"⚠️ 테이블 생성 또는 기본값 저장 실패: {create_error}")
                     
@@ -289,7 +335,7 @@ def adjust_air_conditioner(
             except Exception as e:
                 logger.warning(f"⚠️ 피부온도 분류 기준 확인 실패 (계속 진행): {e}")
             
-            # predicted_results 테이블에서 최근 30분 이내 predicted_skin_temp 가져오기
+            # predicted_results 테이블에서 최근 30분 이내 predicted_skin_temp 중 최근 3개만 가져오기
             try:
                 table_check = text("""
                     SELECT COUNT(*) as count
@@ -303,7 +349,7 @@ def adjust_air_conditioner(
                     logger.warning("⚠️ predicted_results 테이블이 존재하지 않습니다.")
                     return
                 
-                # 최근 30분 이내 predicted_skin_temp 가져오기
+                # 최근 30분 이내 predicted_skin_temp 중 최근 3개만 가져오기
                 try:
                     # 테이블 컬럼 확인하여 정렬 컬럼 및 시간 컬럼 찾기
                     columns_check = text("""
@@ -329,7 +375,7 @@ def adjust_air_conditioner(
                     else:
                         logger.warning("⚠️ 정렬 컬럼을 찾을 수 없습니다. 최신 데이터가 아닐 수 있습니다.")
                     
-                    # 시간 필터 조건 (30분 이내)
+                    # 시간 필터 조건 (30분 이내, 최근 3개만 사용)
                     time_filter = ""
                     if 'created_at' in columns:
                         time_filter = "AND created_at >= DATE_SUB(NOW(), INTERVAL 30 MINUTE)"
@@ -341,24 +387,57 @@ def adjust_air_conditioner(
                         # 시간 컬럼이 없으면 최근 데이터만 가져오기 (기존 방식)
                         logger.warning("⚠️ 시간 컬럼을 찾을 수 없습니다. 최근 데이터만 사용합니다.")
                     
-                    # 최근 30분 이내 데이터 가져오기
+                    # 최근 30분 이내 데이터 중 최근 3개만 가져오기 (user_no 필터링)
+                    user_filter = ""
+                    query_params = {}
+                    if user_no is not None:
+                        user_filter = "AND (user_no = :user_no OR user_no IS NULL)"
+                        query_params['user_no'] = user_no
+                    
                     temp_query = text(f"""
                         SELECT predicted_skin_temp 
                         FROM predicted_results 
                         WHERE predicted_skin_temp IS NOT NULL 
                           AND predicted_skin_temp > 0
                           {time_filter}
+                          {user_filter}
                         {order_by_clause}
+                        LIMIT 3
                     """)
-                    temp_results = conn.execute(temp_query).fetchall()
+                    if query_params:
+                        temp_results = conn.execute(temp_query, query_params).fetchall()
+                    else:
+                        temp_results = conn.execute(temp_query).fetchall()
                         
                 except Exception as e:
                     logger.error(f"❌ 쿼리 실행 실패: {e}")
+                    # 쿼리 실패해도 마지막 조절 시간 업데이트 (무한 루프 방지)
+                    last_adjustment_times[user_key] = now
                     return
                 
                 if len(temp_results) < 1:
-                    logger.info(f"⏳ 최근 30분 이내 predicted_skin_temp가 없습니다.")
-                    print(f"⏳ 데이터 부족: 최근 30분 이내 predicted_skin_temp가 없습니다.")
+                    logger.warning(f"⏳ 최근 3개 predicted_skin_temp가 없습니다. (에어컨 조절 로그 없음)")
+                    print(f"⏳ 데이터 부족: 최근 3개 predicted_skin_temp가 없습니다. (에어컨 조절 로그 없음)")
+                    # 최근 데이터가 없어도 전체 데이터 확인
+                    try:
+                        all_data_query = text(f"""
+                            SELECT COUNT(*) as cnt, MAX({columns[0] if columns else 'no'}) as latest
+                            FROM predicted_results 
+                            WHERE predicted_skin_temp IS NOT NULL 
+                              AND predicted_skin_temp > 0
+                              {user_filter}
+                        """)
+                        if query_params:
+                            all_data_result = conn.execute(all_data_query, query_params).fetchone()
+                        else:
+                            all_data_result = conn.execute(all_data_query).fetchone()
+                        if all_data_result:
+                            logger.info(f"📊 전체 predicted_skin_temp 개수: {all_data_result.cnt}개")
+                            print(f"📊 전체 predicted_skin_temp 개수: {all_data_result.cnt}개")
+                    except Exception as e:
+                        logger.debug(f"전체 데이터 확인 실패: {e}")
+                    # 데이터가 없어도 마지막 조절 시간 업데이트 (무한 루프 방지)
+                    last_adjustment_times[user_key] = now
                     return
                 
                 # predicted_skin_temp 값을 분류 기준에 따라 분류
@@ -374,8 +453,8 @@ def adjust_air_conditioner(
                     feedbacks.append(classification)
                 
                 temp_values = [float(row.predicted_skin_temp) for row in temp_results]
-                logger.info(f"📊 최근 30분 이내 predicted_skin_temp 분류 결과: {feedbacks} (온도값: {temp_values}, 개수: {len(feedbacks)}개)")
-                print(f"📊 최근 30분 이내 피부온도 데이터 ({len(feedbacks)}개):")
+                logger.info(f"📊 최근 3개 predicted_skin_temp 분류 결과: {feedbacks} (온도값: {temp_values}, 개수: {len(feedbacks)}개)")
+                print(f"📊 최근 3개 피부온도 데이터 ({len(feedbacks)}개):")
                 print(f"   온도값: {temp_values}°C")
                 print(f"   분류 결과: {feedbacks}")
                 
@@ -384,6 +463,8 @@ def adjust_air_conditioner(
                 majority_text = '더움' if majority_feedback == 'H' else '추움' if majority_feedback == 'C' else '쾌적'
                 logger.info(f"🎯 다수결 결과: {majority_feedback} ({majority_text})")
                 print(f"🎯 다수결 결과: {majority_feedback} ({majority_text})")
+                
+                # predicted_skin_temp 제거됨 (분류 모드에서 사용 안 함)
                 
                 # 에어컨 상태 가져오기
                 state = None
@@ -435,16 +516,22 @@ def adjust_air_conditioner(
                 
                 # 에어컨이 꺼져있으면 조절은 하지 않지만 다수결 결과는 저장
                 actions_taken = []
-                # 에어컨 상태와 관계없이 target_temp는 가져올 수 있으므로 초기화
-                original_target_temp = target_temp  # 에어컨이 꺼져있어도 이전 목표 온도 저장
+                # 에어컨이 켜져있을 때만 온도 정보 저장, 꺼져있으면 None으로 저장
+                if is_power_on:
+                    original_target_temp = target_temp  # 에어컨이 켜져있을 때만 이전 목표 온도 저장
+                    actual_new_temp = target_temp  # 에어컨이 켜져있을 때만 현재 목표 온도 저장
+                else:
+                    original_target_temp = None  # 에어컨이 꺼져있으면 None으로 저장
+                    actual_new_temp = None  # 에어컨이 꺼져있으면 None으로 저장
                 temperature_adjusted = False
-                actual_new_temp = target_temp  # 에어컨이 꺼져있어도 현재 목표 온도 저장
                 
                 if not is_power_on:
                     logger.info("⏸️ 에어컨이 꺼져있습니다. 조절은 건너뛰지만 다수결 결과는 저장합니다.")
                     print(f"⏸️ 에어컨이 꺼져있습니다. 조절은 건너뛰지만 다수결 결과는 저장합니다.")
                     # 다수결 결과만 저장하고 조절은 건너뜀
                     actions_taken = ["none"]
+                    # 에어컨이 꺼져있어도 마지막 조절 시간 업데이트 (무한 루프 방지)
+                    last_adjustment_times[user_key] = now
                 else:
                     logger.info(f"🌡️ 현재 상태: 전원=ON, 온도={current_temp}°C, 목표 온도={target_temp}°C")
                     print(f"🌡️ 에어컨 현재 상태:")
@@ -453,13 +540,13 @@ def adjust_air_conditioner(
                     print(f"   목표 온도: {target_temp}°C")
                     
                     # 1. 먼저 수동 조절 범위 캐시 확인
-                    cached_threshold = get_temperature_threshold()
+                    cached_threshold = get_temperature_threshold(user_no)
                     
                     if cached_threshold and cached_threshold.get('min_temp') is not None and cached_threshold.get('max_temp') is not None:
                         # 캐시가 있고 유효하면 캐시 값 사용
                         min_temp = float(cached_threshold['min_temp'])
                         max_temp = float(cached_threshold['max_temp'])
-                        logger.info(f"📦 수동 조절 범위 캐시 사용: {min_temp}~{max_temp}°C")
+                        logger.info(f"📦 수동 조절 범위 캐시 사용: {min_temp}~{max_temp}°C (user_no={user_no})")
                     else:
                         # 캐시가 없거나 만료되었으면 DB에서 가져오기 (최신 값, no 컬럼 기준)
                         # 컬럼 확인
@@ -482,16 +569,38 @@ def adjust_air_conditioner(
                         else:
                             logger.warning("⚠️ room_threshold 테이블에 정렬 컬럼을 찾을 수 없습니다. 최신 데이터가 아닐 수 있습니다.")
                         
+                        # user_no 필터링 추가 (해당 사용자 우선, 없으면 NULL 데이터)
+                        room_user_filter = ""
+                        room_query_params = {}
+                        if user_no is not None:
+                            # 정렬 순서: 해당 사용자 데이터 우선, 그 다음 NULL 데이터
+                            if room_order_by:
+                                # ORDER BY 절에서 user_no 우선순위 추가
+                                order_column = room_order_by.replace("ORDER BY ", "").split()[0]  # no, id, created_at 등
+                                room_order_by = f"ORDER BY CASE WHEN user_no = :user_no THEN 0 ELSE 1 END, {order_column} DESC"
+                                room_user_filter = "AND (user_no = :user_no OR user_no IS NULL)"
+                            else:
+                                room_user_filter = "AND (user_no = :user_no OR user_no IS NULL)"
+                            room_query_params['user_no'] = user_no
+                        else:
+                            room_user_filter = "AND user_no IS NULL"
+                        
                         threshold_query = text(f"""
                             SELECT min_temp, max_temp 
                             FROM room_threshold 
+                            WHERE 1=1 {room_user_filter}
                             {room_order_by}
                             LIMIT 1
                         """)
-                        threshold_result = conn.execute(threshold_query).fetchone()
+                        if room_query_params:
+                            threshold_result = conn.execute(threshold_query, room_query_params).fetchone()
+                        else:
+                            threshold_result = conn.execute(threshold_query).fetchone()
                         
                         if not threshold_result or threshold_result.min_temp is None or threshold_result.max_temp is None:
                             logger.warning("⚠️ room_threshold 테이블에 min_temp, max_temp가 없습니다.")
+                            # 데이터가 없어도 마지막 조절 시간 업데이트 (무한 루프 방지)
+                            last_adjustment_times[user_key] = now
                             return
                         
                         min_temp = float(threshold_result.min_temp)
@@ -578,7 +687,7 @@ def adjust_air_conditioner(
                     
                     # 마지막 조절 시간 업데이트 (에어컨이 켜져있을 때만)
                     if is_power_on:
-                        last_adjustment_time = now
+                        last_adjustment_times[user_key] = now
                 
                 # test_script_logs 테이블에 다수결 결과 저장 (에어컨이 꺼져있어도 저장)
                 try:
@@ -596,17 +705,39 @@ def adjust_air_conditioner(
                         create_test_log_table = text("""
                             CREATE TABLE IF NOT EXISTS test_script_logs (
                                 id INT AUTO_INCREMENT PRIMARY KEY,
-                                classification_results VARCHAR(50) NOT NULL COMMENT '3개 분류 결과 (예: C,H,G)',
+                                classification_results VARCHAR(50) NOT NULL COMMENT '최근 3개 분류 결과 (예: C,H,G) - 최근 30분 이내 데이터가 많아도 최근 3개만 저장',
                                 majority_result VARCHAR(1) NOT NULL COMMENT '다수결 결과 (H, C, G)',
                                 temperature_action VARCHAR(20) NOT NULL COMMENT '온도 조절 방향 (up, down, none)',
                                 previous_temperature FLOAT COMMENT '이전 목표 온도',
                                 new_temperature FLOAT COMMENT '새로운 목표 온도',
-                                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                                user_no INT DEFAULT NULL
                             )
                         """)
                         conn.execute(create_test_log_table)
                         conn.commit()
                         logger.info("✅ test_script_logs 테이블 생성 완료")
+                    else:
+                        # 테이블이 존재하면 user_no 컬럼이 있는지 확인하고 추가
+                        try:
+                            columns_check = text("""
+                                SELECT COLUMN_NAME 
+                                FROM INFORMATION_SCHEMA.COLUMNS 
+                                WHERE TABLE_SCHEMA = 'main' 
+                                AND TABLE_NAME = 'test_script_logs'
+                                AND COLUMN_NAME = 'user_no'
+                            """)
+                            has_user_no = conn.execute(columns_check).fetchone() is not None
+                            if not has_user_no:
+                                alter_query = text("""
+                                    ALTER TABLE test_script_logs 
+                                    ADD COLUMN user_no INT DEFAULT NULL
+                                """)
+                                conn.execute(alter_query)
+                                conn.commit()
+                                logger.info("✅ test_script_logs 테이블에 user_no 컬럼 추가 완료")
+                        except Exception as e:
+                            logger.warning(f"⚠️ user_no 컬럼 확인/추가 실패: {str(e)}")
                     
                     # 온도 조절 방향 결정
                     temp_action = "none"
@@ -631,15 +762,21 @@ def adjust_air_conditioner(
                         temp_action = "none"
                     
                     # 분류 결과를 문자열로 변환 (예: "C,H,G")
-                    classification_str = ",".join(feedbacks)
+                    # classification_results에는 최근 3개만 저장 (원래 의도대로)
+                    # 전체 데이터는 다수결 판단에 사용하되, 로그에는 최근 3개만 표시
+                    recent_feedbacks = feedbacks[:3] if len(feedbacks) >= 3 else feedbacks
+                    classification_str = ",".join(recent_feedbacks)
+                    if len(feedbacks) > 3:
+                        logger.info(f"📊 전체 분류 결과 {len(feedbacks)}개 중 최근 3개만 저장: {classification_str} (전체: {','.join(feedbacks)})")
+                        print(f"📊 전체 분류 결과 {len(feedbacks)}개 중 최근 3개만 저장: {classification_str}")
                     
                     # test_script_logs 테이블에 저장
                     current_datetime = datetime.now()
                     test_log_query = text("""
                         INSERT INTO test_script_logs 
-                        (classification_results, majority_result, temperature_action, previous_temperature, new_temperature, created_at)
+                        (classification_results, majority_result, temperature_action, previous_temperature, new_temperature, created_at, user_no)
                         VALUES 
-                        (:classification_results, :majority_result, :temperature_action, :previous_temperature, :new_temperature, :created_at)
+                        (:classification_results, :majority_result, :temperature_action, :previous_temperature, :new_temperature, :created_at, :user_no)
                     """)
                     conn.execute(test_log_query, {
                         'classification_results': classification_str,
@@ -647,10 +784,12 @@ def adjust_air_conditioner(
                         'temperature_action': temp_action,
                         'previous_temperature': previous_temp,
                         'new_temperature': new_temp,
-                        'created_at': current_datetime
+                        'created_at': current_datetime,
+                        'user_no': user_no
                     })
                     conn.commit()
-                    logger.info(f"✅ 다수결 결과 저장 완료: 분류={classification_str}, 다수결={majority_feedback}, 조절={temp_action} (에어컨 전원: {'ON' if is_power_on else 'OFF'})")
+                    logger.info(f"✅ 다수결 결과 저장 완료 (test_script_logs): 분류={classification_str}, 다수결={majority_feedback}, 조절={temp_action} (에어컨 전원: {'ON' if is_power_on else 'OFF'})")
+                    print(f"✅ test_script_logs에 저장 완료: 분류={classification_str}, 다수결={majority_feedback}, 조절={temp_action}")
                 except Exception as e:
                     logger.warning(f"⚠️ 다수결 결과 저장 실패: {e}")
                     

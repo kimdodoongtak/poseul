@@ -14,8 +14,7 @@ import {
   IonSpinner,
   IonItem,
   IonLabel,
-  IonSelect,
-  IonSelectOption,
+  IonInput,
   IonToggle,
 } from '@ionic/react';
 import { ModelService, HealthDataService, IotService } from '../services';
@@ -32,12 +31,13 @@ const Home: React.FC = () => {
   // 수면 모드 관련 상태
   const [sleepModeActive, setSleepModeActive] = useState(false);
   const [remainingTime, setRemainingTime] = useState<{ hours: number; minutes: number }>({ hours: 0, minutes: 0 });
-  const [sleepDuration, setSleepDuration] = useState<string>('8'); // 기본 8시간
+  const [sleepDuration, setSleepDuration] = useState<string>('08:00'); // 기본 8시간 (시:분 형식)
 
   // 다크모드 관련 상태
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
   const animationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isAnimatingRef = useRef<boolean>(false);
+  const animationElementRef = useRef<HTMLElement | null>(null);
 
   const handleTestModel = async () => {
     setLoading(true);
@@ -102,9 +102,9 @@ const Home: React.FC = () => {
 
   // 수면 모드 시작
   const handleStartSleepMode = async () => {
-    const duration = parseFloat(sleepDuration);
-    if (isNaN(duration) || duration <= 0) {
-      alert('올바른 시간을 선택해주세요.');
+    const duration = timeToHours(sleepDuration);
+    if (isNaN(duration) || duration <= 0 || duration > 24) {
+      alert('올바른 시간을 선택해주세요. (0.5 ~ 24시간)');
       return;
     }
 
@@ -127,20 +127,8 @@ const Home: React.FC = () => {
           minutes: Math.round((data.duration_hours % 1) * 60)
         });
         
-        // iOS에서 백그라운드 모니터링 자동 활성화
-        try {
-          const { Capacitor } = await import('@capacitor/core');
-          if (Capacitor.getPlatform() === 'ios') {
-            const { HealthData } = await import('../plugins/healthdata');
-            const result = await HealthData.startBackgroundMonitoring({ enabled: true });
-            if (result.success) {
-              console.log('✅ 백그라운드 모니터링 자동 활성화 완료');
-            }
-          }
-        } catch (bgError) {
-          console.log('⚠️ 백그라운드 모니터링 자동 활성화 실패 (무시):', bgError);
-          // 백그라운드 모니터링 활성화 실패해도 수면 모드는 계속 진행
-        }
+        // 백그라운드 모니터링 비활성화 (워치 배터리 절약)
+        // 앱을 키고 자게 할 거라 백그라운드 배달 불필요
         
         alert(data.message);
       } else {
@@ -154,6 +142,36 @@ const Home: React.FC = () => {
       setLoading(false);
     }
   };
+
+  // 시:분 형식을 시간으로 변환 (예: "08:30" -> 8.5)
+  const timeToHours = (timeStr: string): number => {
+    const [hours, minutes] = timeStr.split(':').map(Number);
+    return hours + (minutes / 60);
+  };
+
+  // 시간을 시:분 형식으로 변환 (예: 8.5 -> "08:30")
+  const hoursToTime = (hours: number): string => {
+    const h = Math.floor(hours);
+    const m = Math.round((hours - h) * 60);
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+  };
+
+  // 시간 증가/감소 핸들러
+  const handleDurationChange = (delta: number) => {
+    const currentHours = timeToHours(sleepDuration);
+    const newHours = Math.max(0.5, Math.min(24, currentHours + delta));
+    setSleepDuration(hoursToTime(newHours));
+  };
+
+  // 시간 입력 핸들러
+  const handleDurationInput = (timeStr: string) => {
+    const hours = timeToHours(timeStr);
+    if (hours >= 0.5 && hours <= 24) {
+      setSleepDuration(timeStr);
+    }
+  };
+
+
 
   // 수면 모드 중지
   const handleStopSleepMode = async () => {
@@ -205,23 +223,70 @@ const Home: React.FC = () => {
     }
   }, []);
 
+
+  // 컴포넌트 언마운트 시 정리
+  useEffect(() => {
+    return () => {
+      // 타임아웃 정리
+      if (animationTimeoutRef.current) {
+        clearTimeout(animationTimeoutRef.current);
+      }
+      
+      // 애니메이션 요소 정리
+      const animationElement = animationElementRef.current;
+      if (animationElement) {
+        const existingHandler = (animationElement as any).__animationEndHandler;
+        if (existingHandler) {
+          animationElement.removeEventListener('animationend', existingHandler);
+          animationElement.removeEventListener('animationiteration', existingHandler);
+        }
+        if ((animationElement as any).__animationTimeout) {
+          clearTimeout((animationElement as any).__animationTimeout);
+        }
+      }
+    };
+  }, []);
+
   // 다크모드 토글 핸들러
   const handleDarkModeToggle = (enabled: boolean) => {
+    // 이미 애니메이션이 진행 중이면 무시
+    if (isAnimatingRef.current) {
+      console.log('애니메이션 진행 중, 무시');
+      return;
+    }
+
+    // 기존 타임아웃 정리
+    if (animationTimeoutRef.current) {
+      clearTimeout(animationTimeoutRef.current);
+      animationTimeoutRef.current = null;
+    }
+
     setIsDarkMode(enabled);
     localStorage.setItem('darkMode', enabled.toString());
+    
     if (enabled) {
       // 다크모드 클래스는 먼저 제거 (애니메이션 중에는 다크모드가 아님)
       document.body.classList.remove('dark');
       
       // 애니메이션 재생 시작
-      const animationElement = document.querySelector('.dark-mode-animation') as HTMLElement;
+      const animationElement = animationElementRef.current || 
+        (document.querySelector('.dark-mode-animation') as HTMLElement);
+      
       if (animationElement) {
+        animationElementRef.current = animationElement;
+        isAnimatingRef.current = true;
         console.log('애니메이션 시작');
         
         // 기존 이벤트 리스너 제거
         const existingHandler = (animationElement as any).__animationEndHandler;
         if (existingHandler) {
           animationElement.removeEventListener('animationend', existingHandler);
+          animationElement.removeEventListener('animationiteration', existingHandler);
+        }
+        
+        // 기존 타임아웃 정리
+        if ((animationElement as any).__animationTimeout) {
+          clearTimeout((animationElement as any).__animationTimeout);
         }
         
         // 클래스 제거 및 리플로우
@@ -231,45 +296,71 @@ const Home: React.FC = () => {
         // 다음 프레임에서 클래스 추가
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
+            if (!isAnimatingRef.current) return; // 취소되었는지 확인
+            
             animationElement.classList.add('playing');
             console.log('playing 클래스 추가됨', animationElement.classList.contains('playing'));
-            
-            // 스타일 확인
-            const computedStyle = window.getComputedStyle(animationElement);
-            console.log('애니메이션:', computedStyle.animation);
-            console.log('배경 이미지:', computedStyle.backgroundImage);
           });
         });
         
         // 애니메이션 종료 후 다크모드 활성화
         const handleAnimationEnd = () => {
           console.log('애니메이션 종료');
+          isAnimatingRef.current = false;
           animationElement.classList.remove('playing');
           document.body.classList.add('dark');
+          
+          // 이벤트 리스너 정리
+          if ((animationElement as any).__animationEndHandler === handleAnimationEnd) {
+            (animationElement as any).__animationEndHandler = null;
+          }
+          if ((animationElement as any).__animationTimeout) {
+            clearTimeout((animationElement as any).__animationTimeout);
+            (animationElement as any).__animationTimeout = null;
+          }
         };
+        
+        // animationend와 animationiteration 모두 처리
         animationElement.addEventListener('animationend', handleAnimationEnd, { once: true });
+        animationElement.addEventListener('animationiteration', (e) => {
+          // iOS에서 animationiteration이 발생할 수 있으므로 무시
+          console.log('animationiteration 이벤트 무시');
+        }, { once: true });
+        
         (animationElement as any).__animationEndHandler = handleAnimationEnd;
         
         // 타임아웃으로도 처리 (안전장치)
-        setTimeout(() => {
+        const timeoutId = setTimeout(() => {
           if (animationElement.classList.contains('playing')) {
             console.log('타임아웃으로 애니메이션 종료 처리');
-            animationElement.classList.remove('playing');
-            document.body.classList.add('dark');
+            handleAnimationEnd();
           }
         }, 1600);
+        
+        (animationElement as any).__animationTimeout = timeoutId;
+        animationTimeoutRef.current = timeoutId;
       }
     } else {
+      isAnimatingRef.current = false;
       document.body.classList.remove('dark');
       // 애니메이션 재생 중지하고 첫 프레임으로 복귀
-      const animationElement = document.querySelector('.dark-mode-animation') as HTMLElement;
+      const animationElement = animationElementRef.current || 
+        (document.querySelector('.dark-mode-animation') as HTMLElement);
+      
       if (animationElement) {
         animationElement.classList.remove('playing');
         // 기존 이벤트 리스너 제거
         const existingHandler = (animationElement as any).__animationEndHandler;
         if (existingHandler) {
           animationElement.removeEventListener('animationend', existingHandler);
+          animationElement.removeEventListener('animationiteration', existingHandler);
         }
+        // 기존 타임아웃 정리
+        if ((animationElement as any).__animationTimeout) {
+          clearTimeout((animationElement as any).__animationTimeout);
+          (animationElement as any).__animationTimeout = null;
+        }
+        (animationElement as any).__animationEndHandler = null;
       }
     }
   };
@@ -295,15 +386,27 @@ const Home: React.FC = () => {
             </IonCardHeader>
             <IonCardContent>
               {sleepModeActive ? (
-                <div>
-                  <IonText color="success">
-                    <p style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '8px' }}>
-                      😴 수면 모드 활성화 중
+                <div style={{ textAlign: 'center' }}>
+                  <IonText>
+                    <p style={{ 
+                      fontSize: '18px', 
+                      fontWeight: '600', 
+                      marginTop: '20px',
+                      marginBottom: '12px',
+                      color: '#B895B6',
+                      letterSpacing: '0.3px'
+                    }}>
+                      🌙 수면 모드 활성화 중 💤
                     </p>
                   </IonText>
-                  <IonText color="medium">
-                    <p style={{ fontSize: '14px', marginBottom: '16px' }}>
-                      남은 시간: {remainingTime.hours}시간 {remainingTime.minutes}분
+                  <IonText>
+                    <p style={{ 
+                      fontSize: '15px', 
+                      marginBottom: '20px',
+                      color: '#66748D',
+                      fontWeight: '500'
+                    }}>
+                      남은 시간: <span style={{ fontWeight: '600', color: '#C4A1C2' }}>{remainingTime.hours}시간 {remainingTime.minutes}분</span>
                     </p>
                   </IonText>
                   <IonButton expand="block" color="danger" onClick={handleStopSleepMode} disabled={loading}>
@@ -312,46 +415,123 @@ const Home: React.FC = () => {
                 </div>
               ) : (
                 <div>
-                  <IonText color="medium">
-                    <p style={{ fontSize: '14px', marginBottom: '16px' }}>
-                      수면 모드를 시작하면 설정한 시간 동안만 자동 온도 조절이 동작합니다.
-                    </p>
-                  </IonText>
-                  <IonItem style={{ marginBottom: '16px', borderRadius: '12px' }}>
-                    <IonLabel position="stacked">동작 시간 선택</IonLabel>
-                    <IonSelect
-                      value={sleepDuration}
-                      placeholder="시간 선택"
-                      onIonChange={(e) => setSleepDuration(e.detail.value)}
-                      interface="popover"
-                    >
-                      <IonSelectOption value="0.5">0.5시간</IonSelectOption>
-                      <IonSelectOption value="1">1시간</IonSelectOption>
-                      <IonSelectOption value="2">2시간</IonSelectOption>
-                      <IonSelectOption value="3">3시간</IonSelectOption>
-                      <IonSelectOption value="4">4시간</IonSelectOption>
-                      <IonSelectOption value="5">5시간</IonSelectOption>
-                      <IonSelectOption value="6">6시간</IonSelectOption>
-                      <IonSelectOption value="7">7시간</IonSelectOption>
-                      <IonSelectOption value="8">8시간</IonSelectOption>
-                      <IonSelectOption value="9">9시간</IonSelectOption>
-                      <IonSelectOption value="10">10시간</IonSelectOption>
-                      <IonSelectOption value="11">11시간</IonSelectOption>
-                      <IonSelectOption value="12">12시간</IonSelectOption>
-                      <IonSelectOption value="13">13시간</IonSelectOption>
-                      <IonSelectOption value="14">14시간</IonSelectOption>
-                      <IonSelectOption value="15">15시간</IonSelectOption>
-                      <IonSelectOption value="16">16시간</IonSelectOption>
-                      <IonSelectOption value="17">17시간</IonSelectOption>
-                      <IonSelectOption value="18">18시간</IonSelectOption>
-                      <IonSelectOption value="19">19시간</IonSelectOption>
-                      <IonSelectOption value="20">20시간</IonSelectOption>
-                      <IonSelectOption value="21">21시간</IonSelectOption>
-                      <IonSelectOption value="22">22시간</IonSelectOption>
-                      <IonSelectOption value="23">23시간</IonSelectOption>
-                      <IonSelectOption value="24">24시간</IonSelectOption>
-                    </IonSelect>
-                  </IonItem>
+                  <div style={{ marginBottom: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
+                    <IonLabel style={{ fontSize: '16px', fontWeight: '500', marginTop: '8px' }} className="duration-label">
+                      동작 시간 선택
+                    </IonLabel>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', maxWidth: '300px' }}>
+                      <button
+                        onClick={() => handleDurationChange(-0.5)}
+                        disabled={timeToHours(sleepDuration) <= 0.5}
+                        className="duration-control-button"
+                        style={{
+                          width: '56px',
+                          height: '56px',
+                          borderRadius: '50%',
+                          border: 'none',
+                          background: 'linear-gradient(135deg, #C4A1C2 0%, #B895B6 100%)',
+                          color: 'white',
+                          fontSize: '28px',
+                          fontWeight: 'bold',
+                          cursor: timeToHours(sleepDuration) <= 0.5 ? 'not-allowed' : 'pointer',
+                          opacity: timeToHours(sleepDuration) <= 0.5 ? 0.5 : 1,
+                          boxShadow: '0 4px 12px rgba(196, 161, 194, 0.4)',
+                          transition: 'all 0.2s ease',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          outline: 'none',
+                          flexShrink: 0,
+                        }}
+                        onMouseDown={(e) => e.preventDefault()}
+                      >
+                        −
+                      </button>
+                      <IonInput
+                        type="text"
+                        inputMode="numeric"
+                        value={sleepDuration}
+                        onIonInput={(e) => {
+                          const value = e.detail.value || '';
+                          // HH:mm 형식으로만 입력 허용
+                          const formatted = value.replace(/[^0-9:]/g, '');
+                          if (formatted.length <= 5) {
+                            setSleepDuration(formatted);
+                          }
+                        }}
+                        onIonBlur={(e: any) => {
+                          const value = e.detail?.value || sleepDuration;
+                          // HH:mm 형식 검증 및 자동 포맷팅
+                          const parts = value.split(':');
+                          if (parts.length === 2) {
+                            const hours = Math.min(23, Math.max(0, parseInt(parts[0]) || 0));
+                            const minutes = Math.min(59, Math.max(0, parseInt(parts[1]) || 0));
+                            // 30분 단위로 반올림
+                            const roundedMinutes = Math.round(minutes / 30) * 30;
+                            const finalMinutes = roundedMinutes === 60 ? 0 : roundedMinutes;
+                            const finalHours = roundedMinutes === 60 ? Math.min(23, hours + 1) : hours;
+                            const timeStr = `${String(finalHours).padStart(2, '0')}:${String(finalMinutes).padStart(2, '0')}`;
+                            setSleepDuration(timeStr);
+                          } else if (value.length === 4 && !value.includes(':')) {
+                            // HHmm 형식으로 입력된 경우
+                            const hours = Math.min(23, Math.max(0, parseInt(value.substring(0, 2)) || 0));
+                            const minutes = Math.min(59, Math.max(0, parseInt(value.substring(2, 4)) || 0));
+                            const roundedMinutes = Math.round(minutes / 30) * 30;
+                            const finalMinutes = roundedMinutes === 60 ? 0 : roundedMinutes;
+                            const finalHours = roundedMinutes === 60 ? Math.min(23, hours + 1) : hours;
+                            const timeStr = `${String(finalHours).padStart(2, '0')}:${String(finalMinutes).padStart(2, '0')}`;
+                            setSleepDuration(timeStr);
+                          } else if (value.length === 0 || !value.includes(':')) {
+                            // 형식이 맞지 않으면 기본값으로
+                            setSleepDuration('08:00');
+                          }
+                        }}
+                        placeholder="08:00"
+                        className="sleep-duration-input"
+                        style={{
+                          width: 'auto',
+                          textAlign: 'center',
+                          margin: '0 auto',
+                          fontSize: '32px',
+                          fontWeight: '700',
+                          color: '#66748D',
+                          '--padding-start': '0',
+                          '--padding-end': '0',
+                          '--highlight-color': 'transparent',
+                          '--highlight-color-focused': 'transparent',
+                          outline: 'none',
+                          border: 'none',
+                        } as React.CSSProperties}
+                      />
+                      <button
+                        onClick={() => handleDurationChange(0.5)}
+                        disabled={timeToHours(sleepDuration) >= 24}
+                        className="duration-control-button"
+                        style={{
+                          width: '56px',
+                          height: '56px',
+                          borderRadius: '50%',
+                          border: 'none',
+                          background: 'linear-gradient(135deg, #C4A1C2 0%, #B895B6 100%)',
+                          color: 'white',
+                          fontSize: '28px',
+                          fontWeight: 'bold',
+                          cursor: timeToHours(sleepDuration) >= 24 ? 'not-allowed' : 'pointer',
+                          opacity: timeToHours(sleepDuration) >= 24 ? 0.5 : 1,
+                          boxShadow: '0 4px 12px rgba(196, 161, 194, 0.4)',
+                          transition: 'all 0.2s ease',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          outline: 'none',
+                          flexShrink: 0,
+                        }}
+                        onMouseDown={(e) => e.preventDefault()}
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
                   <IonButton 
                     expand="block" 
                     color="primary" 
@@ -361,6 +541,12 @@ const Home: React.FC = () => {
                   >
                     {loading ? <IonSpinner name="crescent" /> : '수면 시작'}
                   </IonButton>
+                  <IonText>
+                    <p style={{ fontSize: '14px', marginTop: '16px', marginBottom: '0', lineHeight: '1.6', textAlign: 'center', color: '#7C88A9' }}>
+                      수면 모드를 시작하면 설정한 시간 동안만<br />
+                      자동 온도 조절이 동작합니다.
+                    </p>
+                  </IonText>
                 </div>
               )}
             </IonCardContent>
@@ -370,7 +556,14 @@ const Home: React.FC = () => {
           <IonCard className="dark-mode-card">
             <IonCardContent>
               <div className="dark-mode-animation-wrapper">
-                <div className={`dark-mode-animation ${isDarkMode ? 'playing' : ''}`}></div>
+                <div 
+                  className="dark-mode-animation"
+                  ref={(el) => {
+                    if (el) {
+                      animationElementRef.current = el;
+                    }
+                  }}
+                ></div>
               </div>
               <IonItem style={{ borderRadius: '12px', marginTop: '16px' }}>
                 <IonLabel>다크 모드</IonLabel>

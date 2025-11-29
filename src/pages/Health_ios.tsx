@@ -564,10 +564,16 @@ const Health_ios: React.FC = () => {
     }
   };
 
-  // 차트 데이터 로드
+  // 차트 데이터 로드 (빈 데이터만 반환)
   const loadChartData = () => {
-    const data = ChartDataService.getTodayData();
-    setChartData(data);
+    const today = new Date().toISOString().split('T')[0];
+    const emptyData: NightChartData = {
+      date: today,
+      temperatureData: [],
+      heartRateData: [],
+      lastUpdated: new Date().toISOString(),
+    };
+    setChartData(emptyData);
   };
 
   // DB에서 차트 데이터 로드
@@ -633,28 +639,47 @@ const Health_ios: React.FC = () => {
         console.error('온도 데이터 로드 실패:', error);
       }
       
-      // 3. DB 데이터가 있으면 localStorage에 저장하고 차트에 표시
+      // 3. DB 데이터가 있으면 DB 데이터 사용, 없으면 빈 데이터 표시
       if (dbChartData.temperatureData.length > 0 || dbChartData.heartRateData.length > 0) {
+        console.log(`✅ DB 데이터 ${dbChartData.temperatureData.length}개(온도), ${dbChartData.heartRateData.length}개(심박수) 로드 완료`);
+        // DB 데이터를 차트에 표시
         try {
           localStorage.setItem('night_chart_data', JSON.stringify(dbChartData));
           setChartData(dbChartData);
-          console.log('✅ DB 데이터를 차트에 반영 완료');
-          return true; // DB 데이터가 있음을 반환
+          console.log('✅ DB 데이터를 차트에 표시했습니다.');
         } catch (error) {
-          console.error('차트 데이터 저장 실패:', error);
-          return false;
+          console.error('DB 데이터 저장 실패:', error);
         }
+        return true; // DB 데이터가 있음을 반환
       } else {
-        // DB 데이터가 없으면 localStorage도 비우고 빈 데이터로 설정
-        console.log('⚠️ DB에 데이터가 없습니다. 차트를 비웁니다.');
-        localStorage.removeItem('night_chart_data');
-        setChartData(dbChartData); // 빈 데이터로 설정
+        console.log('⚠️ DB에 데이터가 없습니다.');
+        // 빈 데이터로 설정
+        try {
+          localStorage.setItem('night_chart_data', JSON.stringify(dbChartData));
+          setChartData(dbChartData);
+          console.log('✅ 빈 데이터로 설정했습니다.');
+        } catch (error) {
+          console.error('빈 데이터 저장 실패:', error);
+        }
         return false; // DB 데이터가 없음을 반환
       }
     } catch (error) {
       console.error('DB 차트 데이터 로드 실패:', error);
-      // 실패 시 기존 데이터 로드
-      loadChartData();
+      // 실패 시 빈 데이터로 설정
+      const today = new Date().toISOString().split('T')[0];
+      const emptyData: NightChartData = {
+        date: today,
+        temperatureData: [],
+        heartRateData: [],
+        lastUpdated: new Date().toISOString(),
+      };
+      try {
+        localStorage.setItem('night_chart_data', JSON.stringify(emptyData));
+        setChartData(emptyData);
+        console.log('✅ 빈 데이터로 설정했습니다.');
+      } catch (err) {
+        console.error('빈 데이터 저장 실패:', err);
+      }
       return false;
     }
   };
@@ -982,28 +1007,39 @@ const Health_ios: React.FC = () => {
 
   // 차트 데이터 초기 로드 및 DB에서 데이터 가져오기
   useEffect(() => {
-    // 초기 데이터 로드
-    loadChartData();
+    // 초기 빈 데이터 설정 (가상 데이터 로드하지 않음)
+    const today = new Date().toISOString().split('T')[0];
+    const emptyData: NightChartData = {
+      date: today,
+      temperatureData: [],
+      heartRateData: [],
+      lastUpdated: new Date().toISOString(),
+    };
+    setChartData(emptyData);
 
     // DB에서 차트 데이터 로드 (predicted_results, test_script_logs)
-    // DB 데이터가 없을 때만 테스트 데이터 생성
     loadChartDataFromDB().then((hasDbData) => {
-      if (!hasDbData) {
-        // DB 데이터가 없으면 테스트 데이터 생성
-        const existingData = ChartDataService.getTodayData();
-        if (!existingData || existingData.temperatureData.length === 0) {
-          console.log('📊 DB에 데이터가 없어 테스트 데이터 생성 중...');
-          generateTestData();
-        }
+      if (hasDbData) {
+        console.log('✅ DB 데이터를 사용하여 차트를 표시합니다.');
       } else {
-        console.log('✅ DB 데이터가 있어 테스트 데이터를 생성하지 않습니다.');
+        console.log('⚠️ DB 데이터가 없습니다.');
       }
     }).catch((error) => {
-      console.error('DB 데이터 로드 실패, 테스트 데이터 생성:', error);
-      const existingData = ChartDataService.getTodayData();
-      if (!existingData || existingData.temperatureData.length === 0) {
-        console.log('📊 테스트 데이터 생성 중...');
-        generateTestData();
+      console.error('DB 데이터 로드 실패:', error);
+      // 에러 발생 시 빈 데이터로 설정
+      const today = new Date().toISOString().split('T')[0];
+      const emptyData: NightChartData = {
+        date: today,
+        temperatureData: [],
+        heartRateData: [],
+        lastUpdated: new Date().toISOString(),
+      };
+      try {
+        localStorage.setItem('night_chart_data', JSON.stringify(emptyData));
+        setChartData(emptyData);
+        console.log('✅ 빈 데이터로 설정했습니다.');
+      } catch (err) {
+        console.error('빈 데이터 저장 실패:', err);
       }
     });
 

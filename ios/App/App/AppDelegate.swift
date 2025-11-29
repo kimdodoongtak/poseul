@@ -38,11 +38,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     
     func scheduleNextBackgroundTask() {
         let request = BGAppRefreshTaskRequest(identifier: backgroundTaskIdentifier)
-        request.earliestBeginDate = Date(timeIntervalSinceNow: 600) // 10분(600초) 후
+        // iOS는 BGAppRefreshTaskRequest의 최소 간격이 15분(900초)입니다
+        request.earliestBeginDate = Date(timeIntervalSinceNow: 900) // 15분(900초) 후 - iOS 최소 요구사항
         
         do {
             try BGTaskScheduler.shared.submit(request)
-            print("✅ 다음 백그라운드 작업 예약됨: 10분 후")
+            print("✅ 다음 백그라운드 작업 예약됨: 15분 후 (iOS 최소 요구사항)")
         } catch {
             print("❌ 백그라운드 작업 예약 실패: \(error.localizedDescription)")
         }

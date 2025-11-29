@@ -15,6 +15,17 @@ ion-content.iot-page {
   -webkit-overflow-scrolling: touch !important;
 }
 
+/* iOS에서 하단 빈 공간 제거 */
+.platform-ios .iot-page ion-content {
+  --padding-bottom: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+.platform-ios .iot-page ion-content::part(scroll) {
+  padding-bottom: 0 !important;
+  margin-bottom: 0 !important;
+}
+
 /* IoT 페이지의 Shadow DOM 내부 스타일 */
 .iot-page ion-content::part(scroll),
 ion-content.iot-page::part(scroll) {

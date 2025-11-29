@@ -14,7 +14,10 @@ logger = logging.getLogger(__name__)
 DB_URL = "mysql+pymysql://iriskimhs:dyvVyn-kihxe0-parxes@aiservice.cd0you2cyo60.ap-northeast-2.rds.amazonaws.com:3306/main"
 
 # 모델 파일 경로 (공통)
-MODEL_FILE = os.path.join(os.path.dirname(__file__), 'ai_thermal_model_final.pkl')
+# ai_thermal_model_final.pkl 파일 경로 (프로젝트 루트에 있음)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # server 디렉토리
+PROJECT_ROOT = os.path.dirname(BASE_DIR)  # 프로젝트 루트
+MODEL_FILE = os.path.join(PROJECT_ROOT, 'ai_thermal_model_final.pkl')
 
 def get_db_engine():
     """
@@ -37,25 +40,30 @@ def load_model(model_file: str = None):
         로드된 모델 또는 None
     """
     if model_file is None:
-        model_file = os.path.join(os.path.dirname(__file__), 'ai_thermal_model_final.pkl')
+        # 기본 경로 사용 (ai_thermal_model_final.pkl)
+        BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+        PROJECT_ROOT = os.path.dirname(BASE_DIR)
+        model_file = os.path.join(PROJECT_ROOT, 'ai_thermal_model_final.pkl')
     
     if not os.path.exists(model_file):
         logger.warning(f"⚠️ 모델 파일을 찾을 수 없습니다: {model_file}")
         return None
     
+    # joblib을 먼저 시도 (더 안전하고 호환성이 좋음)
     try:
-        with open(model_file, 'rb') as f:
-            model = pickle.load(f)
-        logger.info(f"✅ pickle로 모델 로드 성공: {model_file}")
+        model = joblib.load(model_file)
+        logger.info(f"✅ joblib로 모델 로드 성공: {model_file}")
         return model
-    except Exception as e1:
-        logger.error(f"❌ pickle 로드 실패: {e1}")
+    except Exception as e2:
+        logger.warning(f"⚠️ joblib 로드 실패: {e2}")
+        # pickle로 시도
         try:
-            model = joblib.load(model_file)
-            logger.info(f"✅ joblib로 모델 로드 성공: {model_file}")
+            with open(model_file, 'rb') as f:
+                model = pickle.load(f)
+            logger.info(f"✅ pickle로 모델 로드 성공: {model_file}")
             return model
-        except Exception as e2:
-            logger.error(f"❌ joblib 로드 실패: {e2}")
+        except Exception as e1:
+            logger.error(f"❌ pickle 로드 실패: {e1}")
             return None
 
 def prepare_features_for_prediction(

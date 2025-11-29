@@ -10,6 +10,21 @@
   --padding-top: 16px;
   --padding-bottom: calc(16px + 56px + env(safe-area-inset-bottom, 0px)) !important;
   padding-bottom: calc(16px + 56px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+/* iOS에서 하단 빈 공간 제거 */
+.platform-ios .user-page ion-content {
+  --padding-bottom: 16px !important;
+  padding-bottom: 16px !important;
+}
+
+.platform-ios .user-page ion-content::part(scroll) {
+  padding-bottom: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+.platform-ios .user-page ion-content .scroll-content {
+  padding-bottom: 0 !important;
   color: #66748D !important;
   overflow-y: auto !important;
   -webkit-overflow-scrolling: touch !important;

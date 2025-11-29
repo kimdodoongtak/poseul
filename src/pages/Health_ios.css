@@ -8,6 +8,19 @@
   box-sizing: border-box;
 }
 
+/* 온도 차트 컨테이너 - 심박수 카드와 가깝게 */
+.health-ios-page .container:has(.temperature-chart-card) {
+  margin-top: -10px !important;
+  padding-top: 0 !important;
+}
+
+/* 웹에서 온도 차트 컨테이너 간격 조정 */
+@media (min-width: 768px) {
+  .health-ios-page .container:has(.temperature-chart-card) {
+    margin-top: 40px !important;
+  }
+}
+
 /* iOS에서도 전체 너비 적용 */
 .platform-ios .health-ios-page .container {
   width: 100% !important;
@@ -126,6 +139,42 @@ ion-content ion-header {
   -webkit-overflow-scrolling: touch !important;
 }
 
+/* iOS에서 하단 빈 공간 완전히 제거 (탭바 아래는 빈 공간 없음) */
+.platform-ios .health-ios-page ion-content {
+  --padding-bottom: 0 !important;
+  padding-bottom: 0 !important;
+  margin-bottom: 0 !important;
+  /* 탭바 높이만큼 하단 여백 제거 */
+  padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+}
+
+.platform-ios .health-ios-page ion-content::part(scroll) {
+  padding-bottom: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+.platform-ios .health-ios-page ion-content .scroll-content {
+  padding-bottom: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+/* iOS에서 ion-content 내부 스크롤 영역 하단 여백 제거 */
+.platform-ios .health-ios-page ion-content .inner-scroll {
+  padding-bottom: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+/* iOS에서 스크롤이 끝까지 내려가도록 마지막 컨테이너에 하단 패딩 추가 */
+.platform-ios .health-ios-page .container:last-child {
+  padding-bottom: calc(60px + env(safe-area-inset-bottom, 0px)) !important;
+  margin-bottom: calc(60px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+.platform-ios .health-ios-page .container:has(.temperature-chart-card) {
+  padding-bottom: calc(60px + env(safe-area-inset-bottom, 0px)) !important;
+  margin-bottom: calc(60px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
 /* Health_ios 페이지의 Shadow DOM 내부 스타일 */
 .health-ios-page ion-content::part(scroll) {
   background: linear-gradient(180deg, #D5D7E3 0%, #D0B5CE 50%, #B2BECF 100%) !important;
@@ -210,7 +259,7 @@ ion-content ion-header {
 
 /* 온도 차트 카드 - 심박수 카드와 동일한 좌우 패딩 및 간격 조정 */
 .health-ios-page .temperature-chart-card {
-  margin-top: -20px !important;
+  margin-top: -30px !important;
   padding: 0 !important;
   width: 100% !important;
   max-width: 100% !important;
@@ -218,6 +267,71 @@ ion-content ion-header {
   margin-left: 0 !important;
   margin-right: 0 !important;
   border: 1px solid rgba(196, 161, 194, 0.35) !important;
+  outline: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+}
+
+/* 웹에서 온도 차트 카드 간격 조정 */
+@media (min-width: 768px) {
+  .health-ios-page .temperature-chart-card {
+    margin-top: 40px !important;
+    margin-bottom: 20px !important;
+  }
+  
+  .health-ios-page .health-data-main-card {
+    margin-bottom: 40px !important;
+  }
+  
+  /* 온도 차트 카드가 있는 컨테이너에 상단 여백 추가 */
+  .health-ios-page .container:has(.temperature-chart-card) {
+    margin-top: 40px !important;
+  }
+}
+
+.health-ios-page .temperature-chart-card:focus {
+  outline: none !important;
+  box-shadow: 0 12px 40px rgba(196, 161, 194, 0.4), 0 4px 16px rgba(102, 116, 141, 0.3) !important;
+}
+
+.health-ios-page .temperature-chart-card:focus-visible {
+  outline: none !important;
+  box-shadow: 0 12px 40px rgba(196, 161, 194, 0.4), 0 4px 16px rgba(102, 116, 141, 0.3) !important;
+}
+
+/* 그래프 요소들에 대한 focus outline 제거 */
+.health-ios-page .recharts-wrapper,
+.health-ios-page .recharts-wrapper *,
+.health-ios-page .recharts-responsive-container,
+.health-ios-page .recharts-responsive-container * {
+  outline: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+  -webkit-touch-callout: none !important;
+  user-select: none !important;
+}
+
+.health-ios-page .recharts-wrapper:focus,
+.health-ios-page .recharts-wrapper:focus-visible,
+.health-ios-page .recharts-responsive-container:focus,
+.health-ios-page .recharts-responsive-container:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* iOS에서 그래프 터치 시 파란색 외곽선 제거 */
+.platform-ios .health-ios-page .recharts-wrapper,
+.platform-ios .health-ios-page .recharts-wrapper *,
+.platform-ios .health-ios-page .recharts-responsive-container,
+.platform-ios .health-ios-page .recharts-responsive-container * {
+  -webkit-tap-highlight-color: transparent !important;
+  -webkit-touch-callout: none !important;
+  outline: none !important;
+  -webkit-focus-ring-color: transparent !important;
+}
+
+.platform-ios .health-ios-page .recharts-wrapper:active,
+.platform-ios .health-ios-page .recharts-responsive-container:active {
+  outline: none !important;
+  box-shadow: none !important;
 }
 
 .health-ios-page .temperature-chart-card ion-card-header {
@@ -517,9 +631,26 @@ ion-item ion-input {
 /* 건강 데이터 섹션 - 다양한 레이아웃 */
 .health-ios-page .health-data-section {
   margin: 25px -14px;
+  margin-bottom: -10px !important;
   display: flex;
   flex-direction: column;
   gap: 5px;
+}
+
+/* 웹에서 건강 데이터 섹션 간격 조정 */
+@media (min-width: 768px) {
+  .health-ios-page .health-data-section {
+    gap: 30px !important;
+    margin-bottom: 20px !important;
+  }
+  
+  .health-ios-page .health-data-main-card {
+    margin-bottom: 30px !important;
+  }
+  
+  .health-ios-page .temperature-chart-card {
+    margin-top: 30px !important;
+  }
 }
 
 /* 심박수 - 큰 숫자 중심, 헤더 없음 */
@@ -536,6 +667,29 @@ ion-item ion-input {
   margin-right: 20px !important; /* 양옆 패딩 추가 */
   width: calc(100% - 40px) !important; /* 패딩만큼 너비 줄임 */
   box-sizing: border-box;
+  outline: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+}
+
+.health-ios-page .health-data-main-card:focus {
+  outline: none !important;
+  box-shadow: 0 12px 40px rgba(196, 161, 194, 0.4), 0 4px 16px rgba(102, 116, 141, 0.3) !important;
+}
+
+.health-ios-page .health-data-main-card:focus-visible {
+  outline: none !important;
+  box-shadow: 0 12px 40px rgba(196, 161, 194, 0.4), 0 4px 16px rgba(102, 116, 141, 0.3) !important;
+}
+
+/* iOS에서 심박수 카드 내부 그래프 터치 시 파란색 외곽선 제거 */
+.platform-ios .health-ios-page .health-data-main-card .recharts-wrapper,
+.platform-ios .health-ios-page .health-data-main-card .recharts-wrapper *,
+.platform-ios .health-ios-page .health-data-main-card .recharts-responsive-container,
+.platform-ios .health-ios-page .health-data-main-card .recharts-responsive-container * {
+  -webkit-tap-highlight-color: transparent !important;
+  -webkit-touch-callout: none !important;
+  outline: none !important;
+  -webkit-focus-ring-color: transparent !important;
 }
 
 .health-ios-page .health-data-main-card ion-card-content {

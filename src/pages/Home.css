@@ -14,6 +14,39 @@
   -webkit-overflow-scrolling: touch !important;
 }
 
+/* iOS에서 하단 빈 공간 완전히 제거 */
+.platform-ios .home-page ion-content {
+  --padding-bottom: 0 !important;
+  padding-bottom: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+.platform-ios .home-page ion-content::part(scroll) {
+  padding-bottom: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+.platform-ios .home-page ion-content .scroll-content {
+  padding-bottom: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+.platform-ios .home-page .container {
+  padding-bottom: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+/* iOS에서 스크롤이 끝까지 내려가도록 마지막 컨테이너에 하단 패딩 추가 */
+.platform-ios .home-page .container:last-child {
+  padding-bottom: 40px !important;
+  margin-bottom: 40px !important;
+}
+
+/* iOS에서 마지막 카드에 하단 패딩 추가 */
+.platform-ios .home-page ion-card:last-of-type {
+  margin-bottom: 40px !important;
+}
+
 /* Home 페이지의 Shadow DOM 내부 스타일 */
 .home-page ion-content::part(scroll) {
   background: linear-gradient(180deg, #D5D7E3 0%, #D0B5CE 50%, #B2BECF 100%) !important;
@@ -254,6 +287,8 @@ body:not(.dark) .home-page .dark-mode-animation:not(.playing) {
   background-image: url('/포슬_Dark3.png') !important;
   background-position: 30% 43% !important;
   animation: darkModeAnimation 1.5s steps(30, end) forwards !important;
+  animation-iteration-count: 1 !important;
+  animation-fill-mode: forwards !important;
 }
 
 /* playing 클래스가 있을 때는 무조건 애니메이션 이미지 */
@@ -261,6 +296,8 @@ body:not(.dark) .home-page .dark-mode-animation.playing {
   background-image: url('/포슬_Dark3.png') !important;
   background-position: 30% 43% !important;
   animation: darkModeAnimation 1.5s steps(30, end) forwards !important;
+  animation-iteration-count: 1 !important;
+  animation-fill-mode: forwards !important;
 }
 
 @keyframes darkModeAnimation {
@@ -980,3 +1017,314 @@ body.dark .home-page .stars-background {
     opacity: 1;
   }
 }
+
+/* 시간 조절 버튼 스타일 */
+.home-page .duration-control-button {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+.home-page .duration-control-button:active:not(:disabled) {
+  transform: scale(0.95);
+  box-shadow: 0 2px 8px rgba(196, 161, 194, 0.3) !important;
+}
+
+.home-page .duration-control-button:focus {
+  outline: none !important;
+  box-shadow: 0 4px 12px rgba(196, 161, 194, 0.4) !important;
+}
+
+/* 다크모드 시간 조절 버튼 */
+body.dark .home-page .duration-control-button {
+  background: linear-gradient(135deg, #C4A1C2 0%, #B895B6 100%) !important;
+  box-shadow: 0 4px 12px rgba(196, 161, 194, 0.5) !important;
+}
+
+body.dark .home-page .duration-control-button:active:not(:disabled) {
+  box-shadow: 0 2px 8px rgba(196, 161, 194, 0.4) !important;
+}
+
+/* 시간 입력 스타일 */
+.home-page .sleep-duration-input {
+  text-align: center !important;
+  font-size: 32px !important;
+  font-weight: 700 !important;
+  color: #66748D !important;
+  width: auto !important;
+  margin: 0 auto !important;
+  outline: none !important;
+  border: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+  --padding-start: 0 !important;
+  --padding-end: 0 !important;
+  -webkit-tap-highlight-color: transparent !important;
+  -webkit-touch-callout: none !important;
+  --highlight-color: transparent !important;
+  --highlight-color-focused: transparent !important;
+  caret-color: #66748D !important; /* 커서 색상 설정 */
+}
+
+.home-page .sleep-duration-input::part(native) {
+  text-align: center !important;
+  font-size: 32px !important;
+  font-weight: 700 !important;
+  color: #66748D !important;
+  padding: 0 !important;
+  outline: none !important;
+  border: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+  -webkit-appearance: none !important;
+  -moz-appearance: textfield !important;
+  caret-color: #66748D !important; /* 커서 색상 설정 */
+}
+
+.home-page .sleep-duration-input::part(native):focus {
+  outline: none !important;
+  box-shadow: none !important;
+  border: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+}
+
+.home-page .sleep-duration-input::part(native):active {
+  outline: none !important;
+  box-shadow: none !important;
+  border: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+}
+
+.home-page .sleep-duration-input:focus {
+  outline: none !important;
+  box-shadow: none !important;
+  border: none !important;
+  --highlight-color: transparent !important;
+  --highlight-color-focused: transparent !important;
+}
+
+.home-page .sleep-duration-input:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+  border: none !important;
+  --highlight-color: transparent !important;
+  --highlight-color-focused: transparent !important;
+}
+
+.home-page .sleep-duration-input:active {
+  outline: none !important;
+  box-shadow: none !important;
+  border: none !important;
+  --highlight-color: transparent !important;
+  --highlight-color-focused: transparent !important;
+}
+
+/* iOS에서 포커스 아웃라인 제거 */
+.platform-ios .home-page .sleep-duration-input,
+.platform-ios .home-page .sleep-duration-input::part(native) {
+  -webkit-tap-highlight-color: transparent !important;
+  -webkit-focus-ring-color: transparent !important;
+  outline: none !important;
+  border: none !important;
+  --highlight-color: transparent !important;
+  --highlight-color-focused: transparent !important;
+}
+
+.platform-ios .home-page .sleep-duration-input::part(native):focus,
+.platform-ios .home-page .sleep-duration-input::part(native):active {
+  outline: none !important;
+  box-shadow: none !important;
+  border: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+  -webkit-focus-ring-color: transparent !important;
+}
+
+.platform-ios .home-page .sleep-duration-input:focus,
+.platform-ios .home-page .sleep-duration-input:active {
+  outline: none !important;
+  box-shadow: none !important;
+  border: none !important;
+  --highlight-color: transparent !important;
+  --highlight-color-focused: transparent !important;
+}
+
+/* 다크모드 시간 입력 */
+body.dark .home-page .sleep-duration-input {
+  color: #E0E5ED !important;
+  caret-color: #E0E5ED !important; /* 다크모드 커서 색상 */
+}
+
+body.dark .home-page .sleep-duration-input::part(native) {
+  color: #E0E5ED !important;
+  outline: none !important;
+  border: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+  caret-color: #E0E5ED !important; /* 다크모드 커서 색상 */
+}
+
+body.dark .home-page .sleep-duration-input::part(native):focus,
+body.dark .home-page .sleep-duration-input::part(native):active {
+  outline: none !important;
+  box-shadow: none !important;
+  border: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+}
+
+body.dark .home-page .sleep-duration-input:focus {
+  outline: none !important;
+  box-shadow: none !important;
+  border: none !important;
+  --highlight-color: transparent !important;
+  --highlight-color-focused: transparent !important;
+}
+
+body.dark .home-page .sleep-duration-input:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+  border: none !important;
+  --highlight-color: transparent !important;
+  --highlight-color-focused: transparent !important;
+}
+
+body.dark .home-page .sleep-duration-input:active {
+  outline: none !important;
+  box-shadow: none !important;
+  border: none !important;
+  --highlight-color: transparent !important;
+  --highlight-color-focused: transparent !important;
+}
+
+/* 전역 스타일로 모든 input의 포커스 아웃라인 제거 (이 입력 필드에만 적용) */
+.home-page .sleep-duration-input input,
+.home-page .sleep-duration-input input:focus,
+.home-page .sleep-duration-input input:active,
+.home-page .sleep-duration-input input:focus-visible {
+  outline: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+  -webkit-appearance: none !important;
+  -moz-appearance: textfield !important;
+  -webkit-focus-ring-color: transparent !important;
+  caret-color: #66748D !important; /* 커서 색상 설정 */
+}
+
+/* Shadow DOM 내부의 실제 input 요소 */
+.home-page .sleep-duration-input input[type="text"] {
+  outline: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+  -webkit-appearance: none !important;
+  -moz-appearance: textfield !important;
+  -webkit-focus-ring-color: transparent !important;
+  caret-color: #66748D !important; /* 커서 색상 설정 */
+}
+
+.home-page .sleep-duration-input input[type="text"]:focus,
+.home-page .sleep-duration-input input[type="text"]:active,
+.home-page .sleep-duration-input input[type="text"]:focus-visible {
+  outline: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+  -webkit-focus-ring-color: transparent !important;
+  caret-color: #66748D !important; /* 커서 색상 설정 */
+}
+
+/* 텍스트 선택 하이라이트는 유지 */
+.home-page .sleep-duration-input::part(native)::selection,
+.home-page .sleep-duration-input input::selection {
+  background-color: rgba(196, 161, 194, 0.3) !important;
+  color: #66748D !important;
+}
+
+.home-page .sleep-duration-input::part(native)::-moz-selection,
+.home-page .sleep-duration-input input::-moz-selection {
+  background-color: rgba(196, 161, 194, 0.3) !important;
+  color: #66748D !important;
+}
+
+/* 다크모드 텍스트 선택 하이라이트 */
+body.dark .home-page .sleep-duration-input::part(native)::selection,
+body.dark .home-page .sleep-duration-input input::selection {
+  background-color: rgba(196, 161, 194, 0.4) !important;
+  color: #E0E5ED !important;
+}
+
+body.dark .home-page .sleep-duration-input::part(native)::-moz-selection,
+body.dark .home-page .sleep-duration-input input::-moz-selection {
+  background-color: rgba(196, 161, 194, 0.4) !important;
+  color: #E0E5ED !important;
+}
+
+/* 다크모드 input 커서 색상 */
+body.dark .home-page .sleep-duration-input input,
+body.dark .home-page .sleep-duration-input input:focus,
+body.dark .home-page .sleep-duration-input input:active,
+body.dark .home-page .sleep-duration-input input:focus-visible {
+  caret-color: #E0E5ED !important; /* 다크모드 커서 색상 */
+}
+
+/* 시간 선택 모달 스타일 */
+.home-page .time-picker-modal {
+  --width: 90%;
+  --max-width: 400px;
+  --height: auto;
+  --border-radius: 24px;
+  --box-shadow: 0 12px 40px rgba(196, 161, 194, 0.4), 0 4px 16px rgba(102, 116, 141, 0.3);
+}
+
+.home-page .time-picker-modal::part(backdrop) {
+  background: rgba(0, 0, 0, 0.5) !important;
+  backdrop-filter: blur(4px);
+}
+
+.home-page .time-picker-modal ion-header {
+  --background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+  background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+}
+
+.home-page .time-picker-modal ion-toolbar {
+  --background: linear-gradient(135deg, #A898B8 0%, #A090B0 50%, #9888A8 100%) !important;
+  --color: #ffffff !important;
+}
+
+.home-page .time-picker-modal ion-title {
+  --color: #ffffff !important;
+  color: #ffffff !important;
+}
+
+.home-page .time-picker-modal ion-button {
+  --color: #ffffff !important;
+  color: #ffffff !important;
+}
+
+.home-page .time-picker-modal ion-content {
+  --background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%) !important;
+  background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%) !important;
+  --padding-top: 20px;
+  --padding-bottom: 20px;
+}
+
+.home-page .time-picker-modal ion-datetime {
+  --background: transparent !important;
+  background: transparent !important;
+  color: #66748D !important;
+}
+
+/* iOS에서 동작 시간 선택 라벨 위 여백 */
+.platform-ios .home-page .duration-label {
+  margin-top: 12px !important;
+}
+
+@media (max-width: 767px) {
+  .home-page .duration-label {
+    margin-top: 12px !important;
+  }
+}
+
+/* 다크모드 수면 모드 텍스트 */
+body.dark .home-page .sleep-mode-active-text {
+  color: rgba(224, 229, 237, 1) !important;
+}
+

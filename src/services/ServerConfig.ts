@@ -7,7 +7,7 @@ const SERVER_URL_KEY = 'server_url';
 
 // 하드코딩된 서버 IP 목록 (우선 사용)
 // 현재 네트워크: 172.15.5.x 대역
-const HARDCODED_SERVER_IPS = ['172.15.5.72', '192.168.219.125', '192.168.68.77', '192.168.68.72'];
+const HARDCODED_SERVER_IPS = ['172.15.5.72', '192.168.219.125', '192.168.68.77', '192.168.68.72', '192.168.68.75'];
 const HARDCODED_SERVER_URL = `http://${HARDCODED_SERVER_IPS[0]}:3000`; // 첫 번째를 기본값으로 사용
 
 // 동기 버전 (기본값 반환용)
@@ -219,7 +219,7 @@ export async function autoDetectServerUrl(): Promise<string> {
     if (savedUrl) {
       // 잘못된 IP 대역이면 즉시 제거하고 자동 감지 시작
       // 10.0.2.2는 에뮬레이터용이므로 실제 기기에서는 작동하지 않음
-      if (savedUrl.includes('192.168.0.143') || savedUrl.includes('192.168.68.74') || savedUrl.includes('10.0.2.2')) {
+      if (savedUrl.includes('192.168.0.143') || savedUrl.includes('192.168.68.74') || savedUrl.includes('192.168.68.77') || savedUrl.includes('192.168.0.57') || savedUrl.includes('10.0.2.2')) {
         console.log('⚠️ 잘못된 URL 감지 (에뮬레이터용 또는 잘못된 IP), 자동 감지 시작:', savedUrl);
         localStorage.removeItem(SERVER_URL_KEY);
         cachedServerUrl = null;
@@ -321,7 +321,6 @@ export async function autoDetectServerUrl(): Promise<string> {
       
       // 현재 서버 IP 시도 (172.30.1.1 - 이전 네트워크)
       ipCandidates.push('http://172.30.1.1:3000');
-      // 이전 서버 IP도 시도 (192.168.50.27)
       ipCandidates.push('http://192.168.50.27:3000');
       
       // 192.168.219.x 대역도 시도
@@ -343,7 +342,7 @@ export async function autoDetectServerUrl(): Promise<string> {
       
       // 일반적인 로컬 네트워크 IP 대역 (더 넓은 범위)
       const subnets = [0, 1, 50, 68, 100, 192, 219];
-      const commonIPs = [1, 2, 10, 20, 27, 50, 68, 72, 74, 77, 100, 101, 125, 200, 254];
+      const commonIPs = [1, 2, 10, 20, 27, 50, 57, 68, 72, 74, 75, 77, 100, 101, 125, 200, 254];
       for (const subnet of subnets) {
         for (const ip of commonIPs) {
           const url = `http://192.168.${subnet}.${ip}:3000`;
@@ -372,7 +371,6 @@ export async function autoDetectServerUrl(): Promise<string> {
       
       // 현재 서버 IP 시도 (172.30.1.1 - 이전 네트워크)
       ipCandidates.push('http://172.30.1.1:3000');
-      // 이전 서버 IP도 시도 (192.168.50.27)
       ipCandidates.push('http://192.168.50.27:3000');
       
       // 192.168.219.x 대역도 시도
@@ -385,7 +383,7 @@ export async function autoDetectServerUrl(): Promise<string> {
       
       // 일반적인 서브넷 대역을 먼저 시도 (더 넓은 범위)
       const subnets = [0, 1, 50, 68, 100, 192, 219];
-      const commonIPs = [1, 2, 10, 20, 27, 50, 68, 72, 74, 77, 100, 101, 125, 200, 254];
+      const commonIPs = [1, 2, 10, 20, 27, 50, 57, 68, 72, 74, 75, 77, 100, 101, 125, 200, 254];
       for (const subnet of subnets) {
         for (const ip of commonIPs) {
           const url = `http://192.168.${subnet}.${ip}:3000`;
@@ -415,6 +413,7 @@ export async function autoDetectServerUrl(): Promise<string> {
       // 현재 서버 IP 시도 (172.30.1.1 - 이전 네트워크)
       ipCandidates.push('http://172.30.1.1:3000');
       // 이전 서버 IP도 시도
+      ipCandidates.push('http://192.168.0.57:3000');
       ipCandidates.push('http://192.168.50.27:3000');
       
       // 192.168.219.x 대역도 시도
@@ -427,7 +426,7 @@ export async function autoDetectServerUrl(): Promise<string> {
       
       // 웹에서도 일반적인 IP 대역 시도
       const subnets = [0, 1, 50, 68, 100, 192, 219];
-      const commonIPs = [1, 2, 10, 20, 27, 50, 68, 72, 74, 77, 100, 101, 125, 200, 254];
+      const commonIPs = [1, 2, 10, 20, 27, 50, 57, 68, 72, 74, 75, 77, 100, 101, 125, 200, 254];
       for (const subnet of subnets) {
         for (const ip of commonIPs) {
           const url = `http://192.168.${subnet}.${ip}:3000`;
@@ -444,7 +443,7 @@ export async function autoDetectServerUrl(): Promise<string> {
       try {
         // 처음 3개만 상세 로그
         if (index < 3) {
-          console.log(`  [${index + 1}/${ipCandidates.length}] 시도 중: ${url}`);
+        console.log(`  [${index + 1}/${ipCandidates.length}] 시도 중: ${url}`);
         }
         const response = await fetch(`${url}/health`, {
           method: 'GET',

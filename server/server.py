@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Tuple
 from sqlalchemy import text
 from datetime import datetime, timedelta
 import logging
@@ -14,6 +14,11 @@ import numpy as np
 import pandas as pd
 import joblib
 import time
+import threading
+try:
+    import fcntl  # Unix/Linux/Mac
+except ImportError:
+    fcntl = None  # Windows에서는 사용 불가
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from passlib.context import CryptContext
@@ -44,13 +49,8 @@ last_connectivity_error = None
 # Android 앱 건강 로그 저장소 (미들웨어에서 사용하기 위해 여기서 초기화)
 android_app_health_logs = []
 
-# 수면 모드 상태 관리
-sleep_mode_state = {
-    "active": False,
-    "start_time": None,
-    "end_time": None,
-    "duration_hours": None
-}
+# 수면 모드 상태 관리 (사용자별)
+sleep_mode_states = {}  # {user_no: {"active": bool, "start_time": str, "end_time": str, "duration_hours": float}}
 
 # 온도 임계값 캐시 모듈 import
 from temperature_threshold_cache import (
@@ -211,10 +211,255 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+def verify_token_optional(request: Request) -> Optional[int]:
+    """JWT 토큰 선택적 검증 (토큰이 있으면 user_no 반환, 없으면 None)"""
+    try:
+        authorization = request.headers.get("Authorization")
+        if not authorization or not authorization.startswith("Bearer "):
+            return None
+        
+        token = authorization.split(" ")[1]
+        if not token:
+            return None
+        
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        sub = payload.get("sub")
+        if sub is None:
+            return None
+        
+        user_no: int = int(sub)
+        logger.info(f"✅ verify_token_optional - 토큰 검증 성공: user_no={user_no}")
+        return user_no
+    except Exception:
+        # 토큰이 없거나 유효하지 않으면 None 반환 (에러 발생하지 않음)
+        return None
+
 # 모델 로드
 # 서버 디렉토리 기준으로 모델 파일 경로 설정
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(BASE_DIR)  # server 디렉토리의 상위 디렉토리 (프로젝트 루트)
+
+# ==================== 공통 유틸리티 함수 ====================
+
+def build_user_filter(user_no: Optional[int], allow_null: bool = False) -> Tuple[str, dict]:
+    """
+    user_no 필터링을 위한 SQL 조건과 파라미터 생성
+    
+    Args:
+        user_no: 사용자 번호 (선택사항)
+        allow_null: user_no가 NULL인 레코드도 포함할지 여부 (기본값: False)
+    
+    Returns:
+        (filter_clause, query_params): SQL WHERE 절과 쿼리 파라미터
+    """
+    if user_no is None:
+        return "", {}
+    
+    if allow_null:
+        return "AND (user_no = :user_no OR user_no IS NULL)", {"user_no": user_no}
+    else:
+        return "AND user_no = :user_no", {"user_no": user_no}
+
+def get_table_columns(conn, table_name: str, schema: str = "main") -> list:
+    """
+    테이블의 컬럼 목록 조회 (캐싱 가능하지만 현재는 매번 조회)
+    
+    Args:
+        conn: SQLAlchemy 연결 객체
+        table_name: 테이블 이름
+        schema: 스키마 이름 (기본값: "main")
+    
+    Returns:
+        컬럼 이름 리스트
+    """
+    try:
+        columns_check = text("""
+            SELECT COLUMN_NAME 
+            FROM INFORMATION_SCHEMA.COLUMNS 
+            WHERE TABLE_SCHEMA = :schema 
+            AND TABLE_NAME = :table_name
+        """)
+        result = conn.execute(columns_check, {"schema": schema, "table_name": table_name})
+        return [row.COLUMN_NAME for row in result.fetchall()]
+    except Exception as e:
+        logger.warning(f"⚠️ 컬럼 조회 실패 ({table_name}): {str(e)}")
+        return []
+
+def get_order_by_clause(columns: list, table_name: str = "") -> str:
+    """
+    정렬 컬럼 결정 (no > id > created_at 우선순위)
+    
+    Args:
+        columns: 컬럼 이름 리스트
+        table_name: 테이블 이름 (로깅용)
+    
+    Returns:
+        ORDER BY 절 (예: "ORDER BY no DESC")
+    """
+    if 'no' in columns:
+        return "ORDER BY no DESC"
+    elif 'id' in columns:
+        return "ORDER BY id DESC"
+    elif 'created_at' in columns:
+        return "ORDER BY created_at DESC"
+    else:
+        if table_name:
+            logger.warning(f"⚠️ {table_name} 테이블에 정렬 컬럼을 찾을 수 없습니다. 최신 데이터가 아닐 수 있습니다.")
+        return ""
+
+def table_exists(conn, table_name: str, schema: str = "main") -> bool:
+    """
+    테이블 존재 여부 확인
+    
+    Args:
+        conn: SQLAlchemy 연결 객체
+        table_name: 테이블 이름
+        schema: 스키마 이름 (기본값: "main")
+    
+    Returns:
+        테이블 존재 여부
+    """
+    try:
+        table_check = text("""
+            SELECT COUNT(*) as count
+            FROM information_schema.tables 
+            WHERE table_schema = :schema 
+            AND table_name = :table_name
+        """)
+        result = conn.execute(table_check, {"schema": schema, "table_name": table_name})
+        return result.fetchone().count > 0
+    except Exception as e:
+        logger.warning(f"⚠️ 테이블 존재 여부 확인 실패 ({table_name}): {str(e)}")
+        return False
+
+def check_and_add_user_no_column(conn, table_name: str, schema: str = "main") -> bool:
+    """
+    테이블에 user_no 컬럼이 있는지 확인하고 없으면 추가
+    
+    Args:
+        conn: SQLAlchemy 연결 객체
+        table_name: 테이블 이름
+        schema: 스키마 이름 (기본값: "main")
+    
+    Returns:
+        user_no 컬럼 존재 여부 (추가했거나 이미 있으면 True)
+    """
+    try:
+        column_check = text("""
+            SELECT COLUMN_NAME 
+            FROM INFORMATION_SCHEMA.COLUMNS 
+            WHERE TABLE_SCHEMA = :schema 
+            AND TABLE_NAME = :table_name
+            AND COLUMN_NAME = 'user_no'
+        """)
+        has_user_no = conn.execute(column_check, {"schema": schema, "table_name": table_name}).fetchone() is not None
+        
+        if not has_user_no:
+            alter_query = text(f"ALTER TABLE {table_name} ADD COLUMN user_no INT DEFAULT NULL")
+            conn.execute(alter_query)
+            conn.commit()
+            logger.info(f"✅ {table_name} 테이블에 user_no 컬럼 추가 완료")
+            return True
+        
+        return True
+    except Exception as e:
+        logger.warning(f"⚠️ {table_name} 테이블 user_no 컬럼 확인/추가 실패: {str(e)}")
+        return False
+
+def execute_query_with_params(conn, query: text, params: dict = None):
+    """
+    쿼리 파라미터가 있으면 파라미터와 함께 실행, 없으면 그냥 실행
+    
+    Args:
+        conn: SQLAlchemy 연결 객체
+        query: SQL 쿼리
+        params: 쿼리 파라미터 (선택사항)
+    
+    Returns:
+        쿼리 실행 결과
+    """
+    if params:
+        return conn.execute(query, params)
+    else:
+        return conn.execute(query)
+
+# JSON 파일 잠금을 위한 딕셔너리 (파일별 Lock 객체)
+_json_file_locks = {}
+_json_file_locks_lock = threading.Lock()
+
+def get_file_lock(file_path: str):
+    """
+    파일 경로별 Lock 객체 반환 (동시성 제어용)
+    """
+    with _json_file_locks_lock:
+        if file_path not in _json_file_locks:
+            _json_file_locks[file_path] = threading.Lock()
+        return _json_file_locks[file_path]
+
+def safe_json_read(file_path: str) -> list:
+    """
+    파일 잠금을 사용하여 JSON 파일을 안전하게 읽기
+    
+    Returns:
+        JSON 파일 내용 (리스트 또는 딕셔너리), 파일이 없거나 오류 시 빈 리스트/딕셔너리
+    """
+    lock = get_file_lock(file_path)
+    with lock:
+        try:
+            if os.path.exists(file_path):
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    # Unix/Linux/Mac에서 파일 레벨 잠금 추가
+                    if fcntl:
+                        fcntl.flock(f.fileno(), fcntl.LOCK_SH)  # 공유 잠금 (읽기)
+                    try:
+                        data = json.load(f)
+                    finally:
+                        if fcntl:
+                            fcntl.flock(f.fileno(), fcntl.LOCK_UN)  # 잠금 해제
+                    return data
+            return []
+        except (json.JSONDecodeError, IOError, OSError) as e:
+            logger.warning(f"⚠️ JSON 파일 읽기 실패 ({file_path}): {str(e)}")
+            return []
+
+def safe_json_write(file_path: str, data: list, default_user_no: Optional[int] = None):
+    """
+    파일 잠금을 사용하여 JSON 파일을 안전하게 쓰기
+    
+    Args:
+        file_path: 파일 경로
+        data: 저장할 데이터 (리스트 또는 딕셔너리)
+        default_user_no: 기본 user_no (데이터가 딕셔너리이고 user_no가 없을 때 사용)
+    """
+    lock = get_file_lock(file_path)
+    with lock:
+        try:
+            # 임시 파일에 먼저 쓰기 (원자적 쓰기)
+            temp_file = file_path + '.tmp'
+            with open(temp_file, 'w', encoding='utf-8') as f:
+                # Unix/Linux/Mac에서 파일 레벨 잠금 추가
+                if fcntl:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_EX)  # 배타적 잠금 (쓰기)
+                try:
+                    json.dump(data, f, indent=2, ensure_ascii=False)
+                    f.flush()
+                    os.fsync(f.fileno())  # 디스크에 강제 쓰기
+                finally:
+                    if fcntl:
+                        fcntl.flock(f.fileno(), fcntl.LOCK_UN)  # 잠금 해제
+            
+            # 임시 파일을 원본 파일로 이동 (원자적 연산)
+            os.replace(temp_file, file_path)
+            logger.debug(f"✅ JSON 파일 저장 완료: {file_path}")
+        except (IOError, OSError) as e:
+            logger.error(f"❌ JSON 파일 쓰기 실패 ({file_path}): {str(e)}")
+            # 임시 파일 정리
+            try:
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
+            except:
+                pass
+            raise
 # ai_thermal_model_final.pkl 파일 경로 (server 디렉토리에 있음)
 MODEL_FILE = os.path.join(BASE_DIR, 'ai_thermal_model_final.pkl')
 
@@ -269,9 +514,48 @@ def load_model():
 model = load_model()
 
 # ==================== 피부온도 분류 기준 설정 ====================
-# 나중에 경로로 설정 가능하도록 변수로 관리
-COLD_THRESHOLD = 34.5  # 추움 분류 기준 (나중에 경로로 설정 가능)
-HOT_THRESHOLD = 35.6    # 더움 분류 기준 (나중에 경로로 설정 가능)
+# 사용자별로 분리된 딕셔너리로 관리
+# 구조: {user_no: {"cold": float, "hot": float}}
+user_thresholds = {}  # 사용자별 피부온도 분류 기준
+
+# 기본값
+DEFAULT_COLD_THRESHOLD = 34.5  # 추움 분류 기준
+DEFAULT_HOT_THRESHOLD = 35.6    # 더움 분류 기준
+
+def get_user_thresholds(user_no: Optional[int] = None) -> Tuple[float, float]:
+    """
+    사용자별 피부온도 분류 기준 가져오기 (없으면 기본값 반환)
+    
+    Args:
+        user_no: 사용자 번호 (선택사항)
+    
+    Returns:
+        (cold_threshold, hot_threshold)
+    """
+    if user_no is None:
+        return DEFAULT_COLD_THRESHOLD, DEFAULT_HOT_THRESHOLD
+    
+    if user_no in user_thresholds:
+        thresholds = user_thresholds[user_no]
+        return thresholds.get("cold", DEFAULT_COLD_THRESHOLD), thresholds.get("hot", DEFAULT_HOT_THRESHOLD)
+    
+    # 기본값 반환
+    return DEFAULT_COLD_THRESHOLD, DEFAULT_HOT_THRESHOLD
+
+def set_user_thresholds(user_no: int, cold_threshold: float, hot_threshold: float):
+    """
+    사용자별 피부온도 분류 기준 설정
+    
+    Args:
+        user_no: 사용자 번호
+        cold_threshold: 추움 분류 기준
+        hot_threshold: 더움 분류 기준
+    """
+    user_thresholds[user_no] = {
+        "cold": cold_threshold,
+        "hot": hot_threshold
+    }
+    logger.info(f"🔄 사용자별 피부온도 분류 기준 설정 (user_no={user_no}): COLD={cold_threshold}°C, HOT={hot_threshold}°C")
 
 # 에어컨 제어 모듈 import
 # IoT 폴더의 모듈 import를 위한 경로 추가
@@ -329,12 +613,13 @@ def init_iot_devices_table():
                         model_name VARCHAR(255),
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                        UNIQUE KEY unique_user_device (user_id, device_id)
+                        UNIQUE KEY unique_user_device (user_id, device_id),
+                        UNIQUE KEY unique_device_id (device_id)
                     )
                 """)
                 conn.execute(create_table_query)
                 conn.commit()
-                logger.info("✅ iot_devices 테이블 생성 완료")
+                logger.info("✅ iot_devices 테이블 생성 완료 (device_id UNIQUE 제약 포함)")
             else:
                 logger.info("✅ iot_devices 테이블 이미 존재 - 컬럼 확인 중...")
                 # 컬럼 존재 여부 확인 및 추가
@@ -388,6 +673,27 @@ def init_iot_devices_table():
                         logger.info("✅ UNIQUE KEY 추가 완료")
                     except Exception as e:
                         logger.warning(f"⚠️ UNIQUE KEY 추가 실패 (이미 존재할 수 있음): {str(e)}")
+                
+                # device_id UNIQUE 제약 확인 및 추가 (같은 기기는 한 명만 등록 가능)
+                device_id_unique_check = text("""
+                    SELECT COUNT(*) as count
+                    FROM information_schema.table_constraints 
+                    WHERE table_schema = DATABASE()
+                    AND TABLE_NAME = 'iot_devices'
+                    AND CONSTRAINT_NAME = 'unique_device_id'
+                """)
+                result = conn.execute(device_id_unique_check)
+                has_device_id_unique = result.fetchone().count > 0
+                
+                if not has_device_id_unique:
+                    logger.info("📝 iot_devices 테이블에 device_id UNIQUE 제약 추가 중...")
+                    try:
+                        alter_query = text("ALTER TABLE iot_devices ADD UNIQUE KEY unique_device_id (device_id)")
+                        conn.execute(alter_query)
+                        conn.commit()
+                        logger.info("✅ device_id UNIQUE 제약 추가 완료 (같은 기기는 한 명만 등록 가능)")
+                    except Exception as e:
+                        logger.warning(f"⚠️ device_id UNIQUE 제약 추가 실패 (이미 존재할 수 있음): {str(e)}")
     except Exception as e:
         logger.error(f"❌ iot_devices 테이블 초기화 실패: {str(e)}")
         import traceback
@@ -442,11 +748,39 @@ def load_iot_devices_from_db():
         logger.info("🔄 메모리 캐시 초기화만 수행 (빈 상태로 시작)")
 
 def save_iot_device_to_db(user_id: str, pat_token: str, device_id: str, device_name: str, model_name: str = ''):
-    """IoT 디바이스 등록 정보를 DB와 메모리에 저장"""
+    """IoT 디바이스 등록 정보를 DB와 메모리에 저장 (같은 기기는 한 명만 등록 가능)"""
     try:
         logger.info(f"💾 IoT 디바이스 DB 저장 시작: user_id={user_id}, device_id={device_id[:20] if device_id else 'None'}..., device_name={device_name}")
         
         with engine.connect() as conn:
+            # 먼저 같은 device_id가 다른 사용자에게 등록되어 있는지 확인
+            existing_device_check = text("""
+                SELECT user_id, device_name 
+                FROM iot_devices 
+                WHERE device_id = :device_id
+            """)
+            existing_result = conn.execute(existing_device_check, {'device_id': device_id})
+            existing_device = existing_result.fetchone()
+            
+            if existing_device:
+                existing_user_id = existing_device.user_id
+                existing_device_name = existing_device.device_name or '알 수 없음'
+                
+                # 같은 사용자가 다시 등록하는 경우는 허용 (업데이트)
+                if existing_user_id == user_id:
+                    logger.info(f"🔄 같은 사용자가 기기 재등록: user_id={user_id}, device_id={device_id[:20]}...")
+                else:
+                    # [테스트 모드] 다른 사용자가 이미 등록한 경우에도 허용 (기존 레코드 삭제 후 새로 등록)
+                    logger.warning(f"⚠️ [테스트 모드] 기기 중복 등록 허용: user_id={user_id}, device_id={device_id[:20]}..., 기존 등록자: {existing_user_id} (기존 레코드 삭제 후 새로 등록)")
+                    # 기존 레코드 삭제
+                    delete_query = text("DELETE FROM iot_devices WHERE device_id = :device_id")
+                    conn.execute(delete_query, {'device_id': device_id})
+                    conn.commit()
+                    logger.info(f"🗑️ 기존 등록 정보 삭제 완료: device_id={device_id[:20]}...")
+                    # 에러 발생하지 않고 계속 진행
+                    # error_msg = f"이 기기는 이미 다른 사용자({existing_user_id})에게 등록되어 있습니다. (기기명: {existing_device_name})"
+                    # raise HTTPException(status_code=409, detail=error_msg)
+            
             # UPSERT 쿼리 (이미 있으면 업데이트, 없으면 삽입)
             query = text("""
                 INSERT INTO iot_devices (user_id, pat_token, device_id, device_name, model_name, updated_at)
@@ -777,6 +1111,65 @@ async def register(data: RegisterRequest):
                     detail="회원가입 후 사용자 정보를 가져올 수 없습니다."
                 )
             
+            # new_skinthreshold 테이블에 사용자별 기본값 저장 (처음 한 번만)
+            try:
+                # 테이블 존재 확인
+                table_check = text("""
+                    SELECT COUNT(*) as count
+                    FROM information_schema.tables 
+                    WHERE table_schema = 'main' 
+                    AND table_name = 'new_skinthreshold'
+                """)
+                table_exists = conn.execute(table_check).fetchone().count > 0
+                
+                if not table_exists:
+                    # 테이블이 없으면 생성
+                    create_table = text("""
+                        CREATE TABLE IF NOT EXISTS new_skinthreshold (
+                            no INT AUTO_INCREMENT PRIMARY KEY,
+                            min_skinthreshold DECIMAL(4,1) NOT NULL DEFAULT 34.6,
+                            max_skinthreshold DECIMAL(4,1) NOT NULL DEFAULT 35.6,
+                            user_no INT DEFAULT NULL
+                        )
+                    """)
+                    conn.execute(create_table)
+                    conn.commit()
+                    logger.info("✅ new_skinthreshold 테이블 생성 완료")
+                
+                # user_no 컬럼 확인 및 추가
+                check_and_add_user_no_column(conn, "new_skinthreshold")
+                
+                # 해당 사용자의 레코드가 있는지 확인
+                user_filter, query_params = build_user_filter(user.no, allow_null=False)
+                if user_filter:
+                    user_filter = "WHERE 1=1 " + user_filter.replace("AND", "")
+                
+                check_threshold = text(f"SELECT COUNT(*) as count FROM new_skinthreshold {user_filter}")
+                result = execute_query_with_params(conn, check_threshold, query_params)
+                threshold_count = result.fetchone().count
+                
+                # 레코드가 없을 때만 삽입 (처음 한 번만)
+                if threshold_count == 0:
+                    try:
+                        insert_threshold = text("""
+                            INSERT INTO new_skinthreshold (min_skinthreshold, max_skinthreshold, user_no)
+                            VALUES (:min_skinthreshold, :max_skinthreshold, :user_no)
+                        """)
+                        insert_params = {
+                            'min_skinthreshold': 34.6,
+                            'max_skinthreshold': 35.6,
+                            'user_no': user.no
+                        }
+                        conn.execute(insert_threshold, insert_params)
+                        conn.commit()
+                        logger.info(f"✅ new_skinthreshold 테이블에 기본값 저장 (회원가입): 34.6~35.6°C, user_no={user.no}")
+                    except Exception as e:
+                        logger.warning(f"new_skinthreshold 저장 실패: {e}")
+                else:
+                    logger.debug(f"📋 new_skinthreshold 테이블에 이미 임계값이 저장되어 있습니다. (건너뜀, user_no={user.no})")
+            except Exception as e:
+                logger.warning(f"⚠️ new_skinthreshold 초기화 실패 (무시): {e}")
+            
             # JWT 토큰 생성
             access_token = create_access_token(data={"sub": str(user.no)})
             
@@ -791,10 +1184,14 @@ async def register(data: RegisterRequest):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"❌ 회원가입 실패: {str(e)}")
+        import traceback
+        error_detail = str(e)
+        error_traceback = traceback.format_exc()
+        logger.error(f"❌ 회원가입 실패: {error_detail}")
+        logger.error(f"❌ 회원가입 실패 상세:\n{error_traceback}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"회원가입 실패: {str(e)}"
+            detail=f"회원가입 실패: {error_detail}"
         )
 
 @app.post("/auth/login", response_model=TokenResponse)
@@ -844,6 +1241,80 @@ async def login(data: LoginRequest):
             except Exception as e:
                 # last_login 컬럼이 없어도 계속 진행
                 logger.debug(f"last_login 업데이트 실패 (무시): {e}")
+            
+            # new_skinthreshold 테이블에 사용자별 기본값 저장 (처음 한 번만, room_threshold와 일관성 유지)
+            try:
+                logger.info(f"🔍 new_skinthreshold 초기화 시작 (user_no={user.no})")
+                
+                # 테이블 존재 확인
+                table_check = text("""
+                    SELECT COUNT(*) as count
+                    FROM information_schema.tables 
+                    WHERE table_schema = 'main' 
+                    AND table_name = 'new_skinthreshold'
+                """)
+                table_exists = conn.execute(table_check).fetchone().count > 0
+                logger.info(f"🔍 new_skinthreshold 테이블 존재 여부: {table_exists}")
+                
+                if not table_exists:
+                    # 테이블이 없으면 생성
+                    create_table = text("""
+                        CREATE TABLE IF NOT EXISTS new_skinthreshold (
+                            no INT AUTO_INCREMENT PRIMARY KEY,
+                            min_skinthreshold DECIMAL(4,1) NOT NULL DEFAULT 34.6,
+                            max_skinthreshold DECIMAL(4,1) NOT NULL DEFAULT 35.6,
+                            user_no INT DEFAULT NULL
+                        )
+                    """)
+                    conn.execute(create_table)
+                    conn.commit()
+                    logger.info("✅ new_skinthreshold 테이블 생성 완료")
+                
+                # user_no 컬럼 확인 및 추가
+                check_and_add_user_no_column(conn, "new_skinthreshold")
+                
+                # 해당 사용자의 레코드가 있는지 확인
+                user_filter, query_params = build_user_filter(user.no, allow_null=False)
+                logger.info(f"🔍 user_filter: {user_filter}, query_params: {query_params}")
+                
+                if user_filter:
+                    # WHERE 절 구성
+                    where_clause = f"WHERE {user_filter.replace('AND ', '')}"
+                else:
+                    where_clause = f"WHERE user_no = :user_no"
+                    query_params = {'user_no': user.no}
+                
+                check_threshold = text(f"SELECT COUNT(*) as count FROM new_skinthreshold {where_clause}")
+                logger.info(f"🔍 실행할 쿼리: SELECT COUNT(*) as count FROM new_skinthreshold {where_clause}")
+                result = execute_query_with_params(conn, check_threshold, query_params)
+                threshold_count = result.fetchone().count
+                logger.info(f"🔍 기존 레코드 수: {threshold_count}")
+                
+                # 레코드가 없을 때만 삽입 (처음 한 번만)
+                if threshold_count == 0:
+                    try:
+                        insert_threshold = text("""
+                            INSERT INTO new_skinthreshold (min_skinthreshold, max_skinthreshold, user_no)
+                            VALUES (:min_skinthreshold, :max_skinthreshold, :user_no)
+                        """)
+                        insert_params = {
+                            'min_skinthreshold': 34.6,
+                            'max_skinthreshold': 35.6,
+                            'user_no': user.no
+                        }
+                        conn.execute(insert_threshold, insert_params)
+                        conn.commit()
+                        logger.info(f"✅ new_skinthreshold 테이블에 기본값 저장 (로그인): 34.6~35.6°C, user_no={user.no}")
+                    except Exception as e:
+                        logger.error(f"❌ new_skinthreshold 저장 실패: {e}")
+                        import traceback
+                        logger.error(f"❌ 저장 실패 상세:\n{traceback.format_exc()}")
+                else:
+                    logger.info(f"📋 new_skinthreshold 테이블에 이미 임계값이 저장되어 있습니다. (건너뜀, user_no={user.no})")
+            except Exception as e:
+                logger.error(f"❌ new_skinthreshold 초기화 실패: {e}")
+                import traceback
+                logger.error(f"❌ 초기화 실패 상세:\n{traceback.format_exc()}")
             
             # JWT 토큰 생성
             access_token = create_access_token(data={"sub": str(user.no)})
@@ -939,9 +1410,10 @@ async def get_current_user_info(user_no: int = Depends(verify_token)):
 # ==================== Health Data API ====================
 
 @app.post("/healthdata")
-async def receive_health_data(data: HealthData):
+async def receive_health_data(data: HealthData, user_no: Optional[int] = Depends(verify_token_optional)):
     """
     HealthKit 데이터를 받아서 DB에 저장하고 모델로 예측
+    user_no는 JWT 토큰에서 가져오며, 토큰이 없으면 None으로 처리
     """
     try:
         logger.info(f"💌 받은 데이터: {data.model_dump()}")
@@ -988,14 +1460,7 @@ async def receive_health_data(data: HealthData):
             
             try:
                 # 테이블 구조 확인
-                columns_query = text("""
-                    SELECT COLUMN_NAME 
-                    FROM INFORMATION_SCHEMA.COLUMNS 
-                    WHERE TABLE_SCHEMA = 'main' 
-                    AND TABLE_NAME = 'predicted_results'
-                """)
-                columns_result = conn.execute(columns_query)
-                columns = [row.COLUMN_NAME for row in columns_result]
+                columns = get_table_columns(conn, "predicted_results")
                 logger.debug(f"📋 predicted_results 테이블 컬럼: {columns}")
                 
                 # 날짜 컬럼 찾기
@@ -1096,40 +1561,39 @@ async def receive_health_data(data: HealthData):
                     logger.warning(f"테이블 구조 확인 실패, 기본 쿼리 사용: {e}")
                     order_by = "ORDER BY 1 DESC"
             
-            # predicted_results에서 기존 사용자 정보 확인 (나이, BMI, 성별만)
+            # predicted_results에서 기존 사용자 정보 확인 (나이, BMI, 성별만, user_no 필터링)
+            user_filter, query_params = build_user_filter(user_no, allow_null=True)
+            
             check_query = text(f"""
                 SELECT age, bmi, gender
                 FROM predicted_results
                 WHERE age IS NOT NULL 
                   AND bmi IS NOT NULL 
                   AND gender IS NOT NULL
+                  {user_filter}
                 {order_by}
                 LIMIT 1
             """)
             
-            existing_user = conn.execute(check_query).fetchone()
+            existing_user = execute_query_with_params(conn, check_query, query_params).fetchone()
             
             # room_threshold 테이블에서 기존 쾌적 온도 범위 확인
             try:
-                table_check = text("""
-                    SELECT COUNT(*) as count
-                    FROM information_schema.tables 
-                    WHERE table_schema = 'main' 
-                    AND table_name = 'room_threshold'
-                """)
-                table_exists = conn.execute(table_check).fetchone().count > 0
-                
-                if table_exists:
-                    # room_threshold에서 기존 임계값 확인
-                    threshold_query = text("SELECT min_temp, max_temp FROM room_threshold LIMIT 1")
-                    threshold_result = conn.execute(threshold_query).fetchone()
+                if table_exists(conn, "room_threshold"):
+                    # room_threshold에서 기존 임계값 확인 (user_no 필터링)
+                    user_filter, query_params = build_user_filter(user_no, allow_null=True)
+                    if user_filter:
+                        user_filter = "WHERE 1=1 " + user_filter.replace("AND", "")
+                    
+                    threshold_query = text(f"SELECT min_temp, max_temp FROM room_threshold {user_filter} ORDER BY id DESC LIMIT 1")
+                    threshold_result = execute_query_with_params(conn, threshold_query, query_params).fetchone()
                     
                     # 기존 사용자 정보가 있고, 나이/BMI/성별이 동일하고, room_threshold에 값이 있으면 사용
                     if existing_user and existing_user.age == age and existing_user.bmi == bmi and existing_user.gender == gender:
                         if threshold_result and threshold_result.min_temp is not None and threshold_result.max_temp is not None:
                             comfort_min = float(threshold_result.min_temp)
                             comfort_max = float(threshold_result.max_temp)
-                            logger.info(f"📋 기존 쾌적 온도 범위 사용 (room_threshold): {comfort_min}~{comfort_max}°C")
+                            logger.info(f"📋 기존 쾌적 온도 범위 사용 (room_threshold): {comfort_min}~{comfort_max}°C, user_no={user_no}")
             except Exception as e:
                 logger.warning(f"room_threshold 확인 실패: {e}")
             
@@ -1140,36 +1604,37 @@ async def receive_health_data(data: HealthData):
             
             # room_threshold 테이블에 임계값 저장 (처음 한 번만)
             try:
-                # room_threshold 테이블 존재 여부 확인
-                table_check = text("""
-                    SELECT COUNT(*) as count
-                    FROM information_schema.tables 
-                    WHERE table_schema = 'main' 
-                    AND table_name = 'room_threshold'
-                """)
-                table_exists = conn.execute(table_check).fetchone().count > 0
-                
-                if table_exists:
-                    # 테이블이 있으면 레코드가 있는지 확인
-                    check_threshold = text("SELECT COUNT(*) as count FROM room_threshold")
-                    threshold_count = conn.execute(check_threshold).fetchone().count
+                if table_exists(conn, "room_threshold"):
+                    # user_no 컬럼이 없으면 추가
+                    check_and_add_user_no_column(conn, "room_threshold")
+                    
+                    # 테이블이 있으면 레코드가 있는지 확인 (user_no 필터링)
+                    user_filter, query_params = build_user_filter(user_no, allow_null=True)
+                    if user_filter:
+                        user_filter = "WHERE 1=1 " + user_filter.replace("AND", "")
+                    
+                    check_threshold = text(f"SELECT COUNT(*) as count FROM room_threshold {user_filter}")
+                    result = execute_query_with_params(conn, check_threshold, query_params)
+                    threshold_count = result.fetchone().count
                     
                     # 레코드가 없을 때만 삽입 (처음 한 번만)
                     if threshold_count == 0:
                         try:
                             insert_threshold = text("""
-                                INSERT INTO room_threshold (min_temp, max_temp)
-                                VALUES (:min_temp, :max_temp)
+                                INSERT INTO room_threshold (min_temp, max_temp, user_no)
+                                VALUES (:min_temp, :max_temp, :user_no)
                             """)
-                            conn.execute(insert_threshold, {
+                            insert_params = {
                                 'min_temp': comfort_min,
-                                'max_temp': comfort_max
-                            })
-                            logger.info(f"✅ room_threshold 테이블에 임계값 저장 (처음 저장): {comfort_min}~{comfort_max}°C")
+                                'max_temp': comfort_max,
+                                'user_no': user_no
+                            }
+                            conn.execute(insert_threshold, insert_params)
+                            logger.info(f"✅ room_threshold 테이블에 임계값 저장 (처음 저장): {comfort_min}~{comfort_max}°C, user_no={user_no}")
                         except Exception as e:
                             logger.warning(f"room_threshold 저장 실패: {e}")
                     else:
-                        logger.info(f"📋 room_threshold 테이블에 이미 임계값이 저장되어 있습니다. (건너뜀)")
+                        logger.info(f"📋 room_threshold 테이블에 이미 임계값이 저장되어 있습니다. (건너뜀, user_no={user_no})")
                 else:
                     logger.warning("⚠️ room_threshold 테이블이 존재하지 않습니다.")
             except Exception as e:
@@ -1216,34 +1681,10 @@ async def receive_health_data(data: HealthData):
                     
                     try:
                         # new_skinthreshold 테이블 존재 여부 확인
-                        new_table_check = text("""
-                            SELECT COUNT(*) as count
-                            FROM information_schema.tables 
-                            WHERE table_schema = 'main' 
-                            AND table_name = 'new_skinthreshold'
-                        """)
-                        new_table_exists = conn.execute(new_table_check).fetchone().count > 0
-                        
-                        if new_table_exists:
-                            # 컬럼 확인하여 정렬 컬럼 결정
-                            skin_columns_check = text("""
-                                SELECT COLUMN_NAME 
-                                FROM INFORMATION_SCHEMA.COLUMNS 
-                                WHERE TABLE_SCHEMA = 'main' 
-                                AND TABLE_NAME = 'new_skinthreshold'
-                            """)
-                            skin_columns = [row.COLUMN_NAME for row in conn.execute(skin_columns_check).fetchall()]
-                            
-                            # 정렬 컬럼 결정 (no 컬럼 우선 사용)
-                            skin_order_by = ""
-                            if 'no' in skin_columns:
-                                skin_order_by = "ORDER BY no DESC"
-                            elif 'id' in skin_columns:
-                                skin_order_by = "ORDER BY id DESC"
-                            elif 'created_at' in skin_columns:
-                                skin_order_by = "ORDER BY created_at DESC"
-                            else:
-                                skin_order_by = ""  # 정렬 없이 LIMIT만 사용
+                        if table_exists(conn, "new_skinthreshold"):
+                            # 컬럼 확인 및 정렬 컬럼 결정
+                            skin_columns = get_table_columns(conn, "new_skinthreshold")
+                            skin_order_by = get_order_by_clause(skin_columns, "new_skinthreshold")
                             
                             # 최신 임계값 가져오기
                             latest_threshold_query = text(f"""
@@ -1333,9 +1774,9 @@ async def receive_health_data(data: HealthData):
                     if has_created_at_column:
                         insert_query = text("""
                             INSERT INTO predicted_results 
-                            (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp, predicted_skin, created_at)
+                            (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp, predicted_skin, created_at, user_no)
                             VALUES 
-                            (:heart_rate, :hrv, :oxygen_sat, :bmi, :age, :gender, :predicted_temp, :predicted_skin, :created_at)
+                            (:heart_rate, :hrv, :oxygen_sat, :bmi, :age, :gender, :predicted_temp, :predicted_skin, :created_at, :user_no)
                         """)
                         conn.execute(insert_query, {
                             'heart_rate': data.heartRate,
@@ -1346,15 +1787,16 @@ async def receive_health_data(data: HealthData):
                             'gender': gender,
                             'predicted_temp': predicted_skin_temp,
                             'predicted_skin': predicted_skin_code,
-                            'created_at': current_time
+                            'created_at': current_time,
+                            'user_no': user_no
                         })
                         logger.info(f"✅ 데이터 저장 완료 (predicted_skin 포함, created_at 포함): HR={data.heartRate}, HRV={data.HRV}, O2={data.oxygenSaturation}, 예측온도={predicted_skin_temp}°C, 시간={current_time}")
                     else:
                         insert_query = text("""
                             INSERT INTO predicted_results 
-                            (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp, predicted_skin)
+                            (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp, predicted_skin, user_no)
                             VALUES 
-                            (:heart_rate, :hrv, :oxygen_sat, :bmi, :age, :gender, :predicted_temp, :predicted_skin)
+                            (:heart_rate, :hrv, :oxygen_sat, :bmi, :age, :gender, :predicted_temp, :predicted_skin, :user_no)
                         """)
                         conn.execute(insert_query, {
                             'heart_rate': data.heartRate,
@@ -1364,7 +1806,8 @@ async def receive_health_data(data: HealthData):
                             'age': age,
                             'gender': gender,
                             'predicted_temp': predicted_skin_temp,
-                            'predicted_skin': predicted_skin_code
+                            'predicted_skin': predicted_skin_code,
+                            'user_no': user_no
                         })
                         logger.info(f"✅ 데이터 저장 완료 (predicted_skin 포함, created_at 없음): HR={data.heartRate}, HRV={data.HRV}, O2={data.oxygenSaturation}, 예측온도={predicted_skin_temp}°C")
                     data_inserted = True
@@ -1373,9 +1816,9 @@ async def receive_health_data(data: HealthData):
                     if has_created_at_column:
                         insert_query = text("""
                             INSERT INTO predicted_results 
-                            (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp, created_at)
+                            (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp, created_at, user_no)
                             VALUES 
-                            (:heart_rate, :hrv, :oxygen_sat, :bmi, :age, :gender, :predicted_temp, :created_at)
+                            (:heart_rate, :hrv, :oxygen_sat, :bmi, :age, :gender, :predicted_temp, :created_at, :user_no)
                         """)
                         conn.execute(insert_query, {
                             'heart_rate': data.heartRate,
@@ -1385,15 +1828,16 @@ async def receive_health_data(data: HealthData):
                             'age': age,
                             'gender': gender,
                             'predicted_temp': predicted_skin_temp,
-                            'created_at': current_time
+                            'created_at': current_time,
+                            'user_no': user_no
                         })
                         logger.info(f"✅ 데이터 저장 완료 (predicted_skin 없음, created_at 포함): HR={data.heartRate}, HRV={data.HRV}, O2={data.oxygenSaturation}, 예측온도={predicted_skin_temp}°C, 시간={current_time}")
                     else:
                         insert_query = text("""
                             INSERT INTO predicted_results 
-                            (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp)
+                            (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp, user_no)
                             VALUES 
-                            (:heart_rate, :hrv, :oxygen_sat, :bmi, :age, :gender, :predicted_temp)
+                            (:heart_rate, :hrv, :oxygen_sat, :bmi, :age, :gender, :predicted_temp, :user_no)
                         """)
                         conn.execute(insert_query, {
                             'heart_rate': data.heartRate,
@@ -1402,7 +1846,8 @@ async def receive_health_data(data: HealthData):
                             'bmi': bmi,
                             'age': age,
                             'gender': gender,
-                            'predicted_temp': predicted_skin_temp
+                            'predicted_temp': predicted_skin_temp,
+                            'user_no': user_no
                         })
                         logger.info(f"✅ 데이터 저장 완료 (predicted_skin 없음, created_at 없음): HR={data.heartRate}, HRV={data.HRV}, O2={data.oxygenSaturation}, 예측온도={predicted_skin_temp}°C")
                     data_inserted = True
@@ -1461,9 +1906,9 @@ async def receive_health_data(data: HealthData):
                         logger.warning(f"⚠️ created_at 컬럼 확인 실패: {str(e2)}")
                         insert_query = text("""
                             INSERT INTO predicted_results 
-                            (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp)
+                            (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp, user_no)
                             VALUES 
-                            (:heart_rate, :hrv, :oxygen_sat, :bmi, :age, :gender, :predicted_temp)
+                            (:heart_rate, :hrv, :oxygen_sat, :bmi, :age, :gender, :predicted_temp, :user_no)
                         """)
                         conn.execute(insert_query, {
                             'heart_rate': data.heartRate,
@@ -1472,7 +1917,8 @@ async def receive_health_data(data: HealthData):
                             'bmi': bmi,
                             'age': age,
                             'gender': gender,
-                            'predicted_temp': predicted_skin_temp
+                            'predicted_temp': predicted_skin_temp,
+                            'user_no': user_no
                         })
             
             conn.commit()
@@ -1559,35 +2005,105 @@ async def receive_health_data(data: HealthData):
             
             # 실시간 데이터 수신 시 제어 로직 실행 (최소 10분 간격)
             try:
-                # 수면 모드 확인
-                global sleep_mode_state
-                sleep_mode_active = sleep_mode_state.get("active", False)
-                
-                logger.info(f"🔍 제어 로직 실행 체크 - 수면 모드: {'활성화' if sleep_mode_active else '비활성화'}, 예측온도: {predicted_skin_temp}°C")
-                print(f"🔍 제어 로직 실행 체크 - 수면 모드: {'활성화' if sleep_mode_active else '비활성화'}, 예측온도: {predicted_skin_temp}°C")
-                
-                if sleep_mode_active:
-                    logger.info(f"🔄 실시간 데이터 수신 - 제어 로직 실행 시도 (수면 모드 활성화, 예측온도: {predicted_skin_temp}°C)")
-                    print(f"🔄 실시간 데이터 수신 - 제어 로직 실행 시도")
-                    # 제어 로직 실행 (최소 간격 제한은 adjust_air_conditioner 내부에서 처리)
-                    try:
-                        air_conditioner_auto_control.adjust_air_conditioner(
-                            engine=engine,
-                            air_conditioner_available=AIR_CONDITIONER_AVAILABLE,
-                            get_air_conditioner_state_func=get_air_conditioner_state,
-                            set_temperature_func=set_temperature,
-                            cold_threshold=COLD_THRESHOLD,
-                            hot_threshold=HOT_THRESHOLD,
-                            update_threshold_callback=update_thresholds
-                        )
-                        logger.info("✅ 실시간 제어 로직 실행 완료")
-                        print("✅ 실시간 제어 로직 실행 완료")
-                    except Exception as control_error:
-                        logger.warning(f"⚠️ 제어 로직 실행 중 오류 (최소 간격 제한 또는 기타 오류): {control_error}")
-                        print(f"⚠️ 제어 로직 실행 중 오류: {control_error}")
+                # 수면 모드 확인 (사용자별, user_no가 None이면 제어 로직 건너뜀)
+                if user_no is None:
+                    logger.info(f"⏸️ user_no가 없음 - 제어 로직 건너뜀 (예측온도: {predicted_skin_temp}°C)")
+                    print(f"⏸️ user_no가 없음 - 제어 로직 건너뜀")
                 else:
-                    logger.info(f"⏸️ 수면 모드 비활성화 - 제어 로직 건너뜀 (예측온도: {predicted_skin_temp}°C)")
-                    print(f"⏸️ 수면 모드 비활성화 - 제어 로직 건너뜀")
+                    global sleep_mode_states
+                    sleep_mode_state = sleep_mode_states.get(user_no, {
+                        "active": False,
+                        "start_time": None,
+                        "end_time": None,
+                        "duration_hours": None
+                    })
+                    sleep_mode_active = sleep_mode_state.get("active", False)
+                    
+                    # 종료 시간 확인
+                    if sleep_mode_active and sleep_mode_state.get("end_time"):
+                        from datetime import datetime
+                        end_time = datetime.fromisoformat(sleep_mode_state["end_time"])
+                        if datetime.now() >= end_time:
+                            # 수면 모드 자동 종료
+                            sleep_mode_states[user_no] = {
+                                "active": False,
+                                "start_time": None,
+                                "end_time": None,
+                                "duration_hours": None
+                            }
+                            sleep_mode_active = False
+                            logger.info(f"😴 수면 모드 자동 종료 (user_no: {user_no}, 설정된 시간 경과)")
+                    
+                    logger.info(f"🔍 제어 로직 실행 체크 - 수면 모드: {'활성화' if sleep_mode_active else '비활성화'}, 예측온도: {predicted_skin_temp}°C, user_no: {user_no}")
+                    print(f"🔍 제어 로직 실행 체크 - 수면 모드: {'활성화' if sleep_mode_active else '비활성화'}, 예측온도: {predicted_skin_temp}°C")
+                    
+                    if sleep_mode_active:
+                        logger.info(f"🔄 실시간 데이터 수신 - 제어 로직 실행 시도 (수면 모드 활성화, 예측온도: {predicted_skin_temp}°C)")
+                        print(f"🔄 실시간 데이터 수신 - 제어 로직 실행 시도")
+                        # 제어 로직 실행 (최소 간격 제한은 adjust_air_conditioner 내부에서 처리)
+                        try:
+                            # 사용자별 임계값 가져오기
+                            cold_threshold, hot_threshold = get_user_thresholds(user_no)
+                            
+                            # 콜백 함수 래퍼 (user_no 포함)
+                            def update_thresholds_wrapper(new_cold: float, new_hot: float):
+                                update_thresholds(new_cold, new_hot, user_no)
+                            
+                            # user_no를 사용하여 사용자별 PAT 토큰과 device_id를 가져오는 래퍼 함수 생성
+                            def get_air_conditioner_state_with_user():
+                                try:
+                                    # user_no로 user_id 조회 (login 테이블 사용)
+                                    with engine.connect() as conn:
+                                        user_query = text("SELECT id FROM login WHERE no = :user_no")
+                                        user_result = conn.execute(user_query, {'user_no': user_no})
+                                        user_row = user_result.fetchone()
+                                        if not user_row:
+                                            logger.warning(f"⚠️ user_no={user_no}에 해당하는 사용자를 찾을 수 없습니다.")
+                                            return None
+                                        user_id = user_row.id
+                                    
+                                    # user_id로 PAT 토큰과 device_id 조회
+                                    with engine.connect() as conn:
+                                        device_query = text("""
+                                            SELECT pat_token, device_id
+                                            FROM iot_devices
+                                            WHERE user_id = :user_id
+                                            ORDER BY updated_at DESC
+                                            LIMIT 1
+                                        """)
+                                        device_result = conn.execute(device_query, {'user_id': user_id})
+                                        device_row = device_result.fetchone()
+                                        if not device_row:
+                                            logger.warning(f"⚠️ user_id={user_id}에 등록된 디바이스가 없습니다.")
+                                            return None
+                                        pat_token = device_row.pat_token
+                                        device_id = device_row.device_id
+                                    
+                                    # PAT 토큰으로 상태 조회
+                                    return get_device_state_with_pat_token(pat_token, device_id)
+                                except Exception as e:
+                                    logger.error(f"❌ 사용자별 에어컨 상태 조회 실패 (user_no={user_no}): {e}")
+                                    return None
+                            
+                            air_conditioner_auto_control.adjust_air_conditioner(
+                                engine=engine,
+                                air_conditioner_available=AIR_CONDITIONER_AVAILABLE,
+                                get_air_conditioner_state_func=get_air_conditioner_state_with_user,
+                                set_temperature_func=set_temperature,
+                                cold_threshold=cold_threshold,
+                                hot_threshold=hot_threshold,
+                                update_threshold_callback=update_thresholds_wrapper,
+                                min_interval_minutes=30.0,  # 30분 간격으로 조절
+                                user_no=user_no
+                            )
+                            logger.info("✅ 실시간 제어 로직 실행 완료")
+                            print("✅ 실시간 제어 로직 실행 완료")
+                        except Exception as control_error:
+                            logger.warning(f"⚠️ 제어 로직 실행 중 오류 (최소 간격 제한 또는 기타 오류): {control_error}")
+                            print(f"⚠️ 제어 로직 실행 중 오류: {control_error}")
+                    else:
+                        logger.info(f"⏸️ 수면 모드 비활성화 - 제어 로직 건너뜀 (예측온도: {predicted_skin_temp}°C)")
+                        print(f"⏸️ 수면 모드 비활성화 - 제어 로직 건너뜀")
             except Exception as e:
                 logger.warning(f"⚠️ 실시간 제어 로직 실행 실패 (스케줄러가 처리할 예정): {e}")
                 print(f"⚠️ 실시간 제어 로직 실행 실패: {e}")
@@ -1612,10 +2128,10 @@ async def receive_health_data(data: HealthData):
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 @app.get("/healthdata/latest")
-async def get_latest_health_data():
-    """서버에 저장된 최신 건강 데이터 조회 (안드로이드에서 호출)"""
+async def get_latest_health_data(user_no: int = Depends(verify_token)):
+    """서버에 저장된 최신 건강 데이터 조회 (사용자별 필터링)"""
     try:
-        logger.info("📱 최신 건강 데이터 조회 요청")
+        logger.info(f"📱 최신 건강 데이터 조회 요청 (user_no: {user_no})")
         
         try:
             with engine.connect() as conn:
@@ -1653,17 +2169,18 @@ async def get_latest_health_data():
                     if date_column:
                         select_columns += f", {date_column} as created_at"
                     
-                    # predicted_results 테이블에서 최신 데이터 조회
+                    # predicted_results 테이블에서 최신 데이터 조회 (user_no 필터링)
                     query = text(f"""
                         SELECT 
                             {select_columns}
                         FROM predicted_results
+                        WHERE (user_no = :user_no OR user_no IS NULL)
                         {order_by}
                         LIMIT 1
                     """)
                 except Exception as e:
                     logger.warning(f"테이블 구조 확인 실패, 기본 쿼리 사용: {e}")
-                    # 기본 쿼리 (created_at 없이)
+                    # 기본 쿼리 (created_at 없이, user_no 필터링)
                     query = text("""
                         SELECT 
                             HR_mean as heartRate,
@@ -1673,10 +2190,12 @@ async def get_latest_health_data():
                             age,
                             gender
                         FROM predicted_results
+                        WHERE (user_no = :user_no OR user_no IS NULL)
+                        ORDER BY 1 DESC
                         LIMIT 1
                     """)
                 
-                result = conn.execute(query)
+                result = conn.execute(query, {"user_no": user_no})
                 row = result.fetchone()
                 
                 if row is None:
@@ -2215,10 +2734,10 @@ class TemperatureThresholdRequest(BaseModel):
     target_temperature: float  # 사용자가 설정한 온도 (예: 24도)
 
 @app.post("/air_conditioner/temperature_threshold")
-async def save_temperature_threshold_api(data: TemperatureThresholdRequest):
-    """에어컨 온도 임계값을 캐시에 저장 (유효)"""
+async def save_temperature_threshold_api(data: TemperatureThresholdRequest, user_no: int = Depends(verify_token)):
+    """에어컨 온도 임계값을 캐시에 저장 (유효, 사용자별 분리)"""
     try:
-        threshold = save_threshold(data.target_temperature)
+        threshold = save_threshold(data.target_temperature, user_no)
         
         return {
             "success": True,
@@ -2230,10 +2749,10 @@ async def save_temperature_threshold_api(data: TemperatureThresholdRequest):
         raise HTTPException(status_code=500, detail=f'온도 임계값 저장 실패: {str(e)}')
 
 @app.get("/air_conditioner/temperature_threshold")
-async def get_temperature_threshold_api():
-    """현재 저장된 온도 임계값 조회 (만료되지 않은 경우만)"""
+async def get_temperature_threshold_api(user_no: int = Depends(verify_token)):
+    """현재 저장된 온도 임계값 조회 (만료되지 않은 경우만, 사용자별 분리)"""
     try:
-        threshold = get_threshold()
+        threshold = get_threshold(user_no)
         
         if threshold is None:
             return {
@@ -2452,11 +2971,22 @@ async def auto_register_device_api(data: PatTokenRequest):
             try:
                 save_iot_device_to_db(user_id, pat_token, device_id, device_name, device['modelName'])
                 logger.info(f"✅ IoT 디바이스 저장 성공: user_id={user_id}")
+            except HTTPException as e:
+                # 이미 등록된 기기인 경우 에러 메시지 반환
+                logger.warning(f"⚠️ IoT 디바이스 저장 실패 (이미 등록됨): user_id={user_id}, error={e.detail}")
+                return {
+                    'success': False,
+                    'message': e.detail,
+                    'error': 'DEVICE_ALREADY_REGISTERED'
+                }
             except Exception as e:
                 logger.error(f"❌ IoT 디바이스 저장 실패: user_id={user_id}, error={str(e)}")
                 import traceback
                 logger.error(f"❌ 상세 에러: {traceback.format_exc()}")
-                # 저장 실패해도 응답은 반환 (나중에 재시도 가능)
+                return {
+                    'success': False,
+                    'message': f'디바이스 등록 중 오류가 발생했습니다: {str(e)}'
+                }
             # 메모리 캐시는 save_iot_device_to_db() 내부에서 업데이트되므로 여기서는 중복 업데이트하지 않음
             # (save_iot_device_to_db()가 실패한 경우에만 여기서 업데이트)
             if user_id not in user_iot_devices:
@@ -2531,23 +3061,28 @@ async def register_selected_device_api(data: dict):
         device_name = device_info.get('alias', '에어컨')
         
         # 저장 (DB + 메모리 캐시)
-        save_iot_device_to_db(user_id, pat_token, device_id, device_name, device_info.get('modelName', ''))
-        # 메모리 캐시도 업데이트
-        user_iot_devices[user_id] = {
-            'pat_token': pat_token,
-            'device_id': device_id,
-            'device_name': device_name,
-            'model_name': device_info.get('modelName', '')
-        }
-        
-        logger.info(f"✅ 디바이스 등록 완료: {device_name} (ID: {device_id[:20]}...)")
-        
-        return {
-            'success': True,
-            'deviceId': device_id,
-            'deviceName': device_name,
-            'message': f'{device_name}이(가) 등록되었습니다.'
-        }
+        try:
+            save_iot_device_to_db(user_id, pat_token, device_id, device_name, device_info.get('modelName', ''))
+            # 메모리 캐시도 업데이트
+            user_iot_devices[user_id] = {
+                'pat_token': pat_token,
+                'device_id': device_id,
+                'device_name': device_name,
+                'model_name': device_info.get('modelName', '')
+            }
+            
+            logger.info(f"✅ 디바이스 등록 완료: {device_name} (ID: {device_id[:20]}...)")
+            
+            return {
+                'success': True,
+                'deviceId': device_id,
+                'deviceName': device_name,
+                'message': f'{device_name}이(가) 등록되었습니다.'
+            }
+        except HTTPException as e:
+            # 이미 등록된 기기인 경우 에러 메시지 반환
+            logger.warning(f"⚠️ 디바이스 등록 실패 (이미 등록됨): user_id={user_id}, error={e.detail}")
+            raise HTTPException(status_code=e.status_code, detail=e.detail)
         
     except HTTPException:
         raise
@@ -2810,13 +3345,13 @@ class TemperatureRangeRequest(BaseModel):
     force_update: Optional[bool] = False  # 강제 업데이트 여부
 
 @app.post("/temperature-range")
-async def set_temperature_range(data: TemperatureRangeRequest):
+async def set_temperature_range(data: TemperatureRangeRequest, user_no: int = Depends(verify_token)):
     """
     사용자 특성(나이, BMI, 성별)에 따라 쾌적 온도 범위를 계산하고 DB에 저장
     (처음 한번만 적용, 이미 설정되어 있으면 기존 값 유지)
     """
     try:
-        logger.info(f"🌡️ 온도 범위 설정 요청: 나이={data.age}세, BMI={data.bmi}, 성별={data.gender}, force_update={data.force_update}")
+        logger.info(f"🌡️ 온도 범위 설정 요청: 나이={data.age}세, BMI={data.bmi}, 성별={data.gender}, force_update={data.force_update}, user_no={user_no}")
         
         # 온도 범위 초기화
         success, min_temp, max_temp = temperature_control_logic.initialize_user_temperature_range(
@@ -2826,7 +3361,8 @@ async def set_temperature_range(data: TemperatureRangeRequest):
             gender=data.gender,
             air_conditioner_available=AIR_CONDITIONER_AVAILABLE,
             set_temperature_func=set_temperature,
-            force_update=data.force_update
+            force_update=data.force_update,
+            user_no=user_no
         )
         
         if not success:
@@ -2850,12 +3386,12 @@ async def set_temperature_range(data: TemperatureRangeRequest):
         raise HTTPException(status_code=500, detail=f'온도 범위 설정 실패: {str(e)}')
 
 @app.get("/temperature-range")
-async def get_temperature_range():
+async def get_temperature_range(user_no: int = Depends(verify_token)):
     """
-    DB에서 저장된 쾌적 온도 범위 조회
+    DB에서 저장된 쾌적 온도 범위 조회 (사용자별 분리)
     """
     try:
-        logger.info("🌡️ 온도 범위 조회 요청")
+        logger.info(f"🌡️ 온도 범위 조회 요청 (user_no={user_no})")
         
         # 1. 먼저 수동 조절 캐시 확인
         is_cached = False
@@ -2863,7 +3399,7 @@ async def get_temperature_range():
         cached_max_temp = None
         try:
             from temperature_threshold_cache import get_temperature_threshold
-            cached_threshold = get_temperature_threshold()
+            cached_threshold = get_temperature_threshold(user_no)
             
             if cached_threshold is not None:
                 cached_min_temp = cached_threshold.get("min_temp")
@@ -2871,7 +3407,7 @@ async def get_temperature_range():
                 
                 if cached_min_temp is not None and cached_max_temp is not None:
                     is_cached = True
-                    logger.info(f"✅ 수동 조절 캐시 발견: {cached_min_temp}~{cached_max_temp}°C")
+                    logger.info(f"✅ 수동 조절 캐시 발견: {cached_min_temp}~{cached_max_temp}°C (user_no={user_no})")
         except ImportError as e:
             logger.debug(f"temperature_threshold_cache 모듈 없음: {e}")
         except Exception as e:
@@ -2963,27 +3499,27 @@ class SleepModeRequest(BaseModel):
     duration_hours: float  # 수면 시간 (시간 단위)
 
 @app.post("/sleep-mode/start")
-async def start_sleep_mode(data: SleepModeRequest):
+async def start_sleep_mode(data: SleepModeRequest, user_no: int = Depends(verify_token)):
     """
     수면 모드 시작
     설정한 시간 동안만 모델 예측과 온도 조절이 동작
     """
     try:
-        global sleep_mode_state
-        
         from datetime import datetime, timedelta
         
         start_time = datetime.now()
         end_time = start_time + timedelta(hours=data.duration_hours)
         
-        sleep_mode_state = {
+        # user_no별로 관리
+        global sleep_mode_states
+        sleep_mode_states[user_no] = {
             "active": True,
             "start_time": start_time.isoformat(),
             "end_time": end_time.isoformat(),
             "duration_hours": data.duration_hours
         }
         
-        logger.info(f"😴 수면 모드 시작: {data.duration_hours}시간 ({start_time.strftime('%Y-%m-%d %H:%M:%S')} ~ {end_time.strftime('%Y-%m-%d %H:%M:%S')})")
+        logger.info(f"😴 수면 모드 시작 (user_no: {user_no}): {data.duration_hours}시간 ({start_time.strftime('%Y-%m-%d %H:%M:%S')} ~ {end_time.strftime('%Y-%m-%d %H:%M:%S')})")
         
         return {
             "success": True,
@@ -2997,21 +3533,21 @@ async def start_sleep_mode(data: SleepModeRequest):
         raise HTTPException(status_code=500, detail=f'수면 모드 시작 실패: {str(e)}')
 
 @app.post("/sleep-mode/stop")
-async def stop_sleep_mode():
+async def stop_sleep_mode(user_no: int = Depends(verify_token)):
     """
     수면 모드 중지
     """
     try:
-        global sleep_mode_state
-        
-        sleep_mode_state = {
+        # user_no별로 관리
+        global sleep_mode_states
+        sleep_mode_states[user_no] = {
             "active": False,
             "start_time": None,
             "end_time": None,
             "duration_hours": None
         }
         
-        logger.info("😴 수면 모드 중지")
+        logger.info(f"😴 수면 모드 중지 (user_no: {user_no})")
         
         return {
             "success": True,
@@ -3022,21 +3558,29 @@ async def stop_sleep_mode():
         raise HTTPException(status_code=500, detail=f'수면 모드 중지 실패: {str(e)}')
 
 @app.get("/sleep-mode/status")
-async def get_sleep_mode_status():
+async def get_sleep_mode_status(user_no: int = Depends(verify_token)):
     """
     수면 모드 상태 조회
     """
     try:
-        global sleep_mode_state
-        
         from datetime import datetime
+        
+        # user_no별로 관리
+        global sleep_mode_states
+        sleep_mode_state = sleep_mode_states.get(user_no, {
+            "active": False,
+            "start_time": None,
+            "end_time": None,
+            "duration_hours": None
+        })
         
         # 수면 모드가 활성화되어 있고 종료 시간이 지났으면 자동으로 비활성화
         if sleep_mode_state["active"] and sleep_mode_state["end_time"]:
             end_time = datetime.fromisoformat(sleep_mode_state["end_time"])
             if datetime.now() >= end_time:
                 sleep_mode_state["active"] = False
-                logger.info("😴 수면 모드 자동 종료 (설정된 시간 경과)")
+                sleep_mode_states[user_no] = sleep_mode_state
+                logger.info(f"😴 수면 모드 자동 종료 (설정된 시간 경과, user_no: {user_no})")
         
         if sleep_mode_state["active"]:
             end_time = datetime.fromisoformat(sleep_mode_state["end_time"])
@@ -3094,10 +3638,10 @@ def convert_predicted_temp_to_code(predicted_temp, min_threshold, max_threshold)
         return 'G'
 
 @app.post("/temperature_feedback")
-async def save_temperature_feedback(data: TemperatureFeedbackRequest):
-    """온도 피드백 저장 API - new_skinthreshold 테이블에 저장하고 예측값과 비교하여 임계값 조정"""
+async def save_temperature_feedback(data: TemperatureFeedbackRequest, user_no: int = Depends(verify_token)):
+    """온도 피드백 저장 API - new_skinthreshold 테이블에 저장하고 예측값과 비교하여 임계값 조정 (사용자별 필터링)"""
     try:
-        logger.info(f"📝 온도 피드백 저장 요청: {data.model_dump()}")
+        logger.info(f"📝 온도 피드백 저장 요청: {data.model_dump()}, user_no: {user_no}")
         
         # 피드백 값을 코드로 변환 (C: 추움, H: 더움, G: 쾌적)
         feedback_code = None
@@ -3119,21 +3663,18 @@ async def save_temperature_feedback(data: TemperatureFeedbackRequest):
         if not feedback_date:
             feedback_date = datetime.now().isoformat()
         
-        # JSON 파일에 피드백 저장
+        # JSON 파일에 피드백 저장 (user_no 포함, 파일 잠금 사용)
         feedback_file = os.path.join(os.path.dirname(__file__), 'temperature_feedback.json')
         
         try:
-            # 기존 피드백 데이터 읽기
-            feedbacks = []
-            if os.path.exists(feedback_file):
-                try:
-                    with open(feedback_file, 'r', encoding='utf-8') as f:
-                        feedbacks = json.load(f)
-                except (json.JSONDecodeError, IOError):
-                    feedbacks = []
+            # 기존 피드백 데이터 읽기 (파일 잠금 사용)
+            feedbacks = safe_json_read(feedback_file)
+            if not isinstance(feedbacks, list):
+                feedbacks = []
             
-            # 새 피드백 추가
+            # 새 피드백 추가 (user_no 포함)
             feedback_entry = {
+                'user_no': user_no,
                 'feedback': feedback_code,
                 'feedback_text': data.feedback,
                 'date': feedback_date,
@@ -3141,11 +3682,10 @@ async def save_temperature_feedback(data: TemperatureFeedbackRequest):
             }
             feedbacks.append(feedback_entry)
             
-            # JSON 파일에 저장
-            with open(feedback_file, 'w', encoding='utf-8') as f:
-                json.dump(feedbacks, f, indent=2, ensure_ascii=False)
+            # JSON 파일에 저장 (파일 잠금 사용)
+            safe_json_write(feedback_file, feedbacks)
             
-            logger.info(f"✅ 피드백 JSON 파일에 저장 완료: {feedback_code} ({data.feedback})")
+            logger.info(f"✅ 피드백 JSON 파일에 저장 완료: {feedback_code} ({data.feedback}), user_no={user_no}")
         except Exception as e:
             logger.error(f"❌ 피드백 JSON 파일 저장 실패: {str(e)}")
         
@@ -3157,33 +3697,25 @@ async def save_temperature_feedback(data: TemperatureFeedbackRequest):
                 predicted_skin_code = None
                 try:
                     # predicted_results 테이블의 컬럼 구조 확인
-                    columns_check = text("""
-                        SELECT COLUMN_NAME 
-                        FROM INFORMATION_SCHEMA.COLUMNS 
-                        WHERE TABLE_SCHEMA = 'main' 
-                        AND TABLE_NAME = 'predicted_results'
-                    """)
-                    columns = [row.COLUMN_NAME for row in conn.execute(columns_check).fetchall()]
+                    columns = get_table_columns(conn, "predicted_results")
                     
-                    # predicted_results 테이블에서 최신 예측값 가져오기 (ID로 정렬)
-                    if 'id' in columns:
-                        latest_prediction_query = text("""
-                            SELECT predicted_skin_temp
-                            FROM predicted_results
-                            WHERE predicted_skin_temp IS NOT NULL
-                            ORDER BY id DESC
-                            LIMIT 1
-                        """)
+                    # predicted_results 테이블에서 최신 예측값 가져오기 (ID로 정렬, user_no 필터링 - 해당 사용자만)
+                    if user_no is None:
+                        logger.warning("⚠️ user_no가 없어 예측값을 조회할 수 없습니다.")
+                        latest_prediction = None
                     else:
-                        # ID도 없으면 그냥 최신 하나 가져오기
-                        latest_prediction_query = text("""
+                        user_filter, query_params = build_user_filter(user_no, allow_null=False)
+                        order_by = get_order_by_clause(columns, "predicted_results")
+                        
+                        latest_prediction_query = text(f"""
                             SELECT predicted_skin_temp
                             FROM predicted_results
                             WHERE predicted_skin_temp IS NOT NULL
+                              {user_filter}
+                            {order_by}
                             LIMIT 1
                         """)
-                    
-                    latest_prediction = conn.execute(latest_prediction_query).fetchone()
+                        latest_prediction = execute_query_with_params(conn, latest_prediction_query, query_params).fetchone()
                     
                     if latest_prediction:
                         predicted_skin_temp = float(latest_prediction.predicted_skin_temp)
@@ -3197,43 +3729,24 @@ async def save_temperature_feedback(data: TemperatureFeedbackRequest):
                 
                 try:
                     # new_skinthreshold 테이블 존재 여부 확인
-                    new_table_check = text("""
-                        SELECT COUNT(*) as count
-                        FROM information_schema.tables 
-                        WHERE table_schema = 'main' 
-                        AND table_name = 'new_skinthreshold'
-                    """)
-                    new_table_exists = conn.execute(new_table_check).fetchone().count > 0
-                    
-                    if new_table_exists:
-                        # 컬럼 확인하여 정렬 컬럼 결정
-                        skin_columns_check = text("""
-                            SELECT COLUMN_NAME 
-                            FROM INFORMATION_SCHEMA.COLUMNS 
-                            WHERE TABLE_SCHEMA = 'main' 
-                            AND TABLE_NAME = 'new_skinthreshold'
-                        """)
-                        skin_columns = [row.COLUMN_NAME for row in conn.execute(skin_columns_check).fetchall()]
+                    if table_exists(conn, "new_skinthreshold"):
+                        # 컬럼 확인 및 정렬 컬럼 결정
+                        skin_columns = get_table_columns(conn, "new_skinthreshold")
+                        skin_order_by = get_order_by_clause(skin_columns, "new_skinthreshold")
                         
-                        # 정렬 컬럼 결정 (no 컬럼 우선 사용)
-                        skin_order_by = ""
-                        if 'no' in skin_columns:
-                            skin_order_by = "ORDER BY no DESC"
-                        elif 'id' in skin_columns:
-                            skin_order_by = "ORDER BY id DESC"
-                        elif 'created_at' in skin_columns:
-                            skin_order_by = "ORDER BY created_at DESC"
-                        else:
-                            skin_order_by = ""  # 정렬 없이 LIMIT만 사용
+                        # 최신 임계값 가져오기 (user_no 필터링)
+                        threshold_user_filter, threshold_query_params = build_user_filter(user_no, allow_null=True)
+                        if threshold_user_filter:
+                            threshold_user_filter = "WHERE 1=1 " + threshold_user_filter
                         
-                        # 최신 임계값 가져오기
                         latest_threshold_query = text(f"""
                             SELECT min_skinthreshold, max_skinthreshold
                             FROM new_skinthreshold
+                            {threshold_user_filter}
                             {skin_order_by}
                             LIMIT 1
                         """)
-                        latest_threshold = conn.execute(latest_threshold_query).fetchone()
+                        latest_threshold = execute_query_with_params(conn, latest_threshold_query, threshold_query_params).fetchone()
                         
                         if latest_threshold and latest_threshold.min_skinthreshold is not None:
                             min_threshold = float(latest_threshold.min_skinthreshold)
@@ -3280,15 +3793,7 @@ async def save_temperature_feedback(data: TemperatureFeedbackRequest):
                 # new_skinthreshold 테이블에 갱신된 임계값 저장
                 try:
                     # new_skinthreshold 테이블 존재 여부 확인 및 생성
-                    new_table_check = text("""
-                        SELECT COUNT(*) as count
-                        FROM information_schema.tables 
-                        WHERE table_schema = 'main' 
-                        AND table_name = 'new_skinthreshold'
-                    """)
-                    new_table_exists = conn.execute(new_table_check).fetchone().count > 0
-                    
-                    if not new_table_exists:
+                    if not table_exists(conn, "new_skinthreshold"):
                         # 테이블이 없으면 생성
                         create_new_table = text("""
                             CREATE TABLE IF NOT EXISTS new_skinthreshold (
@@ -3296,23 +3801,28 @@ async def save_temperature_feedback(data: TemperatureFeedbackRequest):
                                 min_skinthreshold DECIMAL(4,1) NOT NULL,
                                 max_skinthreshold DECIMAL(4,1) NOT NULL,
                                 feedback VARCHAR(1),
-                                predicted_skin VARCHAR(1)
+                                predicted_skin VARCHAR(1),
+                                user_no INT DEFAULT NULL
                             )
                         """)
                         conn.execute(create_new_table)
                         conn.commit()
                         logger.info("✅ new_skinthreshold 테이블 생성 완료")
                     
-                    # 갱신된 임계값 저장
+                    # user_no 컬럼이 없으면 추가
+                    check_and_add_user_no_column(conn, "new_skinthreshold")
+                    
+                    # 갱신된 임계값 저장 (user_no 포함)
                     insert_new_threshold = text("""
-                        INSERT INTO new_skinthreshold (min_skinthreshold, max_skinthreshold, feedback, predicted_skin)
-                        VALUES (:min_threshold, :max_threshold, :feedback, :predicted_skin)
+                        INSERT INTO new_skinthreshold (min_skinthreshold, max_skinthreshold, feedback, predicted_skin, user_no)
+                        VALUES (:min_threshold, :max_threshold, :feedback, :predicted_skin, :user_no)
                     """)
                     conn.execute(insert_new_threshold, {
                         'min_threshold': new_min_threshold,
                         'max_threshold': new_max_threshold,
                         'feedback': feedback_code,
-                        'predicted_skin': predicted_skin_code
+                        'predicted_skin': predicted_skin_code,
+                        'user_no': user_no
                     })
                     conn.commit()
                     logger.info(f"✅ new_skinthreshold 테이블에 갱신된 임계값 저장 완료: {new_min_threshold}~{new_max_threshold}°C")
@@ -3350,13 +3860,13 @@ async def save_temperature_feedback(data: TemperatureFeedbackRequest):
 # ==================== 피드백 기반 조정 API ====================
 
 @app.get("/feedback/count")
-async def get_feedback_count():
+async def get_feedback_count(user_no: int = Depends(verify_token)):
     """
-    현재 피드백 기간의 피드백 횟수 조회 API
+    현재 피드백 기간의 피드백 횟수 조회 API (사용자별 필터링)
     """
     try:
-        count = feedback_based_adjustment.get_feedback_count(engine)
-        is_within_limit = feedback_based_adjustment.is_within_feedback_limit(engine)
+        count = feedback_based_adjustment.get_feedback_count(engine, user_no)
+        is_within_limit = feedback_based_adjustment.is_within_feedback_limit(engine, user_no)
         return {
             "success": True,
             "count": count,
@@ -3425,25 +3935,75 @@ class ThresholdUpdateRequest(BaseModel):
     hot_threshold: float
 
 @app.post("/threshold/update")
-async def update_thresholds_api(data: ThresholdUpdateRequest):
+async def update_thresholds_api(data: ThresholdUpdateRequest, user_no: int = Depends(verify_token)):
     """
-    피부온도 분류 기준(COLD_THRESHOLD, HOT_THRESHOLD) 전역 변수 업데이트
+    피부온도 분류 기준 업데이트 (사용자별 분리, 즉시 적용)
     """
     try:
-        global COLD_THRESHOLD, HOT_THRESHOLD
-        old_cold = COLD_THRESHOLD
-        old_hot = HOT_THRESHOLD
+        old_cold, old_hot = get_user_thresholds(user_no)
         
-        COLD_THRESHOLD = data.cold_threshold
-        HOT_THRESHOLD = data.hot_threshold
+        set_user_thresholds(user_no, data.cold_threshold, data.hot_threshold)
         
-        logger.info(f"🔄 피부온도 분류 기준 업데이트: COLD={old_cold}°C → {COLD_THRESHOLD}°C, HOT={old_hot}°C → {HOT_THRESHOLD}°C")
+        logger.info(f"🔄 피부온도 분류 기준 업데이트 (user_no={user_no}): COLD={old_cold}°C → {data.cold_threshold}°C, HOT={old_hot}°C → {data.hot_threshold}°C")
+        
+        # 즉시 적용: 수면 모드가 활성화되어 있으면 제어 로직 실행
+        try:
+            global sleep_mode_states
+            sleep_mode_state = sleep_mode_states.get(user_no, {
+                "active": False,
+                "start_time": None,
+                "end_time": None,
+                "duration_hours": None
+            })
+            sleep_mode_active = sleep_mode_state.get("active", False)
+            
+            # 종료 시간 확인
+            if sleep_mode_active and sleep_mode_state.get("end_time"):
+                end_time = datetime.fromisoformat(sleep_mode_state["end_time"])
+                if datetime.now() >= end_time:
+                    # 수면 모드 자동 종료
+                    sleep_mode_states[user_no] = {
+                        "active": False,
+                        "start_time": None,
+                        "end_time": None,
+                        "duration_hours": None
+                    }
+                    sleep_mode_active = False
+                    logger.info(f"😴 수면 모드 자동 종료 (user_no: {user_no}, 설정된 시간 경과)")
+            
+            if sleep_mode_active:
+                logger.info(f"🔄 임계값 업데이트 즉시 적용 - 제어 로직 실행 (user_no={user_no})")
+                
+                # 사용자별 임계값 가져오기 (방금 업데이트한 값)
+                cold_threshold, hot_threshold = get_user_thresholds(user_no)
+                
+                # 콜백 함수 래퍼 (user_no 포함)
+                def update_thresholds_wrapper(new_cold: float, new_hot: float):
+                    update_thresholds(new_cold, new_hot, user_no)
+                
+                # 제어 로직 즉시 실행
+                air_conditioner_auto_control.adjust_air_conditioner(
+                    engine=engine,
+                    air_conditioner_available=AIR_CONDITIONER_AVAILABLE,
+                    get_air_conditioner_state_func=get_air_conditioner_state,
+                    set_temperature_func=set_temperature,
+                    cold_threshold=cold_threshold,
+                    hot_threshold=hot_threshold,
+                    update_threshold_callback=update_thresholds_wrapper,
+                    min_interval_minutes=30.0,  # 30분 간격으로 조절
+                    user_no=user_no
+                )
+                logger.info(f"✅ 임계값 업데이트 즉시 적용 완료 (user_no={user_no})")
+            else:
+                logger.info(f"ℹ️ 수면 모드가 비활성화되어 있어 즉시 적용하지 않습니다. (user_no={user_no})")
+        except Exception as apply_error:
+            logger.warning(f"⚠️ 임계값 즉시 적용 중 오류 (무시하고 계속 진행): {apply_error}")
         
         return {
             "success": True,
             "message": "피부온도 분류 기준이 업데이트되었습니다.",
-            "cold_threshold": COLD_THRESHOLD,
-            "hot_threshold": HOT_THRESHOLD
+            "cold_threshold": data.cold_threshold,
+            "hot_threshold": data.hot_threshold
         }
     except Exception as e:
         logger.error(f"❌ 피부온도 분류 기준 업데이트 실패: {str(e)}")
@@ -3453,15 +4013,16 @@ async def update_thresholds_api(data: ThresholdUpdateRequest):
         }
 
 @app.get("/threshold")
-async def get_thresholds_api():
+async def get_thresholds_api(user_no: int = Depends(verify_token)):
     """
-    현재 피부온도 분류 기준(COLD_THRESHOLD, HOT_THRESHOLD) 조회
+    현재 피부온도 분류 기준 조회 (사용자별 분리)
     """
     try:
+        cold_threshold, hot_threshold = get_user_thresholds(user_no)
         return {
             "success": True,
-            "cold_threshold": COLD_THRESHOLD,
-            "hot_threshold": HOT_THRESHOLD
+            "cold_threshold": cold_threshold,
+            "hot_threshold": hot_threshold
         }
     except Exception as e:
         logger.error(f"❌ 피부온도 분류 기준 조회 실패: {str(e)}")
@@ -3956,59 +4517,127 @@ async def get_connectivity_errors(limit: int = 50):
 # 스케줄러 초기화
 scheduler = BackgroundScheduler()
 
-def update_thresholds(new_cold: float, new_hot: float):
-    """전역 변수 갱신 콜백 함수"""
-    global COLD_THRESHOLD, HOT_THRESHOLD
-    COLD_THRESHOLD = new_cold
-    HOT_THRESHOLD = new_hot
-    logger.info(f"🔄 전역 변수 갱신: COLD_THRESHOLD={COLD_THRESHOLD}°C, HOT_THRESHOLD={HOT_THRESHOLD}°C")
+def update_thresholds(new_cold: float, new_hot: float, user_no: Optional[int] = None):
+    """
+    사용자별 피부온도 분류 기준 갱신 콜백 함수
+    
+    Args:
+        new_cold: 새로운 추움 분류 기준
+        new_hot: 새로운 더움 분류 기준
+        user_no: 사용자 번호 (선택사항, None이면 갱신하지 않음)
+    """
+    if user_no is None:
+        logger.warning("⚠️ user_no가 없어 임계값을 갱신할 수 없습니다.")
+        return
+    
+    set_user_thresholds(user_no, new_cold, new_hot)
+    logger.info(f"🔄 사용자별 피부온도 분류 기준 갱신 (user_no={user_no}): COLD={new_cold}°C, HOT={new_hot}°C")
 
 def adjust_air_conditioner_wrapper():
-    """스케줄러에서 호출할 래퍼 함수"""
+    """스케줄러에서 호출할 래퍼 함수 (모든 활성 사용자에 대해 실행)"""
     from datetime import datetime
     current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
-    # 수면 모드 확인
-    global sleep_mode_state
-    if sleep_mode_state["active"]:
-        # 종료 시간 확인
-        if sleep_mode_state["end_time"]:
-            end_time = datetime.fromisoformat(sleep_mode_state["end_time"])
-            if datetime.now() >= end_time:
-                # 수면 모드 자동 종료
-                sleep_mode_state["active"] = False
-                logger.info("😴 수면 모드 자동 종료 (설정된 시간 경과)")
-                return
-        # 수면 모드가 활성화되어 있으면 실행
-        logger.info(f"😴 [{current_time}] 수면 모드 활성화 중 - 에어컨 자동 조절 실행")
-    else:
-        # 수면 모드가 비활성화되어 있으면 실행하지 않음
-        logger.debug(f"⏸️ [{current_time}] 수면 모드 비활성화 - 에어컨 자동 조절 건너뜀")
+    # 수면 모드 확인 (모든 사용자)
+    global sleep_mode_states
+    
+    # 활성 수면 모드가 있는 사용자 찾기
+    active_users = []
+    for user_no, state in sleep_mode_states.items():
+        if state.get("active", False):
+            # 종료 시간 확인
+            if state.get("end_time"):
+                end_time = datetime.fromisoformat(state["end_time"])
+                if datetime.now() >= end_time:
+                    # 수면 모드 자동 종료
+                    sleep_mode_states[user_no] = {
+                        "active": False,
+                        "start_time": None,
+                        "end_time": None,
+                        "duration_hours": None
+                    }
+                    logger.info(f"😴 수면 모드 자동 종료 (user_no: {user_no}, 설정된 시간 경과)")
+                    continue
+            active_users.append(user_no)
+    
+    if not active_users:
+        # 활성 수면 모드가 없으면 실행하지 않음
+        logger.debug(f"⏸️ [{current_time}] 활성 수면 모드 없음 - 에어컨 자동 조절 건너뜀")
         return
     
-    try:
-        print("\n" + "=" * 80)
-        print(f"⏰ [{current_time}] 스케줄러 실행: 에어컨 자동 조절 시작 (30분 주기, 백업용)")
-        print("=" * 80)
-        logger.info(f"⏰ [{current_time}] 스케줄러 실행: 에어컨 자동 조절 시작 (30분 주기, 백업용)")
-        air_conditioner_auto_control.adjust_air_conditioner(
-            engine=engine,
-            air_conditioner_available=AIR_CONDITIONER_AVAILABLE,
-            get_air_conditioner_state_func=get_air_conditioner_state,
-            set_temperature_func=set_temperature,
-            cold_threshold=COLD_THRESHOLD,
-            hot_threshold=HOT_THRESHOLD,
-            update_threshold_callback=update_thresholds
-        )
-        print(f"✅ [{current_time}] 스케줄러 실행 완료: 에어컨 자동 조절 종료")
-        print("=" * 80 + "\n")
-        logger.info(f"✅ [{current_time}] 스케줄러 실행 완료: 에어컨 자동 조절 종료")
-    except Exception as e:
-        print(f"\n❌ [{current_time}] 스케줄러 실행 중 오류: {e}")
-        print("=" * 80 + "\n")
-        logger.error(f"❌ [{current_time}] 스케줄러 실행 중 오류: {e}")
-        import traceback
-        logger.error(f"❌ 스케줄러 오류 상세: {traceback.format_exc()}")
+    logger.info(f"😴 [{current_time}] 활성 수면 모드 사용자: {active_users} - 에어컨 자동 조절 실행")
+    
+    # 각 활성 사용자에 대해 에어컨 조절 실행
+    for user_no in active_users:
+        try:
+            print("\n" + "=" * 80)
+            print(f"⏰ [{current_time}] 스케줄러 실행: 에어컨 자동 조절 시작 (user_no: {user_no}, 30분 주기, 백업용)")
+            print("=" * 80)
+            logger.info(f"⏰ [{current_time}] 스케줄러 실행: 에어컨 자동 조절 시작 (user_no: {user_no}, 30분 주기, 백업용)")
+            
+            # 사용자별 임계값 가져오기
+            cold_threshold, hot_threshold = get_user_thresholds(user_no)
+            
+            # 콜백 함수 래퍼 (user_no 포함)
+            def update_thresholds_wrapper(new_cold: float, new_hot: float):
+                update_thresholds(new_cold, new_hot, user_no)
+            
+            # user_no를 사용하여 사용자별 PAT 토큰과 device_id를 가져오는 래퍼 함수 생성
+            def get_air_conditioner_state_with_user():
+                try:
+                    # user_no로 user_id 조회 (login 테이블 사용)
+                    with engine.connect() as conn:
+                        user_query = text("SELECT id FROM login WHERE no = :user_no")
+                        user_result = conn.execute(user_query, {'user_no': user_no})
+                        user_row = user_result.fetchone()
+                        if not user_row:
+                            logger.warning(f"⚠️ user_no={user_no}에 해당하는 사용자를 찾을 수 없습니다.")
+                            return None
+                        user_id = user_row.id
+                    
+                    # user_id로 PAT 토큰과 device_id 조회
+                    with engine.connect() as conn:
+                        device_query = text("""
+                            SELECT pat_token, device_id
+                            FROM iot_devices
+                            WHERE user_id = :user_id
+                            ORDER BY updated_at DESC
+                            LIMIT 1
+                        """)
+                        device_result = conn.execute(device_query, {'user_id': user_id})
+                        device_row = device_result.fetchone()
+                        if not device_row:
+                            logger.warning(f"⚠️ user_id={user_id}에 등록된 디바이스가 없습니다.")
+                            return None
+                        pat_token = device_row.pat_token
+                        device_id = device_row.device_id
+                    
+                    # PAT 토큰으로 상태 조회
+                    return get_device_state_with_pat_token(pat_token, device_id)
+                except Exception as e:
+                    logger.error(f"❌ 사용자별 에어컨 상태 조회 실패 (user_no={user_no}): {e}")
+                    return None
+            
+            air_conditioner_auto_control.adjust_air_conditioner(
+                engine=engine,
+                air_conditioner_available=AIR_CONDITIONER_AVAILABLE,
+                get_air_conditioner_state_func=get_air_conditioner_state_with_user,
+                set_temperature_func=set_temperature,
+                cold_threshold=cold_threshold,
+                hot_threshold=hot_threshold,
+                update_threshold_callback=update_thresholds_wrapper,
+                min_interval_minutes=30.0,  # 30분 간격으로 조절
+                user_no=user_no
+            )
+            print(f"✅ [{current_time}] 스케줄러 실행 완료: 에어컨 자동 조절 종료 (user_no: {user_no})")
+            print("=" * 80 + "\n")
+            logger.info(f"✅ [{current_time}] 스케줄러 실행 완료: 에어컨 자동 조절 종료 (user_no: {user_no})")
+        except Exception as e:
+            print(f"\n❌ [{current_time}] 스케줄러 실행 중 오류 (user_no: {user_no}): {e}")
+            print("=" * 80 + "\n")
+            logger.error(f"❌ [{current_time}] 스케줄러 실행 중 오류 (user_no: {user_no}): {e}")
+            import traceback
+            logger.error(f"❌ 스케줄러 오류 상세 (user_no: {user_no}): {traceback.format_exc()}")
 
 scheduler.add_job(
     adjust_air_conditioner_wrapper,
