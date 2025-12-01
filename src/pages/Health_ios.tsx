@@ -28,7 +28,7 @@ import { personOutline, closeOutline } from 'ionicons/icons';
 import SignIn from '../components/SignIn';
 import SignUp from '../components/SignUp';
 import './Health_ios.css';
-import { isAuthenticated, logout } from '../services/AuthService';
+import { isAuthenticated, logout, getAuthHeaders } from '../services/AuthService';
 import { getServerUrl, autoDetectServerUrl } from '../services/ServerConfig';
 import ChartDataService, {
   NightChartData,
@@ -818,11 +818,16 @@ const Health_ios: React.FC = () => {
 
       try {
         console.log('📡 서버 연결 시도:', serverURL);
+        
+        // Authorization 헤더 가져오기
+        const headers = {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders(), // Authorization 헤더 추가
+        };
+        
         const response = await fetch(serverURL, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: headers,
           body: JSON.stringify(data),
           signal: controller.signal,
         });
@@ -872,11 +877,14 @@ const Health_ios: React.FC = () => {
             const retryController = new AbortController();
             const retryTimeoutId = setTimeout(() => retryController.abort(), 10000);
             try {
+              const retryHeaders = {
+                'Content-Type': 'application/json',
+                ...getAuthHeaders(), // Authorization 헤더 추가
+              };
+              
               const retryResponse = await fetch(newServerURL, {
                 method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
+                headers: retryHeaders,
                 body: JSON.stringify(data),
                 signal: retryController.signal,
               });
@@ -918,11 +926,14 @@ const Health_ios: React.FC = () => {
             const retryController = new AbortController();
             const retryTimeoutId = setTimeout(() => retryController.abort(), 10000);
             try {
+              const retryHeaders = {
+                'Content-Type': 'application/json',
+                ...getAuthHeaders(), // Authorization 헤더 추가
+              };
+              
               const retryResponse = await fetch(newServerURL, {
                 method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
+                headers: retryHeaders,
                 body: JSON.stringify(data),
                 signal: retryController.signal,
               });

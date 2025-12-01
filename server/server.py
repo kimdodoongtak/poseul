@@ -1630,6 +1630,7 @@ async def receive_health_data(data: HealthData, user_no: Optional[int] = Depends
                                 'user_no': user_no
                             }
                             conn.execute(insert_threshold, insert_params)
+                            conn.commit()
                             logger.info(f"✅ room_threshold 테이블에 임계값 저장 (처음 저장): {comfort_min}~{comfort_max}°C, user_no={user_no}")
                         except Exception as e:
                             logger.warning(f"room_threshold 저장 실패: {e}")
@@ -3361,8 +3362,8 @@ async def set_temperature_range(data: TemperatureRangeRequest, user_no: int = De
             gender=data.gender,
             air_conditioner_available=AIR_CONDITIONER_AVAILABLE,
             set_temperature_func=set_temperature,
-            force_update=data.force_update,
-            user_no=user_no
+            user_no=user_no,
+            force_update=data.force_update
         )
         
         if not success:
@@ -3425,7 +3426,7 @@ async def get_temperature_range(user_no: int = Depends(verify_token)):
             }
         
         # 3. 캐시가 없으면 DB에서 가져오기 (room_threshold = 자동 조절 범위)
-        temperature_range = temperature_control_logic.get_temperature_range_from_db(engine)
+        temperature_range = temperature_control_logic.get_temperature_range_from_db(engine, user_no=user_no)
         
         if temperature_range is not None:
             min_temp, max_temp = temperature_range
@@ -3442,17 +3443,18 @@ async def get_temperature_range(user_no: int = Depends(verify_token)):
         logger.info("📋 room_threshold에 값이 없음. 사용자 정보로 자동 조절 범위 계산 시도...")
         try:
             with engine.connect() as conn:
-                # predicted_results 테이블에서 최신 사용자 정보 가져오기
+                # predicted_results 테이블에서 최신 사용자 정보 가져오기 (user_no 필터링)
                 query = text("""
                     SELECT age, bmi, gender 
                     FROM predicted_results 
                     WHERE age IS NOT NULL 
                       AND bmi IS NOT NULL 
                       AND gender IS NOT NULL
-                    ORDER BY timestamp DESC
+                      AND user_no = :user_no
+                    ORDER BY created_at DESC
                     LIMIT 1
                 """)
-                result = conn.execute(query).fetchone()
+                result = conn.execute(query, {'user_no': user_no}).fetchone()
                 
                 if result:
                     age = int(result.age) if result.age else 30
