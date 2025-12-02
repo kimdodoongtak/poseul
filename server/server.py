@@ -1562,7 +1562,7 @@ async def receive_health_data(data: HealthData, user_no: Optional[int] = Depends
                     order_by = "ORDER BY 1 DESC"
             
             # predicted_results에서 기존 사용자 정보 확인 (나이, BMI, 성별만, user_no 필터링)
-            user_filter, query_params = build_user_filter(user_no, allow_null=True)
+            user_filter, query_params = build_user_filter(user_no, allow_null=False)
             
             check_query = text(f"""
                 SELECT age, bmi, gender
@@ -1581,7 +1581,7 @@ async def receive_health_data(data: HealthData, user_no: Optional[int] = Depends
             try:
                 if table_exists(conn, "room_threshold"):
                     # room_threshold에서 기존 임계값 확인 (user_no 필터링)
-                    user_filter, query_params = build_user_filter(user_no, allow_null=True)
+                    user_filter, query_params = build_user_filter(user_no, allow_null=False)
                     if user_filter:
                         user_filter = "WHERE 1=1 " + user_filter.replace("AND", "")
                     
@@ -1602,40 +1602,44 @@ async def receive_health_data(data: HealthData, user_no: Optional[int] = Depends
                 comfort_min, comfort_max = calculate_comfort_temperature(gender, int(age), bmi)
                 logger.info(f"🌡️ 쾌적 온도 범위 계산 (새로 계산): {comfort_min}~{comfort_max}°C (gender: {gender}, age: {int(age)}, bmi: {bmi})")
             
-            # room_threshold 테이블에 임계값 저장 (처음 한 번만)
+            # room_threshold 테이블에 임계값 저장 (처음 한 번만, 로그인한 사용자만)
             try:
                 if table_exists(conn, "room_threshold"):
                     # user_no 컬럼이 없으면 추가
                     check_and_add_user_no_column(conn, "room_threshold")
                     
-                    # 테이블이 있으면 레코드가 있는지 확인 (user_no 필터링)
-                    user_filter, query_params = build_user_filter(user_no, allow_null=True)
-                    if user_filter:
-                        user_filter = "WHERE 1=1 " + user_filter.replace("AND", "")
-                    
-                    check_threshold = text(f"SELECT COUNT(*) as count FROM room_threshold {user_filter}")
-                    result = execute_query_with_params(conn, check_threshold, query_params)
-                    threshold_count = result.fetchone().count
-                    
-                    # 레코드가 없을 때만 삽입 (처음 한 번만)
-                    if threshold_count == 0:
-                        try:
-                            insert_threshold = text("""
-                                INSERT INTO room_threshold (min_temp, max_temp, user_no)
-                                VALUES (:min_temp, :max_temp, :user_no)
-                            """)
-                            insert_params = {
-                                'min_temp': comfort_min,
-                                'max_temp': comfort_max,
-                                'user_no': user_no
-                            }
-                            conn.execute(insert_threshold, insert_params)
-                            conn.commit()
-                            logger.info(f"✅ room_threshold 테이블에 임계값 저장 (처음 저장): {comfort_min}~{comfort_max}°C, user_no={user_no}")
-                        except Exception as e:
-                            logger.warning(f"room_threshold 저장 실패: {e}")
+                    # user_no가 None이면 저장하지 않음 (로그인하지 않은 경우)
+                    if user_no is not None:
+                        # 테이블이 있으면 레코드가 있는지 확인 (user_no 필터링)
+                        user_filter, query_params = build_user_filter(user_no, allow_null=False)
+                        if user_filter:
+                            user_filter = "WHERE 1=1 " + user_filter.replace("AND", "")
+                        
+                        check_threshold = text(f"SELECT COUNT(*) as count FROM room_threshold {user_filter}")
+                        result = execute_query_with_params(conn, check_threshold, query_params)
+                        threshold_count = result.fetchone().count
+                        
+                        # 레코드가 없을 때만 삽입 (처음 한 번만)
+                        if threshold_count == 0:
+                            try:
+                                insert_threshold = text("""
+                                    INSERT INTO room_threshold (min_temp, max_temp, user_no)
+                                    VALUES (:min_temp, :max_temp, :user_no)
+                                """)
+                                insert_params = {
+                                    'min_temp': comfort_min,
+                                    'max_temp': comfort_max,
+                                    'user_no': user_no
+                                }
+                                conn.execute(insert_threshold, insert_params)
+                                conn.commit()
+                                logger.info(f"✅ room_threshold 테이블에 임계값 저장 (처음 저장): {comfort_min}~{comfort_max}°C, user_no={user_no}")
+                            except Exception as e:
+                                logger.warning(f"room_threshold 저장 실패: {e}")
+                        else:
+                            logger.info(f"📋 room_threshold 테이블에 이미 임계값이 저장되어 있습니다. (건너뜀, user_no={user_no})")
                     else:
-                        logger.info(f"📋 room_threshold 테이블에 이미 임계값이 저장되어 있습니다. (건너뜀, user_no={user_no})")
+                        logger.warning("⚠️ user_no가 None이어서 room_threshold를 저장하지 않습니다. (로그인하지 않은 상태)")
                 else:
                     logger.warning("⚠️ room_threshold 테이블이 존재하지 않습니다.")
             except Exception as e:
@@ -2175,7 +2179,7 @@ async def get_latest_health_data(user_no: int = Depends(verify_token)):
                         SELECT 
                             {select_columns}
                         FROM predicted_results
-                        WHERE (user_no = :user_no OR user_no IS NULL)
+                        WHERE user_no = :user_no
                         {order_by}
                         LIMIT 1
                     """)
@@ -2191,7 +2195,7 @@ async def get_latest_health_data(user_no: int = Depends(verify_token)):
                             age,
                             gender
                         FROM predicted_results
-                        WHERE (user_no = :user_no OR user_no IS NULL)
+                        WHERE user_no = :user_no
                         ORDER BY 1 DESC
                         LIMIT 1
                     """)
@@ -3737,7 +3741,7 @@ async def save_temperature_feedback(data: TemperatureFeedbackRequest, user_no: i
                         skin_order_by = get_order_by_clause(skin_columns, "new_skinthreshold")
                         
                         # 최신 임계값 가져오기 (user_no 필터링)
-                        threshold_user_filter, threshold_query_params = build_user_filter(user_no, allow_null=True)
+                        threshold_user_filter, threshold_query_params = build_user_filter(user_no, allow_null=False)
                         if threshold_user_filter:
                             threshold_user_filter = "WHERE 1=1 " + threshold_user_filter
                         

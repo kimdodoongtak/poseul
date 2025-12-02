@@ -205,21 +205,19 @@ def adjust_air_conditioner(
                     else:
                         logger.warning("⚠️ new_skinthreshold 테이블에 정렬 컬럼을 찾을 수 없습니다. 최신 데이터가 아닐 수 있습니다.")
                     
-                    # user_no 필터링 추가 (해당 사용자 우선, 없으면 NULL 데이터)
+                    # user_no 필터링 추가 (해당 사용자만 조회)
                     user_filter = ""
                     query_params = {}
                     if user_no is not None:
-                        # 정렬 순서: 해당 사용자 데이터 우선, 그 다음 NULL 데이터
+                        # 해당 사용자 데이터만 조회
                         if skin_order_by:
-                            # ORDER BY 절에서 user_no 우선순위 추가
-                            order_column = skin_order_by.replace("ORDER BY ", "").split()[0]  # no, id, created_at 등
-                            skin_order_by = f"ORDER BY CASE WHEN user_no = :user_no THEN 0 ELSE 1 END, {order_column} DESC"
-                            user_filter = "AND (user_no = :user_no OR user_no IS NULL)"
-                        else:
-                            user_filter = "AND (user_no = :user_no OR user_no IS NULL)"
+                            # ORDER BY 절 유지
+                            pass
+                        user_filter = "AND user_no = :user_no"
                         query_params['user_no'] = user_no
                     else:
-                        user_filter = "AND user_no IS NULL"
+                        # user_no가 없으면 조회하지 않음
+                        user_filter = "AND 1=0"  # 항상 false 조건으로 빈 결과 반환
                     
                     skin_threshold_query = text(f"""
                         SELECT min_skinthreshold, max_skinthreshold 
@@ -391,8 +389,11 @@ def adjust_air_conditioner(
                     user_filter = ""
                     query_params = {}
                     if user_no is not None:
-                        user_filter = "AND (user_no = :user_no OR user_no IS NULL)"
+                        user_filter = "AND user_no = :user_no"
                         query_params['user_no'] = user_no
+                    else:
+                        # user_no가 없으면 조회하지 않음
+                        user_filter = "AND 1=0"  # 항상 false 조건으로 빈 결과 반환
                     
                     temp_query = text(f"""
                         SELECT predicted_skin_temp 
@@ -569,21 +570,19 @@ def adjust_air_conditioner(
                         else:
                             logger.warning("⚠️ room_threshold 테이블에 정렬 컬럼을 찾을 수 없습니다. 최신 데이터가 아닐 수 있습니다.")
                         
-                        # user_no 필터링 추가 (해당 사용자 우선, 없으면 NULL 데이터)
+                        # user_no 필터링 추가 (해당 사용자만 조회)
                         room_user_filter = ""
                         room_query_params = {}
                         if user_no is not None:
-                            # 정렬 순서: 해당 사용자 데이터 우선, 그 다음 NULL 데이터
+                            # 해당 사용자 데이터만 조회
                             if room_order_by:
-                                # ORDER BY 절에서 user_no 우선순위 추가
-                                order_column = room_order_by.replace("ORDER BY ", "").split()[0]  # no, id, created_at 등
-                                room_order_by = f"ORDER BY CASE WHEN user_no = :user_no THEN 0 ELSE 1 END, {order_column} DESC"
-                                room_user_filter = "AND (user_no = :user_no OR user_no IS NULL)"
-                            else:
-                                room_user_filter = "AND (user_no = :user_no OR user_no IS NULL)"
+                                # ORDER BY 절 유지
+                                pass
+                            room_user_filter = "AND user_no = :user_no"
                             room_query_params['user_no'] = user_no
                         else:
-                            room_user_filter = "AND user_no IS NULL"
+                            # user_no가 없으면 조회하지 않음
+                            room_user_filter = "AND 1=0"  # 항상 false 조건으로 빈 결과 반환
                         
                         threshold_query = text(f"""
                             SELECT min_temp, max_temp 
