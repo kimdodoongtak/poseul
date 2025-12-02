@@ -135,7 +135,7 @@ const Health_ios: React.FC = () => {
         const healthResult = await healthResponse.json();
         if (healthResult.success && healthResult.data) {
           // 서버에서 가져온 데이터로 업데이트
-          if (healthResult.data.age) {
+          if (healthResult.data.age !== undefined && healthResult.data.age !== null) {
             const ageValue = String(healthResult.data.age);
             setAge(ageValue);
             localStorage.setItem(`userAge_${userNo}`, ageValue);
@@ -147,7 +147,7 @@ const Health_ios: React.FC = () => {
             }
           }
           
-          if (healthResult.data.bmi) {
+          if (healthResult.data.bmi !== undefined && healthResult.data.bmi !== null) {
             const bmiValue = String(healthResult.data.bmi);
             setBmi(bmiValue);
             localStorage.setItem(`userBmi_${userNo}`, bmiValue);
@@ -159,8 +159,16 @@ const Health_ios: React.FC = () => {
           }
           
           if (healthResult.data.gender !== undefined && healthResult.data.gender !== null) {
-            // gender가 숫자면 문자열로 변환 (0 -> '0', 1 -> '1')
-            const genderValue = String(healthResult.data.gender);
+            // gender 정규화: 'M'/'F' 또는 'MALE'/'FEMALE' -> '1'/'0'
+            let genderValue = healthResult.data.gender;
+            if (typeof genderValue === 'string') {
+              genderValue = genderValue.toUpperCase();
+              genderValue = (genderValue === 'M' || genderValue === 'MALE' || genderValue === '1') ? '1' : '0';
+            } else if (typeof genderValue === 'number') {
+              genderValue = genderValue === 1 ? '1' : '0';
+            } else {
+              genderValue = '0';
+            }
             setGender(genderValue);
             localStorage.setItem(`userGender_${userNo}`, genderValue);
           } else {
@@ -266,7 +274,7 @@ const Health_ios: React.FC = () => {
       }
     };
     
-    // 페이지 포커스 시 상태 확인
+    // 페이지 포커스 시 상태 확인 및 사용자 정보 새로고침
     const handleFocus = () => {
       // 로그인 성공 직후에는 상태를 변경하지 않음
       if (loginSuccessRef.current) {
@@ -277,8 +285,9 @@ const Health_ios: React.FC = () => {
       setIsLoggedIn(authenticated);
       console.log(`🔍 Health 페이지 - 포커스 이벤트, 로그인 상태: ${authenticated}`);
       
-      // 로그인 시 사용자 정보 로드
+      // 로그인되어 있으면 사용자 정보 다시 로드 (다른 페이지에서 변경했을 수 있음)
       if (authenticated) {
+        console.log('🔄 Health 페이지 - 포커스 시 사용자 정보 새로고침');
         loadUserInfo();
       }
     };

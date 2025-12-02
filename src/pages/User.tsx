@@ -34,7 +34,7 @@ import { autoDetectServerUrl, getServerUrl } from '../services/ServerConfig';
 import IotService from '../services/IotService';
 import ModelService from '../services/ModelService';
 import HealthDataService from '../services/HealthDataService';
-import { isAuthenticated, logout, getCurrentUser } from '../services/AuthService';
+import { isAuthenticated, logout, getCurrentUser, getAuthHeaders, getUserNo } from '../services/AuthService';
 
 const User: React.FC = () => {
   const history = useHistory();
@@ -106,6 +106,16 @@ const User: React.FC = () => {
     // 초기 로그인 상태 확인
     setIsLoggedIn(isAuthenticated());
     
+    // 앱 시작 시 로그인 모달 표시 이벤트 리스너
+    const handleShowLoginModal = () => {
+      console.log('🔍 User 페이지 - 로그인 모달 표시 이벤트 수신');
+      if (!isAuthenticated() || getUserNo() === null) {
+        setShowSignIn(true);
+      }
+    };
+    
+    window.addEventListener('showLoginModal', handleShowLoginModal);
+    
     // 로그인 상태 변경 이벤트 리스너 (다른 페이지에서 로그인/로그아웃 시 동기화)
     const handleAuthStateChanged = (event: CustomEvent) => {
       // 로그인 성공 직후에는 상태를 변경하지 않음
@@ -150,24 +160,137 @@ const User: React.FC = () => {
     
     // cleanup 함수
     const cleanup = () => {
+      window.removeEventListener('showLoginModal', handleShowLoginModal);
       window.removeEventListener('authStateChanged', handleAuthStateChanged as EventListener);
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('focus', handleFocus);
     };
     
-    // 저장된 나이, BMI, 성별, 피드백 시간 불러오기
-    try {
-      const savedAge = localStorage.getItem('userAge');
-      const savedBmi = localStorage.getItem('userBmi');
-      const savedGender = localStorage.getItem('userGender');
-      const savedFeedbackTime = localStorage.getItem('feedbackTime');
-      if (savedAge) setAge(savedAge);
-      if (savedBmi) setBmi(savedBmi);
-      if (savedGender) setGender(savedGender);
-      if (savedFeedbackTime) setFeedbackTime(savedFeedbackTime);
-    } catch (err) {
-      console.log('저장된 사용자 정보 불러오기 실패:', err);
-    }
+    // 서버에서 최신 사용자 정보 로드 (로그인된 경우)
+    const loadUserInfoFromServer = async () => {
+      if (!isAuthenticated()) {
+        // 로그인 안 되어 있으면 localStorage에서만 가져오기
+        try {
+          const savedAge = localStorage.getItem('userAge');
+          const savedBmi = localStorage.getItem('userBmi');
+          const savedGender = localStorage.getItem('userGender');
+          const savedFeedbackTime = localStorage.getItem('feedbackTime');
+          if (savedAge) setAge(savedAge);
+          if (savedBmi) setBmi(savedBmi);
+          if (savedGender) setGender(savedGender);
+          if (savedFeedbackTime) setFeedbackTime(savedFeedbackTime);
+        } catch (err) {
+          console.log('저장된 사용자 정보 불러오기 실패:', err);
+        }
+        return;
+      }
+      
+      const currentUserNo = getUserNo();
+      if (!currentUserNo) {
+        console.warn('⚠️ User 페이지 - user_no가 null, 서버 정보 로드 건너뜀');
+        // user_no가 null이면 localStorage에서만 가져오기
+        try {
+          const savedAge = localStorage.getItem('userAge');
+          const savedBmi = localStorage.getItem('userBmi');
+          const savedGender = localStorage.getItem('userGender');
+          if (savedAge) setAge(savedAge);
+          if (savedBmi) setBmi(savedBmi);
+          if (savedGender) setGender(savedGender);
+        } catch (err) {
+          console.log('localStorage에서 사용자 정보 불러오기 실패:', err);
+        }
+        return;
+      }
+      
+      try {
+        const { getAuthHeaders } = await import('../services/AuthService');
+        const baseUrl = getServerUrl();
+        
+        // 서버에서 최신 건강 정보 가져오기
+        const healthResponse = await fetch(`${baseUrl}/healthdata/latest`, {
+          headers: getAuthHeaders()
+        });
+        
+        if (healthResponse.ok) {
+          const healthResult = await healthResponse.json();
+          if (healthResult.success && healthResult.data) {
+            // 서버에서 가져온 데이터로 업데이트
+            if (healthResult.data.age !== undefined && healthResult.data.age !== null) {
+              const ageValue = String(healthResult.data.age);
+              setAge(ageValue);
+              localStorage.setItem(`userAge_${currentUserNo}`, ageValue);
+              localStorage.setItem('userAge', ageValue); // 하위 호환성
+            } else {
+              const savedAge = localStorage.getItem(`userAge_${currentUserNo}`) || localStorage.getItem('userAge');
+              if (savedAge) setAge(savedAge);
+            }
+            
+            if (healthResult.data.bmi !== undefined && healthResult.data.bmi !== null) {
+              const bmiValue = String(healthResult.data.bmi);
+              setBmi(bmiValue);
+              localStorage.setItem(`userBmi_${currentUserNo}`, bmiValue);
+              localStorage.setItem('userBmi', bmiValue); // 하위 호환성
+            } else {
+              const savedBmi = localStorage.getItem(`userBmi_${currentUserNo}`) || localStorage.getItem('userBmi');
+              if (savedBmi) setBmi(savedBmi);
+            }
+            
+            if (healthResult.data.gender !== undefined && healthResult.data.gender !== null) {
+              // gender 정규화: 'M'/'F' 또는 'MALE'/'FEMALE' -> '1'/'0'
+              let genderValue = healthResult.data.gender;
+              if (typeof genderValue === 'string') {
+                genderValue = genderValue.toUpperCase();
+                genderValue = (genderValue === 'M' || genderValue === 'MALE' || genderValue === '1') ? '1' : '0';
+              } else if (typeof genderValue === 'number') {
+                genderValue = genderValue === 1 ? '1' : '0';
+              } else {
+                genderValue = '0';
+              }
+              setGender(genderValue);
+              localStorage.setItem(`userGender_${currentUserNo}`, genderValue);
+              localStorage.setItem('userGender', genderValue); // 하위 호환성
+            } else {
+              const savedGender = localStorage.getItem(`userGender_${currentUserNo}`) || localStorage.getItem('userGender');
+              if (savedGender) setGender(savedGender);
+            }
+          }
+        } else {
+          // 서버에서 가져오기 실패 시 localStorage에서 가져오기
+          const savedAge = localStorage.getItem(`userAge_${currentUserNo}`) || localStorage.getItem('userAge');
+          const savedBmi = localStorage.getItem(`userBmi_${currentUserNo}`) || localStorage.getItem('userBmi');
+          const savedGender = localStorage.getItem(`userGender_${currentUserNo}`) || localStorage.getItem('userGender');
+          
+          if (savedAge) setAge(savedAge);
+          if (savedBmi) setBmi(savedBmi);
+          if (savedGender) setGender(savedGender);
+        }
+      } catch (error) {
+        console.error('사용자 정보 로드 실패:', error);
+        // 에러 발생 시에도 localStorage에서 가져오기 시도
+        try {
+          const savedAge = localStorage.getItem(`userAge_${currentUserNo}`) || localStorage.getItem('userAge');
+          const savedBmi = localStorage.getItem(`userBmi_${currentUserNo}`) || localStorage.getItem('userBmi');
+          const savedGender = localStorage.getItem(`userGender_${currentUserNo}`) || localStorage.getItem('userGender');
+          
+          if (savedAge) setAge(savedAge);
+          if (savedBmi) setBmi(savedBmi);
+          if (savedGender) setGender(savedGender);
+        } catch (e) {
+          console.error('localStorage에서 사용자 정보 로드 실패:', e);
+        }
+      }
+      
+      // 피드백 시간은 localStorage에서만 가져오기
+      try {
+        const savedFeedbackTime = localStorage.getItem('feedbackTime');
+        if (savedFeedbackTime) setFeedbackTime(savedFeedbackTime);
+      } catch (err) {
+        console.log('피드백 시간 불러오기 실패:', err);
+      }
+    };
+    
+    // 사용자 정보 로드
+    loadUserInfoFromServer();
     
     // HealthData 플러그인 로드 (iOS에서 UserDefaults 저장용)
     const loadHealthData = async () => {
@@ -221,7 +344,14 @@ const User: React.FC = () => {
   const handleAgeChange = async (value: string) => {
     setAge(value);
     try {
-      localStorage.setItem('userAge', value || '');
+      const userNo = getUserNo();
+      
+      // userNo가 있으면 userNo 포함 키로 저장, 없으면 기본 키로 저장
+      if (userNo) {
+        localStorage.setItem(`userAge_${userNo}`, value || '');
+      }
+      localStorage.setItem('userAge', value || ''); // 하위 호환성
+      
       // iOS에서 UserDefaults에 저장
       if (platform === 'ios' && healthDataPlugin) {
         try {
@@ -234,6 +364,33 @@ const User: React.FC = () => {
           console.log('나이 UserDefaults 저장 실패:', err);
         }
       }
+      
+      // 서버에 사용자 정보 업데이트 (user_no가 null이면 API 호출 안 함)
+      if (isAuthenticated() && userNo !== null && value.trim()) {
+        try {
+          const apiBaseUrl = getServerUrl();
+          const response = await fetch(`${apiBaseUrl}/user/profile`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({
+              age: parseInt(value.trim(), 10),
+              bmi: bmi ? parseFloat(bmi) : undefined,
+              gender: gender === '1' ? 'M' : 'F'
+            })
+          });
+          
+          if (response.ok) {
+            const result = await response.json();
+            console.log('✅ 사용자 정보 업데이트 완료:', result);
+          } else {
+            console.error('❌ 사용자 정보 업데이트 실패:', response.status);
+          }
+        } catch (err) {
+          console.error('❌ 사용자 정보 업데이트 중 오류:', err);
+        }
+      } else if (isAuthenticated() && userNo === null) {
+        console.warn('⚠️ handleAgeChange - user_no가 null, 서버 업데이트 건너뜀');
+      }
     } catch (err) {
       console.log('나이 저장 실패:', err);
     }
@@ -242,7 +399,13 @@ const User: React.FC = () => {
   const handleBmiChange = async (value: string) => {
     setBmi(value);
     try {
-      localStorage.setItem('userBmi', value || '');
+      const userNo = getUserNo();
+      
+      if (userNo) {
+        localStorage.setItem(`userBmi_${userNo}`, value || '');
+      }
+      localStorage.setItem('userBmi', value || ''); // 하위 호환성
+      
       // iOS에서 UserDefaults에 저장
       if (platform === 'ios' && healthDataPlugin) {
         try {
@@ -255,6 +418,33 @@ const User: React.FC = () => {
           console.log('BMI UserDefaults 저장 실패:', err);
         }
       }
+      
+      // 서버에 사용자 정보 업데이트 (user_no가 null이면 API 호출 안 함)
+      if (isAuthenticated() && userNo !== null && value.trim()) {
+        try {
+          const apiBaseUrl = getServerUrl();
+          const response = await fetch(`${apiBaseUrl}/user/profile`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({
+              age: age ? parseInt(age.trim(), 10) : undefined,
+              bmi: parseFloat(value.trim()),
+              gender: gender === '1' ? 'M' : 'F'
+            })
+          });
+          
+          if (response.ok) {
+            const result = await response.json();
+            console.log('✅ 사용자 정보 업데이트 완료:', result);
+          } else {
+            console.error('❌ 사용자 정보 업데이트 실패:', response.status);
+          }
+        } catch (err) {
+          console.error('❌ 사용자 정보 업데이트 중 오류:', err);
+        }
+      } else if (isAuthenticated() && userNo === null) {
+        console.warn('⚠️ handleBmiChange - user_no가 null, 서버 업데이트 건너뜀');
+      }
     } catch (err) {
       console.log('BMI 저장 실패:', err);
     }
@@ -263,7 +453,13 @@ const User: React.FC = () => {
   const handleGenderChange = async (value: string) => {
     setGender(value);
     try {
-      localStorage.setItem('userGender', value || '0');
+      const userNo = getUserNo();
+      
+      if (userNo) {
+        localStorage.setItem(`userGender_${userNo}`, value || '0');
+      }
+      localStorage.setItem('userGender', value || '0'); // 하위 호환성
+      
       // iOS에서 UserDefaults에 저장
       if (platform === 'ios' && healthDataPlugin) {
         try {
@@ -275,6 +471,36 @@ const User: React.FC = () => {
         } catch (err) {
           console.log('성별 UserDefaults 저장 실패:', err);
         }
+      }
+      
+      // 서버에 사용자 정보 업데이트 (성별 변경 시 room_threshold 재계산됨, user_no가 null이면 API 호출 안 함)
+      if (isAuthenticated() && userNo !== null && value.trim()) {
+        try {
+          const apiBaseUrl = getServerUrl();
+          const response = await fetch(`${apiBaseUrl}/user/profile`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({
+              age: age ? parseInt(age.trim(), 10) : undefined,
+              bmi: bmi ? parseFloat(bmi) : undefined,
+              gender: value === '1' ? 'M' : 'F'
+            })
+          });
+          
+          if (response.ok) {
+            const result = await response.json();
+            console.log('✅ 사용자 정보 업데이트 완료 (성별 변경으로 room_threshold 재계산됨):', result);
+            if (result.gender_changed) {
+              alert('성별이 변경되어 쾌적 온도 범위가 재계산되었습니다.');
+            }
+          } else {
+            console.error('❌ 사용자 정보 업데이트 실패:', response.status);
+          }
+        } catch (err) {
+          console.error('❌ 사용자 정보 업데이트 중 오류:', err);
+        }
+      } else if (isAuthenticated() && userNo === null) {
+        console.warn('⚠️ handleGenderChange - user_no가 null, 서버 업데이트 건너뜀');
       }
     } catch (err) {
       console.log('성별 저장 실패:', err);

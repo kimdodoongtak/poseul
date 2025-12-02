@@ -613,13 +613,12 @@ def init_iot_devices_table():
                         model_name VARCHAR(255),
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                        UNIQUE KEY unique_user_device (user_id, device_id),
-                        UNIQUE KEY unique_device_id (device_id)
+                        UNIQUE KEY unique_user_device (user_id, device_id)
                     )
                 """)
                 conn.execute(create_table_query)
                 conn.commit()
-                logger.info("✅ iot_devices 테이블 생성 완료 (device_id UNIQUE 제약 포함)")
+                logger.info("✅ iot_devices 테이블 생성 완료 (여러 사용자가 같은 device 등록 가능)")
             else:
                 logger.info("✅ iot_devices 테이블 이미 존재 - 컬럼 확인 중...")
                 # 컬럼 존재 여부 확인 및 추가
@@ -674,7 +673,7 @@ def init_iot_devices_table():
                     except Exception as e:
                         logger.warning(f"⚠️ UNIQUE KEY 추가 실패 (이미 존재할 수 있음): {str(e)}")
                 
-                # device_id UNIQUE 제약 확인 및 추가 (같은 기기는 한 명만 등록 가능)
+                # device_id UNIQUE 제약 제거 (여러 사용자가 같은 device 등록 가능하도록)
                 device_id_unique_check = text("""
                     SELECT COUNT(*) as count
                     FROM information_schema.table_constraints 
@@ -685,15 +684,17 @@ def init_iot_devices_table():
                 result = conn.execute(device_id_unique_check)
                 has_device_id_unique = result.fetchone().count > 0
                 
-                if not has_device_id_unique:
-                    logger.info("📝 iot_devices 테이블에 device_id UNIQUE 제약 추가 중...")
+                if has_device_id_unique:
+                    logger.info("📝 iot_devices 테이블에서 device_id UNIQUE 제약 제거 중...")
                     try:
-                        alter_query = text("ALTER TABLE iot_devices ADD UNIQUE KEY unique_device_id (device_id)")
+                        alter_query = text("ALTER TABLE iot_devices DROP INDEX unique_device_id")
                         conn.execute(alter_query)
                         conn.commit()
-                        logger.info("✅ device_id UNIQUE 제약 추가 완료 (같은 기기는 한 명만 등록 가능)")
+                        logger.info("✅ device_id UNIQUE 제약 제거 완료 (여러 사용자가 같은 device 등록 가능)")
                     except Exception as e:
-                        logger.warning(f"⚠️ device_id UNIQUE 제약 추가 실패 (이미 존재할 수 있음): {str(e)}")
+                        logger.warning(f"⚠️ device_id UNIQUE 제약 제거 실패: {str(e)}")
+                else:
+                    logger.info("✅ device_id UNIQUE 제약이 없습니다 (여러 사용자가 같은 device 등록 가능)")
     except Exception as e:
         logger.error(f"❌ iot_devices 테이블 초기화 실패: {str(e)}")
         import traceback
@@ -748,50 +749,41 @@ def load_iot_devices_from_db():
         logger.info("🔄 메모리 캐시 초기화만 수행 (빈 상태로 시작)")
 
 def save_iot_device_to_db(user_id: str, pat_token: str, device_id: str, device_name: str, model_name: str = ''):
-    """IoT 디바이스 등록 정보를 DB와 메모리에 저장 (같은 기기는 한 명만 등록 가능)"""
+    """IoT 디바이스 등록 정보를 DB와 메모리에 저장 (여러 사용자가 같은 device 등록 가능)"""
     try:
         logger.info(f"💾 IoT 디바이스 DB 저장 시작: user_id={user_id}, device_id={device_id[:20] if device_id else 'None'}..., device_name={device_name}")
         
         with engine.connect() as conn:
-            # 먼저 같은 device_id가 다른 사용자에게 등록되어 있는지 확인
+            # 같은 사용자가 같은 device를 이미 등록했는지 확인
             existing_device_check = text("""
                 SELECT user_id, device_name 
                 FROM iot_devices 
-                WHERE device_id = :device_id
+                WHERE user_id = :user_id AND device_id = :device_id
             """)
-            existing_result = conn.execute(existing_device_check, {'device_id': device_id})
+            existing_result = conn.execute(existing_device_check, {'user_id': user_id, 'device_id': device_id})
             existing_device = existing_result.fetchone()
             
             if existing_device:
-                existing_user_id = existing_device.user_id
-                existing_device_name = existing_device.device_name or '알 수 없음'
-                
-                # 같은 사용자가 다시 등록하는 경우는 허용 (업데이트)
-                if existing_user_id == user_id:
-                    logger.info(f"🔄 같은 사용자가 기기 재등록: user_id={user_id}, device_id={device_id[:20]}...")
-                else:
-                    # [테스트 모드] 다른 사용자가 이미 등록한 경우에도 허용 (기존 레코드 삭제 후 새로 등록)
-                    logger.warning(f"⚠️ [테스트 모드] 기기 중복 등록 허용: user_id={user_id}, device_id={device_id[:20]}..., 기존 등록자: {existing_user_id} (기존 레코드 삭제 후 새로 등록)")
-                    # 기존 레코드 삭제
-                    delete_query = text("DELETE FROM iot_devices WHERE device_id = :device_id")
-                    conn.execute(delete_query, {'device_id': device_id})
-                    conn.commit()
-                    logger.info(f"🗑️ 기존 등록 정보 삭제 완료: device_id={device_id[:20]}...")
-                    # 에러 발생하지 않고 계속 진행
-                    # error_msg = f"이 기기는 이미 다른 사용자({existing_user_id})에게 등록되어 있습니다. (기기명: {existing_device_name})"
-                    # raise HTTPException(status_code=409, detail=error_msg)
-            
-            # UPSERT 쿼리 (이미 있으면 업데이트, 없으면 삽입)
-            query = text("""
-                INSERT INTO iot_devices (user_id, pat_token, device_id, device_name, model_name, updated_at)
-                VALUES (:user_id, :pat_token, :device_id, :device_name, :model_name, NOW())
-                ON DUPLICATE KEY UPDATE
-                    pat_token = VALUES(pat_token),
-                    device_id = VALUES(device_id),
-                    device_name = VALUES(device_name),
-                    model_name = VALUES(model_name),
-                    updated_at = NOW()
-            """)
+                # 같은 사용자가 같은 device를 재등록하는 경우는 업데이트
+                logger.info(f"🔄 같은 사용자가 기기 재등록: user_id={user_id}, device_id={device_id[:20]}...")
+                # UPSERT 쿼리 (user_id, device_id 조합이 unique이므로)
+                query = text("""
+                    INSERT INTO iot_devices (user_id, pat_token, device_id, device_name, model_name, updated_at)
+                    VALUES (:user_id, :pat_token, :device_id, :device_name, :model_name, NOW())
+                    ON DUPLICATE KEY UPDATE
+                        pat_token = VALUES(pat_token),
+                        device_id = VALUES(device_id),
+                        device_name = VALUES(device_name),
+                        model_name = VALUES(model_name),
+                        updated_at = NOW()
+                """)
+            else:
+                # 새로운 등록 (다른 사용자가 같은 device를 사용해도 허용)
+                logger.info(f"✅ 새로운 디바이스 등록: user_id={user_id}, device_id={device_id[:20]}... (다른 사용자가 같은 device를 사용해도 허용)")
+                query = text("""
+                    INSERT INTO iot_devices (user_id, pat_token, device_id, device_name, model_name, updated_at)
+                    VALUES (:user_id, :pat_token, :device_id, :device_name, :model_name, NOW())
+                """)
             result = conn.execute(query, {
                 'user_id': user_id,
                 'pat_token': pat_token,
@@ -1000,6 +992,9 @@ class RegisterRequest(BaseModel):
     id: str  # 이메일 또는 사용자 아이디
     password: str
     device: Optional[str] = None  # IoT 디바이스 정보 (PAT 토큰 또는 device_id)
+    age: Optional[int] = None  # 나이
+    bmi: Optional[float] = None  # BMI
+    gender: Optional[str] = None  # 성별 ('M' 또는 'F', 또는 'MALE'/'FEMALE', 또는 0/1)
 
 class LoginRequest(BaseModel):
     id: str  # 이메일 또는 사용자 아이디
@@ -1170,30 +1165,13 @@ async def register(data: RegisterRequest):
             except Exception as e:
                 logger.warning(f"⚠️ new_skinthreshold 초기화 실패 (무시): {e}")
             
-            # room_threshold 테이블에 사용자별 기본값 저장 (처음 한 번만, predicted_results에서 사용자 정보 가져와서 계산)
-            try:
-                logger.info(f"🔍 room_threshold 초기화 시작 (user_no={user.no})")
-                
-                # predicted_results 테이블에서 사용자 정보 확인 (나이, BMI, 성별)
-                user_info_query = text("""
-                    SELECT age, bmi, gender 
-                    FROM predicted_results 
-                    WHERE age IS NOT NULL 
-                      AND bmi IS NOT NULL 
-                      AND gender IS NOT NULL
-                      AND user_no = :user_no
-                    ORDER BY created_at DESC
-                    LIMIT 1
-                """)
-                user_info_result = conn.execute(user_info_query, {'user_no': user.no}).fetchone()
-                
-                if user_info_result:
-                    # 사용자 정보가 있으면 온도 범위 계산 및 저장
-                    age = int(user_info_result.age) if user_info_result.age else 30
-                    bmi = float(user_info_result.bmi) if user_info_result.bmi else 22.0
-                    gender_value = user_info_result.gender
+            # 회원가입 시 나이/BMI/성별이 제공되면 predicted_results에 저장하고 room_threshold 초기화
+            if data.age is not None and data.bmi is not None and data.gender is not None:
+                try:
+                    logger.info(f"🔍 회원가입 시 사용자 정보 저장 및 room_threshold 초기화 시작 (user_no={user.no})")
                     
-                    # gender 정규화 (0/1 또는 'M'/'F')
+                    # gender 정규화
+                    gender_value = data.gender
                     if isinstance(gender_value, (int, float)):
                         gender = 'M' if gender_value == 1.0 or gender_value == 1 else 'F'
                     elif isinstance(gender_value, str):
@@ -1201,7 +1179,84 @@ async def register(data: RegisterRequest):
                     else:
                         gender = 'M'  # 기본값
                     
-                    logger.info(f"🔍 predicted_results에서 사용자 정보 확인: age={age}, bmi={bmi}, gender={gender}")
+                    age = int(data.age)
+                    bmi = float(data.bmi)
+                    
+                    logger.info(f"📝 회원가입 시 받은 사용자 정보: age={age}, bmi={bmi}, gender={gender}")
+                    
+                    # predicted_results 테이블에 사용자 정보 저장 (건강 데이터는 없으므로 NULL 또는 기본값)
+                    try:
+                        # user_no 컬럼 확인
+                        user_no_check = text("""
+                            SELECT COUNT(*) as count
+                            FROM information_schema.columns 
+                            WHERE table_schema = DATABASE()
+                            AND TABLE_NAME = 'predicted_results'
+                            AND COLUMN_NAME = 'user_no'
+                        """)
+                        has_user_no = conn.execute(user_no_check).fetchone().count > 0
+                        
+                        # created_at 컬럼 확인
+                        created_at_check = text("""
+                            SELECT COUNT(*) as count
+                            FROM information_schema.columns 
+                            WHERE table_schema = DATABASE()
+                            AND TABLE_NAME = 'predicted_results'
+                            AND COLUMN_NAME = 'created_at'
+                        """)
+                        has_created_at = conn.execute(created_at_check).fetchone().count > 0
+                        
+                        if has_user_no and has_created_at:
+                            insert_query = text("""
+                                INSERT INTO predicted_results 
+                                (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp, user_no, created_at)
+                                VALUES 
+                                (0, 0, 0, :bmi, :age, :gender, 0, :user_no, NOW())
+                            """)
+                            conn.execute(insert_query, {
+                                'bmi': bmi,
+                                'age': age,
+                                'gender': gender,
+                                'user_no': user.no
+                            })
+                        elif has_user_no:
+                            insert_query = text("""
+                                INSERT INTO predicted_results 
+                                (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp, user_no)
+                                VALUES 
+                                (0, 0, 0, :bmi, :age, :gender, 0, :user_no)
+                            """)
+                            conn.execute(insert_query, {
+                                'bmi': bmi,
+                                'age': age,
+                                'gender': gender,
+                                'user_no': user.no
+                            })
+                        else:
+                            # user_no 컬럼이 없으면 기본값으로 저장
+                            if has_created_at:
+                                insert_query = text("""
+                                    INSERT INTO predicted_results 
+                                    (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp, created_at)
+                                    VALUES 
+                                    (0, 0, 0, :bmi, :age, :gender, 0, NOW())
+                                """)
+                            else:
+                                insert_query = text("""
+                                    INSERT INTO predicted_results 
+                                    (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp)
+                                    VALUES 
+                                    (0, 0, 0, :bmi, :age, :gender, 0)
+                                """)
+                            conn.execute(insert_query, {
+                                'bmi': bmi,
+                                'age': age,
+                                'gender': gender
+                            })
+                        conn.commit()
+                        logger.info(f"✅ predicted_results에 사용자 정보 저장 완료: age={age}, bmi={bmi}, gender={gender}, user_no={user.no}")
+                    except Exception as e:
+                        logger.warning(f"⚠️ predicted_results 저장 실패: {e}")
                     
                     # room_threshold 초기화 (이미 있으면 건너뜀)
                     success, min_temp, max_temp = temperature_control_logic.initialize_user_temperature_range(
@@ -1217,12 +1272,64 @@ async def register(data: RegisterRequest):
                         logger.info(f"✅ room_threshold 초기화 완료: {min_temp}~{max_temp}°C, user_no={user.no}")
                     else:
                         logger.warning(f"⚠️ room_threshold 초기화 실패 또는 이미 존재함, user_no={user.no}")
-                else:
-                    logger.info(f"ℹ️ predicted_results에 사용자 정보가 없어 room_threshold 초기화 건너뜀 (건강 데이터 전송 후 자동 초기화됨), user_no={user.no}")
-            except Exception as e:
-                logger.warning(f"⚠️ room_threshold 초기화 실패 (무시): {e}")
-                import traceback
-                logger.debug(f"⚠️ room_threshold 초기화 실패 상세:\n{traceback.format_exc()}")
+                except Exception as e:
+                    logger.warning(f"⚠️ 회원가입 시 사용자 정보 저장/초기화 실패 (무시): {e}")
+                    import traceback
+                    logger.debug(f"⚠️ 상세 에러:\n{traceback.format_exc()}")
+            else:
+                # 회원가입 시 나이/BMI/성별이 없으면 기존 로직대로 predicted_results에서 확인
+                try:
+                    logger.info(f"🔍 room_threshold 초기화 시작 (user_no={user.no}) - predicted_results에서 사용자 정보 확인")
+                    
+                    # predicted_results 테이블에서 사용자 정보 확인 (나이, BMI, 성별)
+                    user_info_query = text("""
+                        SELECT age, bmi, gender 
+                        FROM predicted_results 
+                        WHERE age IS NOT NULL 
+                          AND bmi IS NOT NULL 
+                          AND gender IS NOT NULL
+                          AND user_no = :user_no
+                        ORDER BY created_at DESC
+                        LIMIT 1
+                    """)
+                    user_info_result = conn.execute(user_info_query, {'user_no': user.no}).fetchone()
+                    
+                    if user_info_result:
+                        # 사용자 정보가 있으면 온도 범위 계산 및 저장
+                        age = int(user_info_result.age) if user_info_result.age else 30
+                        bmi = float(user_info_result.bmi) if user_info_result.bmi else 22.0
+                        gender_value = user_info_result.gender
+                        
+                        # gender 정규화 (0/1 또는 'M'/'F')
+                        if isinstance(gender_value, (int, float)):
+                            gender = 'M' if gender_value == 1.0 or gender_value == 1 else 'F'
+                        elif isinstance(gender_value, str):
+                            gender = 'M' if gender_value.upper() in ['M', 'MALE', '1'] else 'F'
+                        else:
+                            gender = 'M'  # 기본값
+                        
+                        logger.info(f"🔍 predicted_results에서 사용자 정보 확인: age={age}, bmi={bmi}, gender={gender}")
+                        
+                        # room_threshold 초기화 (이미 있으면 건너뜀)
+                        success, min_temp, max_temp = temperature_control_logic.initialize_user_temperature_range(
+                            engine=engine,
+                            age=age,
+                            bmi=bmi,
+                            gender=gender,
+                            force_update=False,  # 이미 있으면 업데이트하지 않음
+                            user_no=user.no
+                        )
+                        
+                        if success:
+                            logger.info(f"✅ room_threshold 초기화 완료: {min_temp}~{max_temp}°C, user_no={user.no}")
+                        else:
+                            logger.warning(f"⚠️ room_threshold 초기화 실패 또는 이미 존재함, user_no={user.no}")
+                    else:
+                        logger.info(f"ℹ️ predicted_results에 사용자 정보가 없어 room_threshold 초기화 건너뜀 (건강 데이터 전송 후 자동 초기화됨), user_no={user.no}")
+                except Exception as e:
+                    logger.warning(f"⚠️ room_threshold 초기화 실패 (무시): {e}")
+                    import traceback
+                    logger.debug(f"⚠️ room_threshold 초기화 실패 상세:\n{traceback.format_exc()}")
             
             # JWT 토큰 생성
             access_token = create_access_token(data={"sub": str(user.no)})
@@ -1660,6 +1767,267 @@ async def upload_profile_image(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"프로필 이미지 업로드 실패: {str(e)}"
         )
+
+class UserProfileUpdateRequest(BaseModel):
+    age: Optional[int] = None
+    bmi: Optional[float] = None
+    gender: Optional[str] = None  # 'M' 또는 'F', 또는 'MALE'/'FEMALE', 또는 0/1
+
+@app.put("/user/profile")
+async def update_user_profile(
+    data: UserProfileUpdateRequest,
+    user_no: int = Depends(verify_token)
+):
+    """
+    사용자 프로필 정보 업데이트
+    - 성별 변경 시: room_threshold 재계산 (force_update=True)
+    - BMI/나이 변경 시: predicted_results만 업데이트, room_threshold는 변경 없음
+    """
+    try:
+        logger.info(f"📝 사용자 프로필 업데이트 요청: user_no={user_no}, age={data.age}, bmi={data.bmi}, gender={data.gender}")
+        
+        with engine.connect() as conn:
+            # 기존 사용자 정보 조회
+            existing_info_query = text("""
+                SELECT age, bmi, gender 
+                FROM predicted_results 
+                WHERE user_no = :user_no
+                ORDER BY created_at DESC
+                LIMIT 1
+            """)
+            existing_result = conn.execute(existing_info_query, {'user_no': user_no}).fetchone()
+            
+            old_age = None
+            old_bmi = None
+            old_gender = None
+            
+            if existing_result:
+                old_age = int(existing_result.age) if existing_result.age else None
+                old_bmi = float(existing_result.bmi) if existing_result.bmi else None
+                old_gender_value = existing_result.gender
+                
+                # gender 정규화
+                if isinstance(old_gender_value, (int, float)):
+                    old_gender = 'M' if old_gender_value == 1.0 or old_gender_value == 1 else 'F'
+                elif isinstance(old_gender_value, str):
+                    old_gender = 'M' if old_gender_value.upper() in ['M', 'MALE', '1'] else 'F'
+                else:
+                    old_gender = 'M'
+            
+            # 업데이트할 값 결정 (제공된 값만 업데이트)
+            update_age = data.age if data.age is not None else old_age
+            update_bmi = data.bmi if data.bmi is not None else old_bmi
+            update_gender_value = data.gender if data.gender is not None else old_gender
+            
+            # gender 정규화
+            if update_gender_value is not None:
+                if isinstance(update_gender_value, (int, float)):
+                    update_gender = 'M' if update_gender_value == 1.0 or update_gender_value == 1 else 'F'
+                elif isinstance(update_gender_value, str):
+                    update_gender = 'M' if update_gender_value.upper() in ['M', 'MALE', '1'] else 'F'
+                else:
+                    update_gender = 'M'
+            else:
+                update_gender = old_gender
+            
+            if update_age is None or update_bmi is None or update_gender is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="나이, BMI, 성별 중 하나 이상은 반드시 제공되어야 합니다."
+                )
+            
+            # predicted_results 업데이트 (최신 레코드 업데이트 또는 새로 생성)
+            try:
+                # user_no 컬럼 확인
+                user_no_check = text("""
+                    SELECT COUNT(*) as count
+                    FROM information_schema.columns 
+                    WHERE table_schema = DATABASE()
+                    AND TABLE_NAME = 'predicted_results'
+                    AND COLUMN_NAME = 'user_no'
+                """)
+                has_user_no = conn.execute(user_no_check).fetchone().count > 0
+                
+                # created_at 컬럼 확인
+                created_at_check = text("""
+                    SELECT COUNT(*) as count
+                    FROM information_schema.columns 
+                    WHERE table_schema = DATABASE()
+                    AND TABLE_NAME = 'predicted_results'
+                    AND COLUMN_NAME = 'created_at'
+                """)
+                has_created_at = conn.execute(created_at_check).fetchone().count > 0
+                
+                # 기존 레코드가 있으면 업데이트, 없으면 새로 생성
+                if existing_result:
+                    if has_user_no:
+                        # MySQL은 UPDATE에서 ORDER BY ... LIMIT을 직접 지원하지 않으므로
+                        # 먼저 업데이트할 레코드의 ID를 찾은 후 업데이트
+                        if has_created_at:
+                            find_id_query = text("""
+                                SELECT no 
+                                FROM predicted_results 
+                                WHERE user_no = :user_no
+                                ORDER BY created_at DESC
+                                LIMIT 1
+                            """)
+                        else:
+                            find_id_query = text("""
+                                SELECT no 
+                                FROM predicted_results 
+                                WHERE user_no = :user_no
+                                ORDER BY no DESC
+                                LIMIT 1
+                            """)
+                        record_id_result = conn.execute(find_id_query, {'user_no': user_no}).fetchone()
+                        
+                        if record_id_result:
+                            record_id = record_id_result.no
+                            update_query = text("""
+                                UPDATE predicted_results 
+                                SET age = :age, bmi = :bmi, gender = :gender
+                                WHERE no = :record_id
+                            """)
+                            conn.execute(update_query, {
+                                'age': update_age,
+                                'bmi': update_bmi,
+                                'gender': update_gender,
+                                'record_id': record_id
+                            })
+                        else:
+                            raise HTTPException(status_code=404, detail="업데이트할 레코드를 찾을 수 없습니다.")
+                    else:
+                        # user_no 컬럼이 없으면 최신 레코드 업데이트 (user_no 필터링 불가)
+                        # 먼저 업데이트할 레코드의 ID를 찾은 후 업데이트
+                        if has_created_at:
+                            find_id_query = text("""
+                                SELECT no 
+                                FROM predicted_results 
+                                ORDER BY created_at DESC
+                                LIMIT 1
+                            """)
+                        else:
+                            find_id_query = text("""
+                                SELECT no 
+                                FROM predicted_results 
+                                ORDER BY no DESC
+                                LIMIT 1
+                            """)
+                        record_id_result = conn.execute(find_id_query).fetchone()
+                        
+                        if record_id_result:
+                            record_id = record_id_result.no
+                            update_query = text("""
+                                UPDATE predicted_results 
+                                SET age = :age, bmi = :bmi, gender = :gender
+                                WHERE no = :record_id
+                            """)
+                            conn.execute(update_query, {
+                                'age': update_age,
+                                'bmi': update_bmi,
+                                'gender': update_gender,
+                                'record_id': record_id
+                            })
+                        else:
+                            raise HTTPException(status_code=404, detail="업데이트할 레코드를 찾을 수 없습니다.")
+                    logger.info(f"✅ predicted_results 업데이트 완료: age={update_age}, bmi={update_bmi}, gender={update_gender}, user_no={user_no}")
+                else:
+                    # 기존 레코드가 없으면 새로 생성
+                    if has_user_no and has_created_at:
+                        insert_query = text("""
+                            INSERT INTO predicted_results 
+                            (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp, user_no, created_at)
+                            VALUES 
+                            (0, 0, 0, :bmi, :age, :gender, 0, :user_no, NOW())
+                        """)
+                        conn.execute(insert_query, {
+                            'bmi': update_bmi,
+                            'age': update_age,
+                            'gender': update_gender,
+                            'user_no': user_no
+                        })
+                    elif has_user_no:
+                        insert_query = text("""
+                            INSERT INTO predicted_results 
+                            (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp, user_no)
+                            VALUES 
+                            (0, 0, 0, :bmi, :age, :gender, 0, :user_no)
+                        """)
+                        conn.execute(insert_query, {
+                            'bmi': update_bmi,
+                            'age': update_age,
+                            'gender': update_gender,
+                            'user_no': user_no
+                        })
+                    else:
+                        if has_created_at:
+                            insert_query = text("""
+                                INSERT INTO predicted_results 
+                                (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp, created_at)
+                                VALUES 
+                                (0, 0, 0, :bmi, :age, :gender, 0, NOW())
+                            """)
+                        else:
+                            insert_query = text("""
+                                INSERT INTO predicted_results 
+                                (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp)
+                                VALUES 
+                                (0, 0, 0, :bmi, :age, :gender, 0)
+                            """)
+                        conn.execute(insert_query, {
+                            'bmi': update_bmi,
+                            'age': update_age,
+                            'gender': update_gender
+                        })
+                    logger.info(f"✅ predicted_results 새로 생성 완료: age={update_age}, bmi={update_bmi}, gender={update_gender}, user_no={user_no}")
+                
+                conn.commit()
+            except Exception as e:
+                logger.error(f"❌ predicted_results 업데이트 실패: {e}")
+                raise HTTPException(status_code=500, detail=f"사용자 정보 업데이트 실패: {str(e)}")
+            
+            # 성별 변경 감지 시 room_threshold 재계산
+            gender_changed = False
+            if old_gender is not None and update_gender != old_gender:
+                gender_changed = True
+                logger.info(f"🔄 성별 변경 감지: {old_gender} → {update_gender}, room_threshold 재계산 필요")
+            
+            if gender_changed:
+                try:
+                    success, min_temp, max_temp = temperature_control_logic.initialize_user_temperature_range(
+                        engine=engine,
+                        age=update_age,
+                        bmi=update_bmi,
+                        gender=update_gender,
+                        force_update=True,  # 성별 변경 시 강제 업데이트
+                        user_no=user_no
+                    )
+                    
+                    if success:
+                        logger.info(f"✅ room_threshold 재계산 완료: {min_temp}~{max_temp}°C, user_no={user_no}")
+                    else:
+                        logger.warning(f"⚠️ room_threshold 재계산 실패, user_no={user_no}")
+                except Exception as e:
+                    logger.error(f"❌ room_threshold 재계산 실패: {e}")
+                    # room_threshold 재계산 실패해도 predicted_results는 업데이트되었으므로 계속 진행
+            
+            return {
+                "success": True,
+                "message": "사용자 정보가 업데이트되었습니다.",
+                "age": update_age,
+                "bmi": update_bmi,
+                "gender": update_gender,
+                "gender_changed": gender_changed,
+                "room_threshold_updated": gender_changed
+            }
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 사용자 프로필 업데이트 실패: {str(e)}")
+        import traceback
+        logger.error(f"❌ 상세 에러:\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"사용자 프로필 업데이트 실패: {str(e)}")
 
 @app.get("/profile-images/{filename}")
 async def get_profile_image(filename: str):
@@ -2516,6 +2884,19 @@ async def get_latest_health_data(user_no: int = Depends(verify_token)):
                 
                 logger.info(f"✅ 최신 건강 데이터 조회 성공: {health_data}")
                 
+                # 사용자 정보 추출 (age, bmi, gender)
+                user_age = int(row.age) if hasattr(row, 'age') and row.age is not None else None
+                user_bmi = float(row.bmi) if hasattr(row, 'bmi') and row.bmi is not None else None
+                user_gender = None
+                if hasattr(row, 'gender') and row.gender is not None:
+                    gender_value = row.gender
+                    if isinstance(gender_value, (int, float)):
+                        user_gender = 'M' if gender_value == 1.0 or gender_value == 1 else 'F'
+                    elif isinstance(gender_value, str):
+                        user_gender = 'M' if gender_value.upper() in ['M', 'MALE', '1'] else 'F'
+                    else:
+                        user_gender = str(gender_value)
+                
                 return {
                     "success": True,
                     "data": {
@@ -2531,6 +2912,10 @@ async def get_latest_health_data(user_no: int = Depends(verify_token)):
                             "value": health_data["oxygenSaturation"],
                             "date": date_str
                         } or None,
+                        # 사용자 정보 추가
+                        "age": user_age,
+                        "bmi": user_bmi,
+                        "gender": user_gender
                     },
                     "lastUpdated": date_str
                 }

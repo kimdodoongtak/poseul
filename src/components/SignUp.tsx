@@ -8,6 +8,8 @@ import {
   IonRow,
   IonText,
   IonSpinner,
+  IonSelect,
+  IonSelectOption,
 } from '@ionic/react';
 import { arrowForwardOutline, closeOutline, openOutline, checkmarkCircleOutline, arrowBackOutline } from 'ionicons/icons';
 import { register } from '../services/AuthService';
@@ -25,6 +27,9 @@ const SignUp: React.FC<SignUpProps> = ({ onClose, onSuccess }) => {
   const [id, setId] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [age, setAge] = useState('');
+  const [bmi, setBmi] = useState('');
+  const [gender, setGender] = useState('0'); // 0: 여성, 1: 남성
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [patToken, setPatToken] = useState('');
@@ -75,19 +80,31 @@ const SignUp: React.FC<SignUpProps> = ({ onClose, onSuccess }) => {
       setIotLoadingMessage('PAT 토큰 검증 중...');
       
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60초로 증가
       
-      const response = await fetch(`${baseUrl}/iot/auto-register`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          pat_token: patToken.trim(),
-          user_id: id.trim(),
-        }),
-        signal: controller.signal,
-      });
+      let response: Response;
+      try {
+        response = await fetch(`${baseUrl}/iot/auto-register`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            pat_token: patToken.trim(),
+            user_id: id.trim(),
+          }),
+          signal: controller.signal,
+        });
+      } catch (fetchError: any) {
+        clearTimeout(timeoutId);
+        if (fetchError.name === 'AbortError') {
+          throw new Error('요청 시간이 초과되었습니다. 서버가 응답하지 않거나 네트워크 연결이 느립니다.');
+        } else if (fetchError.message?.includes('Failed to fetch') || fetchError.message?.includes('NetworkError')) {
+          throw new Error(`서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요. (${baseUrl})`);
+        } else {
+          throw new Error(`요청 실패: ${fetchError.message || '알 수 없는 오류'}`);
+        }
+      }
 
       clearTimeout(timeoutId);
 
@@ -175,10 +192,23 @@ const SignUp: React.FC<SignUpProps> = ({ onClose, onSuccess }) => {
 
     try {
       // 먼저 회원가입 완료
-      const registerResult = await register({ 
+      const registerData: any = { 
         id: id.trim(), 
         password
-      });
+      };
+      
+      // 나이/BMI/성별이 입력되어 있으면 포함
+      if (age.trim()) {
+        registerData.age = parseInt(age.trim(), 10);
+      }
+      if (bmi.trim()) {
+        registerData.bmi = parseFloat(bmi.trim());
+      }
+      if (gender.trim()) {
+        registerData.gender = gender.trim() === '1' ? 'M' : 'F';
+      }
+      
+      const registerResult = await register(registerData);
       
       console.log('✅ 회원가입 성공:', registerResult);
       
@@ -211,6 +241,9 @@ const SignUp: React.FC<SignUpProps> = ({ onClose, onSuccess }) => {
         setId('');
         setPassword('');
         setConfirmPassword('');
+        setAge('');
+        setBmi('');
+        setGender('0');
         setPatToken('');
       }, 1000);
     } catch (err: any) {
@@ -280,18 +313,52 @@ const SignUp: React.FC<SignUpProps> = ({ onClose, onSuccess }) => {
               <IonInput
                 type="password"
                 autocomplete="new-password"
-                enterkeyhint="done"
+                enterkeyhint="next"
                 value={confirmPassword}
                 onIonInput={(e) => setConfirmPassword(e.detail.value!)}
                 placeholder="비밀번호를 다시 입력하세요"
                 disabled={isLoading}
                 clearOnEdit={false}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    handleNext();
-                  }
-                }}
               />
+            </IonItem>
+
+            <IonItem className="sign-up-input-item">
+              <IonLabel position="stacked">나이</IonLabel>
+              <IonInput
+                type="number"
+                inputmode="numeric"
+                enterkeyhint="next"
+                value={age}
+                onIonInput={(e) => setAge(e.detail.value!)}
+                placeholder="나이를 입력하세요"
+                disabled={isLoading}
+              />
+            </IonItem>
+
+            <IonItem className="sign-up-input-item">
+              <IonLabel position="stacked">BMI</IonLabel>
+              <IonInput
+                type="number"
+                inputmode="decimal"
+                enterkeyhint="next"
+                value={bmi}
+                onIonInput={(e) => setBmi(e.detail.value!)}
+                placeholder="BMI를 입력하세요"
+                disabled={isLoading}
+              />
+            </IonItem>
+
+            <IonItem className="sign-up-input-item">
+              <IonLabel position="stacked">성별</IonLabel>
+              <IonSelect
+                value={gender}
+                placeholder="성별을 선택하세요"
+                onIonChange={(e) => setGender(e.detail.value)}
+                disabled={isLoading}
+              >
+                <IonSelectOption value="0">여성</IonSelectOption>
+                <IonSelectOption value="1">남성</IonSelectOption>
+              </IonSelect>
             </IonItem>
 
             <IonButton
@@ -308,7 +375,7 @@ const SignUp: React.FC<SignUpProps> = ({ onClose, onSuccess }) => {
           <>
             <IonText className="sign-up-subtitle">
               PAT 토큰을 입력하면 자동으로 등록된<br />
-              에어컨을 찾아 연결합니다. (선택사항)
+              에어컨을 찾아 연결합니다.
             </IonText>
 
             {error && (
@@ -340,7 +407,7 @@ const SignUp: React.FC<SignUpProps> = ({ onClose, onSuccess }) => {
 
             {/* PAT 토큰 입력 */}
             <IonItem className="sign-up-input-item">
-              <IonLabel position="stacked">PAT 토큰 (선택사항)</IonLabel>
+              <IonLabel position="stacked">PAT 토큰</IonLabel>
               <IonInput
                 type="text"
                 value={patToken}
