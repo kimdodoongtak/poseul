@@ -24,7 +24,7 @@ import {
   IonSelect,
   IonSelectOption
 } from '@ionic/react';
-import { personOutline, closeOutline } from 'ionicons/icons';
+import { personOutline, closeOutline, cameraOutline } from 'ionicons/icons';
 import SignIn from '../components/SignIn';
 import SignUp from '../components/SignUp';
 import './Health_ios.css';
@@ -73,6 +73,8 @@ const Health_ios: React.FC = () => {
   const [showUserInfo, setShowUserInfo] = useState<boolean>(false);
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
+  const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string>('');
   const location = useLocation();
   const loginSuccessRef = useRef<boolean>(false); // 로그인 성공 플래그
 
@@ -86,9 +88,135 @@ const Health_ios: React.FC = () => {
     }
   }, [location.search]);
 
+  // 사용자 정보 로드 (서버에서 가져오기)
+  const loadUserInfo = async () => {
+    if (!isAuthenticated()) return;
+    
+    try {
+      const { getAuthHeaders, getUserNo } = await import('../services/AuthService');
+      const userNo = getUserNo();
+      if (!userNo) return;
+      
+      const baseUrl = getServerUrl();
+      
+      // 1. 사용자 기본 정보 (아이디, 프로필 이미지)
+      const meResponse = await fetch(`${baseUrl}/auth/me`, {
+        headers: getAuthHeaders()
+      });
+      
+      if (meResponse.ok) {
+        const meResult = await meResponse.json();
+        setUserId(meResult.id || '');
+        
+        // 프로필 이미지 로드 (사용자별로 구분)
+        if (meResult.profile_image_url) {
+          const imageUrl = meResult.profile_image_url.startsWith('http') 
+            ? meResult.profile_image_url 
+            : `${baseUrl}${meResult.profile_image_url}`;
+          setProfileImage(imageUrl);
+          localStorage.setItem(`profile_image_${userNo}`, imageUrl);
+        } else {
+          const savedImage = localStorage.getItem(`profile_image_${userNo}`);
+          if (savedImage) {
+            setProfileImage(savedImage);
+          } else {
+            // 기본 프로필 이미지 사용 (null로 설정하면 기본 이미지가 표시됨)
+            setProfileImage(null);
+          }
+        }
+      }
+      
+      // 2. 사용자 건강 정보 (나이, BMI, 성별) - predicted_results에서 최신 데이터 가져오기
+      const healthResponse = await fetch(`${baseUrl}/healthdata/latest`, {
+        headers: getAuthHeaders()
+      });
+      
+      if (healthResponse.ok) {
+        const healthResult = await healthResponse.json();
+        if (healthResult.success && healthResult.data) {
+          // 서버에서 가져온 데이터로 업데이트
+          if (healthResult.data.age) {
+            const ageValue = String(healthResult.data.age);
+            setAge(ageValue);
+            localStorage.setItem(`userAge_${userNo}`, ageValue);
+          } else {
+            // 서버에 없으면 localStorage에서 가져오기
+            const savedAge = localStorage.getItem(`userAge_${userNo}`);
+            if (savedAge) {
+              setAge(savedAge);
+            }
+          }
+          
+          if (healthResult.data.bmi) {
+            const bmiValue = String(healthResult.data.bmi);
+            setBmi(bmiValue);
+            localStorage.setItem(`userBmi_${userNo}`, bmiValue);
+          } else {
+            const savedBmi = localStorage.getItem(`userBmi_${userNo}`);
+            if (savedBmi) {
+              setBmi(savedBmi);
+            }
+          }
+          
+          if (healthResult.data.gender !== undefined && healthResult.data.gender !== null) {
+            // gender가 숫자면 문자열로 변환 (0 -> '0', 1 -> '1')
+            const genderValue = String(healthResult.data.gender);
+            setGender(genderValue);
+            localStorage.setItem(`userGender_${userNo}`, genderValue);
+          } else {
+            const savedGender = localStorage.getItem(`userGender_${userNo}`);
+            if (savedGender) {
+              setGender(savedGender);
+            }
+          }
+        }
+      } else {
+        // 서버에서 가져오기 실패 시 localStorage에서 가져오기
+        const savedAge = localStorage.getItem(`userAge_${userNo}`);
+        const savedBmi = localStorage.getItem(`userBmi_${userNo}`);
+        const savedGender = localStorage.getItem(`userGender_${userNo}`);
+        
+        if (savedAge) setAge(savedAge);
+        if (savedBmi) setBmi(savedBmi);
+        if (savedGender) setGender(savedGender);
+      }
+    } catch (error) {
+      console.error('사용자 정보 로드 실패:', error);
+      // 에러 발생 시에도 localStorage에서 가져오기 시도
+      try {
+        const { getUserNo } = await import('../services/AuthService');
+        const userNo = getUserNo();
+        if (userNo) {
+          const savedAge = localStorage.getItem(`userAge_${userNo}`);
+          const savedBmi = localStorage.getItem(`userBmi_${userNo}`);
+          const savedGender = localStorage.getItem(`userGender_${userNo}`);
+          
+          if (savedAge) setAge(savedAge);
+          if (savedBmi) setBmi(savedBmi);
+          if (savedGender) setGender(savedGender);
+        }
+      } catch (e) {
+        console.error('localStorage에서 사용자 정보 로드 실패:', e);
+      }
+    }
+  };
+
   useEffect(() => {
     // 초기 로그인 상태 확인
-    setIsLoggedIn(isAuthenticated());
+    const authenticated = isAuthenticated();
+    setIsLoggedIn(authenticated);
+    
+    // 로그인되어 있으면 사용자 정보 로드
+    if (authenticated) {
+      loadUserInfo();
+    } else {
+      // 로그아웃 상태면 모든 사용자 데이터 초기화
+      setProfileImage(null);
+      setUserId('');
+      setAge('');
+      setBmi('');
+      setGender('0');
+    }
     
     // 로그인 상태 변경 이벤트 리스너 (다른 페이지에서 로그인/로그아웃 시 동기화)
     const handleAuthStateChanged = (event: CustomEvent) => {
@@ -100,11 +228,22 @@ const Health_ios: React.FC = () => {
       const authenticated = event.detail?.authenticated ?? isAuthenticated();
       setIsLoggedIn(authenticated);
       console.log(`🔍 Health 페이지 - 로그인 상태 변경 이벤트: ${authenticated}`);
+      
+      // 로그인 시 사용자 정보 로드, 로그아웃 시 초기화
+      if (authenticated) {
+        loadUserInfo();
+      } else {
+        setProfileImage(null);
+        setUserId('');
+        setAge('');
+        setBmi('');
+        setGender('0');
+      }
     };
     
     // localStorage storage 이벤트 리스너 (다른 탭에서 로그인/로그아웃 시 동기화)
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'auth_token') {
+      if (e.key === 'auth_token' || e.key === 'user_no') {
         // 로그인 성공 직후에는 상태를 변경하지 않음
         if (loginSuccessRef.current) {
           console.log('🔍 Health 페이지 - 로그인 성공 직후, storage 이벤트 무시');
@@ -113,6 +252,17 @@ const Health_ios: React.FC = () => {
         const authenticated = isAuthenticated();
         setIsLoggedIn(authenticated);
         console.log(`🔍 Health 페이지 - localStorage 변경 감지, 로그인 상태: ${authenticated}`);
+        
+        // 로그인 시 사용자 정보 로드, 로그아웃 시 초기화
+        if (authenticated) {
+          loadUserInfo();
+        } else {
+          setProfileImage(null);
+          setUserId('');
+          setAge('');
+          setBmi('');
+          setGender('0');
+        }
       }
     };
     
@@ -126,6 +276,11 @@ const Health_ios: React.FC = () => {
       const authenticated = isAuthenticated();
       setIsLoggedIn(authenticated);
       console.log(`🔍 Health 페이지 - 포커스 이벤트, 로그인 상태: ${authenticated}`);
+      
+      // 로그인 시 사용자 정보 로드
+      if (authenticated) {
+        loadUserInfo();
+      }
     };
     
     window.addEventListener('authStateChanged', handleAuthStateChanged as EventListener);
@@ -142,11 +297,15 @@ const Health_ios: React.FC = () => {
 
   useEffect(() => {
     // 초기 설정 완료 여부 확인
-    const checkSetupComplete = () => {
+    const checkSetupComplete = async () => {
       try {
-        const savedAge = localStorage.getItem('userAge');
-        const savedBmi = localStorage.getItem('userBmi');
-        const savedGender = localStorage.getItem('userGender');
+        const { getUserNo } = await import('../services/AuthService');
+        const userNo = getUserNo();
+        
+        // 사용자별로 localStorage에서 가져오기
+        const savedAge = userNo ? localStorage.getItem(`userAge_${userNo}`) : localStorage.getItem('userAge');
+        const savedBmi = userNo ? localStorage.getItem(`userBmi_${userNo}`) : localStorage.getItem('userBmi');
+        const savedGender = userNo ? localStorage.getItem(`userGender_${userNo}`) : localStorage.getItem('userGender');
         const setupComplete = localStorage.getItem('healthSetupComplete');
         const hasPermission = localStorage.getItem('healthKitPermission') === 'true';
         
@@ -171,7 +330,12 @@ const Health_ios: React.FC = () => {
             setGender(savedGender);
           } else {
             setGender('0');
-            localStorage.setItem('userGender', '0');
+            const userNo = await import('../services/AuthService').then(m => m.getUserNo());
+            if (userNo) {
+              localStorage.setItem(`userGender_${userNo}`, '0');
+            } else {
+              localStorage.setItem('userGender', '0');
+            }
           }
           if (hasPermission) setHasHealthKitPermission(true);
           
@@ -510,6 +674,10 @@ const Health_ios: React.FC = () => {
       
       console.log('📱 서버에서 건강 데이터 가져오기 시작:', serverURL);
       
+      // 인증 헤더 가져오기
+      const { getAuthHeaders } = await import('../services/AuthService');
+      const authHeaders = getAuthHeaders();
+      
       // 타임아웃 설정 (3초로 단축하여 ANR 방지)
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 3000);
@@ -518,6 +686,7 @@ const Health_ios: React.FC = () => {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
+          ...authHeaders,  // 인증 헤더 추가 (JWT 토큰)
         },
         signal: controller.signal,
       });
@@ -602,13 +771,24 @@ const Health_ios: React.FC = () => {
           if (heartRateData.success && heartRateData.data) {
             // DB 데이터를 차트 형식으로 변환
             heartRateData.data.forEach((point: any) => {
+              // 서버에서 받은 timestamp를 사용하여 실제 시간 확인
               const timestamp = new Date(point.timestamp);
+              const serverHour = timestamp.getHours();
+              const serverMinute = timestamp.getMinutes();
+              
+              // 서버에서 받은 hour, minute과 timestamp에서 파싱한 시간이 일치하는지 확인
+              if (point.hour !== serverHour || point.minute !== serverMinute) {
+                console.warn(`⚠️ 시간 불일치: 서버 hour=${point.hour}, minute=${point.minute}, timestamp 파싱=${serverHour}:${serverMinute}`);
+              }
+              
               dbChartData.heartRateData.push({
                 timestamp: point.timestamp,
-                hour: point.hour,
-                minute: point.minute,
+                hour: serverHour,  // timestamp에서 파싱한 실제 시간 사용
+                minute: serverMinute,  // timestamp에서 파싱한 실제 시간 사용
                 heartRate: point.heartRate,
               });
+              
+              console.log(`📊 심박수 데이터: ${serverHour}:${serverMinute.toString().padStart(2, '0')}, HR=${point.heartRate}, timestamp=${point.timestamp}`);
             });
             console.log(`✅ 심박수 데이터 ${heartRateData.count}개 로드 완료`);
           }
@@ -1178,6 +1358,7 @@ const Health_ios: React.FC = () => {
               console.log(`🔍 Health 페이지 - 아이콘 클릭, 로그인 상태: ${authenticated}`);
               
               if (authenticated) {
+                loadUserInfo();
                 setShowUserInfo(true);
               } else {
                 setShowSignIn(true);
@@ -1244,6 +1425,7 @@ const Health_ios: React.FC = () => {
                   if (authenticated && token) {
                     // 함수형 업데이트로 확실하게 true 유지
                     setIsLoggedIn(() => true);
+                    loadUserInfo();
                     setShowUserInfo(true);
                     console.log('✅ Health 페이지 - 사용자 정보 모달 표시');
                     
@@ -1318,82 +1500,464 @@ const Health_ios: React.FC = () => {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            backgroundColor: 'rgba(0, 0, 0, 0.5)'
-          }}>
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            backdropFilter: 'blur(4px)'
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowUserInfo(false);
+            }
+          }}
+          >
             <div className="user-info-modal" style={{
-              background: 'white',
+              background: 'linear-gradient(135deg, #ffffff 0%, #f5f7fa 100%)',
               borderRadius: '24px',
-              padding: '24px',
-              width: '90%',
-              maxWidth: '400px',
-              boxShadow: '0 12px 40px rgba(0, 0, 0, 0.3)',
-              position: 'relative'
-            }}>
+              padding: '0',
+              width: '85%',
+              maxWidth: '340px',
+              boxShadow: '0 24px 80px rgba(0, 0, 0, 0.25)',
+              position: 'relative',
+              overflow: 'hidden'
+            }}
+            onClick={(e) => e.stopPropagation()}
+            >
+              {/* 상단 민트색 헤더 */}
               <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: '20px'
+                background: 'linear-gradient(135deg, #b8d8e0 0%, #a0c8d4 100%)',
+                backgroundColor: '#b8d8e0',
+                padding: '14px 18px 32px 18px',
+                position: 'relative',
+                overflow: 'hidden'
               }}>
-                <IonText style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#66748D' }}>
-                  사용자 정보
-                </IonText>
-                <button
-                  onClick={() => {
+                {/* 배경 장식 원 */}
+                <div style={{
+                  position: 'absolute',
+                  top: '-40px',
+                  right: '-40px',
+                  width: '120px',
+                  height: '120px',
+                  background: 'rgba(255, 255, 255, 0.15)',
+                  borderRadius: '50%'
+                }} />
+                <div style={{
+                  position: 'absolute',
+                  bottom: '-25px',
+                  left: '-25px',
+                  width: '100px',
+                  height: '100px',
+                  background: 'rgba(255, 255, 255, 0.12)',
+                  borderRadius: '50%'
+                }} />
+                
+                {/* 헤더 내용 */}
+                <div style={{
+                  position: 'relative',
+                  zIndex: 1,
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'flex-start',
+                  marginBottom: '10px'
+                }}>
+                  <div 
+                    style={{ 
+                      fontSize: '1.1rem', 
+                      fontWeight: '600', 
+                      color: '#ffffff', 
+                      letterSpacing: '-0.2px',
+                      textShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
+                      WebkitTextFillColor: '#ffffff',
+                      WebkitTextStrokeColor: 'transparent'
+                    }}
+                  >
+                    내 프로필
+                  </div>
+                  <button
+                    onClick={() => {
+                      setShowUserInfo(false);
+                      if (!isAuthenticated()) {
+                        setIsLoggedIn(false);
+                      }
+                    }}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.2)',
+                      border: 'none',
+                      padding: '6px',
+                      cursor: 'pointer',
+                      borderRadius: '10px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      transition: 'all 0.2s',
+                      width: '32px',
+                      height: '32px',
+                      backdropFilter: 'blur(10px)'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.3)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
+                    }}
+                  >
+                    <IonIcon icon={closeOutline} style={{ fontSize: '18px', color: '#ffffff' }} />
+                  </button>
+                </div>
+                
+                {/* 프로필 이미지 (헤더 내부) */}
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'center',
+                  position: 'relative',
+                  zIndex: 1
+                }}>
+                  <div style={{
+                    position: 'relative',
+                    width: '120px',
+                    height: '120px',
+                    overflow: 'visible'
+                  }}>
+                    <div style={{
+                      width: '120px',
+                      height: '120px',
+                      overflow: 'hidden',
+                      borderRadius: '50%',
+                      border: '4px solid white',
+                      boxShadow: '0 6px 24px rgba(0, 0, 0, 0.2)',
+                      backgroundColor: '#ffffff',
+                      position: 'relative',
+                      zIndex: 1
+                    }}>
+                      <img
+                        key={profileImage || 'default'}
+                        src={profileImage || '/default-profile.png'}
+                        alt="프로필"
+                        style={{
+                          width: '150px',
+                          height: '150px',
+                          objectFit: 'cover',
+                          display: 'block',
+                          marginLeft: '5px',
+                          marginTop: '-20px'
+                        }}
+                        onError={(e) => {
+                          // 이미지 로드 실패 시 기본 이미지로 대체
+                          console.error('이미지 로드 실패:', profileImage);
+                          (e.target as HTMLImageElement).src = '/default-profile.png';
+                        }}
+                        onLoad={() => {
+                          console.log('✅ 이미지 로드 성공:', profileImage);
+                        }}
+                      />
+                    </div>
+                    <button
+                      className="profile-camera-button"
+                      onClick={() => {
+                        document.getElementById('profile-image-input')?.click();
+                      }}
+                      style={{
+                        position: 'absolute',
+                        bottom: '0px',
+                        right: '0px',
+                        width: '26px',
+                        height: '26px',
+                        borderRadius: '50%',
+                        WebkitBorderRadius: '50%',
+                        MozBorderRadius: '50%',
+                        background: 'linear-gradient(135deg, #d0e8ec 0%, #c0d8dc 100%)',
+                        backgroundColor: '#d0e8ec',
+                        border: '2.5px solid white',
+                        WebkitBoxShadow: '0 3px 10px rgba(0, 0, 0, 0.25)',
+                        boxShadow: '0 3px 10px rgba(0, 0, 0, 0.25)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        transition: 'transform 0.2s',
+                        zIndex: 100,
+                        overflow: 'hidden'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.transform = 'scale(1.1)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = 'scale(1)';
+                      }}
+                    >
+                      <IonIcon icon={cameraOutline} style={{ fontSize: '14px', color: 'white' }} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+              
+              {/* 본문 영역 */}
+              <div style={{
+                padding: '18px 20px 20px 20px',
+                marginTop: '-25px',
+                position: 'relative',
+                zIndex: 2
+              }}>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      id="profile-image-input"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        const input = e.target as HTMLInputElement;
+                        
+                        if (file) {
+                          // 이미지 미리보기
+                          const reader = new FileReader();
+                          reader.onload = async (event) => {
+                            const result = event.target?.result as string;
+                            setProfileImage(result);
+                            
+                            // 서버에 업로드
+                            try {
+                              const { getAuthHeaders, getUserNo } = await import('../services/AuthService');
+                              const userNo = getUserNo();
+                              if (!userNo) {
+                                console.error('사용자 번호를 가져올 수 없습니다.');
+                                return;
+                              }
+                              
+                              const baseUrl = getServerUrl();
+                              const formData = new FormData();
+                              formData.append('image', file, file.name);
+                              
+                              const authHeaders = getAuthHeaders();
+                              // FormData를 사용할 때는 Content-Type을 설정하지 않음 (브라우저가 자동 설정)
+                              // Authorization 헤더만 유지
+                              const headers: HeadersInit = {};
+                              const authHeaderValue = (authHeaders as any)['Authorization'];
+                              if (authHeaderValue) {
+                                (headers as any)['Authorization'] = authHeaderValue;
+                              }
+                              
+                              console.log('📤 업로드 요청:', {
+                                url: `${baseUrl}/auth/profile-image`,
+                                fileName: file.name,
+                                fileSize: file.size,
+                                fileType: file.type
+                              });
+                              
+                              const response = await fetch(`${baseUrl}/auth/profile-image`, {
+                                method: 'POST',
+                                headers: headers,
+                                body: formData
+                              });
+                              
+                              if (response.ok) {
+                                const uploadResult = await response.json();
+                                console.log('📤 업로드 응답:', uploadResult);
+                                
+                                if (uploadResult.profile_image_url) {
+                                  // 상대 경로인 경우 서버 URL 추가
+                                  let imageUrl = uploadResult.profile_image_url.startsWith('http') 
+                                    ? uploadResult.profile_image_url 
+                                    : `${baseUrl}${uploadResult.profile_image_url}`;
+                                  
+                                  // 캐시 버스터 추가 (이미지 갱신을 위해)
+                                  const separator = imageUrl.includes('?') ? '&' : '?';
+                                  imageUrl = `${imageUrl}${separator}t=${Date.now()}`;
+                                  
+                                  console.log('🖼️ 설정할 이미지 URL:', imageUrl);
+                                  
+                                  // 상태 업데이트
+                                  setProfileImage(imageUrl);
+                                  
+                                  // 사용자별로 localStorage에 저장
+                                  localStorage.setItem(`profile_image_${userNo}`, imageUrl);
+                                  
+                                  // 서버에서 최신 정보 다시 불러오기
+                                  await loadUserInfo();
+                                  
+                                  console.log(`✅ 프로필 이미지 업로드 성공 (user_no: ${userNo})`);
+                                } else {
+                                  console.warn('⚠️ profile_image_url이 응답에 없습니다.');
+                                }
+                              } else {
+                                const errorData = await response.json().catch(() => ({}));
+                                console.error('프로필 이미지 업로드 실패:', errorData);
+                                // 업로드 실패 시 미리보기 제거
+                                setProfileImage(null);
+                              }
+                            } catch (error) {
+                              console.error('프로필 이미지 업로드 실패:', error);
+                              // 업로드 실패 시 미리보기 제거
+                              setProfileImage(null);
+                            }
+                            
+                            // input 초기화하여 같은 파일을 다시 선택해도 onChange가 트리거되도록 함
+                            if (input) {
+                              input.value = '';
+                            }
+                          };
+                          reader.readAsDataURL(file);
+                        } else {
+                          // 파일이 선택되지 않았을 때도 input 초기화
+                          if (input) {
+                            input.value = '';
+                          }
+                        }
+                      }}
+                    />
+                
+                {/* 사용자 ID */}
+                {userId && (
+                  <div style={{
+                    textAlign: 'center',
+                    marginBottom: '20px',
+                    marginTop: '45px'
+                  }}>
+                    <IonText style={{ 
+                      fontSize: '1rem', 
+                      fontWeight: '600', 
+                      color: '#2d3748',
+                      letterSpacing: '-0.2px'
+                    }}>
+                      {userId}
+                    </IonText>
+                  </div>
+                )}
+                
+                {/* 정보 카드 */}
+                <div style={{
+                  background: 'white',
+                  borderRadius: '16px',
+                  padding: '16px',
+                  marginBottom: '20px',
+                  boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
+                  border: '1px solid rgba(0, 0, 0, 0.05)'
+                }}>
+                  <div style={{ 
+                    display: 'grid', 
+                    gridTemplateColumns: '1fr 1fr',
+                    gap: '12px',
+                    marginBottom: '12px'
+                  }}>
+                    <div style={{
+                      padding: '12px',
+                      background: 'linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%)',
+                      borderRadius: '10px',
+                      border: '1px solid rgba(0, 0, 0, 0.05)'
+                    }}>
+                      <IonLabel style={{ 
+                        color: '#718096', 
+                        fontWeight: '600', 
+                        fontSize: '0.7rem',
+                        marginBottom: '6px', 
+                        display: 'block',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px'
+                      }}>
+                        나이
+                      </IonLabel>
+                      <IonText style={{ 
+                        color: '#2d3748', 
+                        fontSize: '1.2rem', 
+                        fontWeight: '700', 
+                        display: 'block' 
+                      }}>
+                        {age || '-'}
+                      </IonText>
+                    </div>
+                    
+                    <div style={{
+                      padding: '12px',
+                      background: 'linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%)',
+                      borderRadius: '10px',
+                      border: '1px solid rgba(0, 0, 0, 0.05)'
+                    }}>
+                      <IonLabel style={{ 
+                        color: '#718096', 
+                        fontWeight: '600', 
+                        fontSize: '0.7rem',
+                        marginBottom: '6px', 
+                        display: 'block',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px'
+                      }}>
+                        BMI
+                      </IonLabel>
+                      <IonText style={{ 
+                        color: '#2d3748', 
+                        fontSize: '1.2rem', 
+                        fontWeight: '700', 
+                        display: 'block' 
+                      }}>
+                        {bmi || '-'}
+                      </IonText>
+                    </div>
+                  </div>
+                  
+                  <div style={{
+                    padding: '12px',
+                    background: 'linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%)',
+                    borderRadius: '10px',
+                    border: '1px solid rgba(0, 0, 0, 0.05)'
+                  }}>
+                    <IonLabel style={{ 
+                      color: '#718096', 
+                      fontWeight: '600', 
+                      fontSize: '0.7rem',
+                      marginBottom: '6px', 
+                      display: 'block',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px'
+                    }}>
+                      성별
+                    </IonLabel>
+                    <IonText style={{ 
+                      color: '#2d3748', 
+                      fontSize: '1.2rem', 
+                      fontWeight: '700', 
+                      display: 'block' 
+                    }}>
+                      {gender === '1' ? '남성' : gender === '0' ? '여성' : '-'}
+                    </IonText>
+                  </div>
+                </div>
+                
+                {/* 로그아웃 버튼 */}
+                <IonButton 
+                  expand="block" 
+                  onClick={async () => {
+                    const { getUserNo } = await import('../services/AuthService');
+                    const userNo = getUserNo();
+                    
+                    logout();
+                    setIsLoggedIn(false);
                     setShowUserInfo(false);
-                    // 모달 닫을 때 로그인 상태 재확인
-                    if (!isAuthenticated()) {
-                      setIsLoggedIn(false);
+                    setProfileImage(null);
+                    setUserId('');
+                    setAge('');
+                    setBmi('');
+                    setGender('0');
+                    
+                    // 현재 사용자의 데이터만 삭제
+                    if (userNo) {
+                      localStorage.removeItem(`profile_image_${userNo}`);
+                      localStorage.removeItem(`userAge_${userNo}`);
+                      localStorage.removeItem(`userBmi_${userNo}`);
+                      localStorage.removeItem(`userGender_${userNo}`);
                     }
                   }}
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    padding: '8px',
-                    cursor: 'pointer',
-                    borderRadius: '0',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    marginLeft: 'auto'
+                  style={{ 
+                    marginTop: '8px',
+                    '--background': 'linear-gradient(135deg, #b8d8e0 0%, #a0c8d4 100%)',
+                    '--background-hover': 'linear-gradient(135deg, #a8d0d8 0%, #98c0cc 100%)',
+                    '--border-radius': '16px',
+                    height: '52px',
+                    fontWeight: '700',
+                    fontSize: '1rem',
+                    boxShadow: '0 6px 20px rgba(184, 216, 224, 0.4)',
+                    letterSpacing: '0.3px'
                   }}
                 >
-                  <IonIcon icon={closeOutline} style={{ fontSize: '24px', color: '#66748D' }} />
-                </button>
+                  로그아웃
+                </IonButton>
               </div>
-              
-              <div style={{ marginBottom: '20px' }}>
-                <IonLabel style={{ color: '#66748D', fontWeight: '600', marginBottom: '8px', display: 'block' }}>나이</IonLabel>
-                <IonText style={{ color: '#66748D', fontSize: '1.1rem', display: 'block' }}>
-                  {age || '미입력'}
-                </IonText>
-              </div>
-              
-              <div style={{ marginBottom: '20px' }}>
-                <IonLabel style={{ color: '#66748D', fontWeight: '600', marginBottom: '8px', display: 'block' }}>BMI</IonLabel>
-                <IonText style={{ color: '#66748D', fontSize: '1.1rem', display: 'block' }}>
-                  {bmi || '미입력'}
-                </IonText>
-              </div>
-              
-              <div style={{ marginBottom: '20px' }}>
-                <IonLabel style={{ color: '#66748D', fontWeight: '600', marginBottom: '8px', display: 'block' }}>성별</IonLabel>
-                <IonText style={{ color: '#66748D', fontSize: '1.1rem', display: 'block' }}>
-                  {gender === '1' ? '남성' : gender === '0' ? '여성' : '미입력'}
-                </IonText>
-              </div>
-              
-              <IonButton 
-                expand="block" 
-                onClick={() => {
-                  logout();
-                  setIsLoggedIn(false);
-                  setShowUserInfo(false);
-                }}
-                style={{ marginTop: '20px' }}
-              >
-                로그아웃
-              </IonButton>
             </div>
           </div>
         )}
@@ -1425,7 +1989,13 @@ const Health_ios: React.FC = () => {
                         const value = e.detail.value!;
                         setAge(value);
                         try {
-                          localStorage.setItem('userAge', value || '');
+                          const { getUserNo } = await import('../services/AuthService');
+                          const userNo = getUserNo();
+                          if (userNo) {
+                            localStorage.setItem(`userAge_${userNo}`, value || '');
+                          } else {
+                            localStorage.setItem('userAge', value || '');
+                          }
                           if (platform === 'ios' && healthDataPlugin) {
                             try {
                               await healthDataPlugin.saveUserInfo({
@@ -1453,7 +2023,13 @@ const Health_ios: React.FC = () => {
                         const value = e.detail.value!;
                         setBmi(value);
                         try {
-                          localStorage.setItem('userBmi', value || '');
+                          const { getUserNo } = await import('../services/AuthService');
+                          const userNo = getUserNo();
+                          if (userNo) {
+                            localStorage.setItem(`userBmi_${userNo}`, value || '');
+                          } else {
+                            localStorage.setItem('userBmi', value || '');
+                          }
                           if (platform === 'ios' && healthDataPlugin) {
                             try {
                               await healthDataPlugin.saveUserInfo({
@@ -1480,7 +2056,13 @@ const Health_ios: React.FC = () => {
                         const value = e.detail.value;
                         setGender(value);
                         try {
-                          localStorage.setItem('userGender', value || '0');
+                          const { getUserNo } = await import('../services/AuthService');
+                          const userNo = getUserNo();
+                          if (userNo) {
+                            localStorage.setItem(`userGender_${userNo}`, value || '0');
+                          } else {
+                            localStorage.setItem('userGender', value || '0');
+                          }
                           if (platform === 'ios' && healthDataPlugin) {
                             try {
                               await healthDataPlugin.saveUserInfo({

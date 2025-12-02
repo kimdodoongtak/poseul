@@ -1472,29 +1472,78 @@ body.dark .health-ios-page .stars-background {
   align-items: center;
   justify-content: center;
   background-color: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .user-info-modal {
-  background: white;
-  border-radius: 24px;
-  padding: 24px;
+  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+  border-radius: 28px;
+  padding: 32px;
   width: 90%;
-  max-width: 400px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+  max-width: 420px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
   position: relative;
+  overflow: hidden;
+  animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 /* 사용자 정보 모달 닫힘 버튼 스타일 */
-.user-info-modal button {
+.user-info-modal button:not(.profile-camera-button) {
   border: none !important;
   border-radius: 0 !important;
   box-shadow: none !important;
   outline: none !important;
 }
 
-.user-info-modal button:focus {
+.user-info-modal button:not(.profile-camera-button):focus {
   outline: none !important;
   box-shadow: none !important;
+}
+
+/* 프로필 카메라 버튼 스타일 */
+.profile-camera-button,
+.user-info-modal .profile-camera-button,
+.user-info-modal button.profile-camera-button {
+  border: 2.5px solid white !important;
+  border-radius: 50% !important;
+  -webkit-border-radius: 50% !important;
+  -moz-border-radius: 50% !important;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25) !important;
+  -webkit-box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25) !important;
+  overflow: hidden !important;
+}
+
+/* iOS에서 프로필 카메라 버튼 스타일 */
+.platform-ios .profile-camera-button,
+.platform-ios .user-info-modal .profile-camera-button,
+.platform-ios .user-info-modal button.profile-camera-button {
+  border: 2.5px solid white !important;
+  border-radius: 50% !important;
+  -webkit-border-radius: 50% !important;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25) !important;
+  -webkit-box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25) !important;
+  overflow: hidden !important;
 }
 
 /* 다크모드 사용자 정보 모달 */

@@ -1,4 +1,5 @@
-from fastapi import FastAPI, Request, HTTPException, Depends, status
+from fastapi import FastAPI, Request, HTTPException, Depends, status, UploadFile, File
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -478,36 +479,35 @@ def load_model():
         logger.warning(f"⚠️ 모델 파일을 찾을 수 없습니다: {MODEL_FILE}")
         return None
     
+    # joblib을 먼저 시도 (더 안전하고 호환성이 좋음)
     try:
-        import pickle
-        
-        # pickle 파일에서 함수 로드 시도
-        with open(MODEL_FILE, 'rb') as f:
-            loaded_obj = pickle.load(f)
-        
-        # 함수인지 확인
-        if callable(loaded_obj) and not hasattr(loaded_obj, 'predict'):
-            # 함수를 모델로 사용
-            model = loaded_obj
-            model_loaded = True
-            logger.info("✅ 예측 함수 로드 성공! (pickle)")
-            return model
-        else:
-            # 모델 객체인 경우
-            model = loaded_obj
-            model_loaded = True
-            logger.info("✅ 모델 로드 성공! (pickle)")
-            return model
-    except Exception as e1:
-        logger.error(f"❌ pickle 로드 실패: {e1}")
+        model = joblib.load(MODEL_FILE)
+        model_loaded = True
+        logger.info("✅ 모델 로드 성공! (joblib)")
+        return model
+    except Exception as e2:
+        logger.warning(f"⚠️ joblib 로드 실패: {e2}")
+        # pickle로 시도 (호환성 문제가 있을 수 있음)
         try:
-            # joblib로 시도
-            model = joblib.load(MODEL_FILE)
-            model_loaded = True
-            logger.info("✅ 모델 로드 성공! (joblib)")
-            return model
-        except Exception as e2:
-            logger.error(f"❌ joblib 로드 실패: {e2}")
+            import pickle
+            with open(MODEL_FILE, 'rb') as f:
+                loaded_obj = pickle.load(f)
+            
+            # 함수인지 확인
+            if callable(loaded_obj) and not hasattr(loaded_obj, 'predict'):
+                # 함수를 모델로 사용
+                model = loaded_obj
+                model_loaded = True
+                logger.info("✅ 예측 함수 로드 성공! (pickle)")
+                return model
+            else:
+                # 모델 객체인 경우
+                model = loaded_obj
+                model_loaded = True
+                logger.info("✅ 모델 로드 성공! (pickle)")
+                return model
+        except Exception as e1:
+            logger.error(f"❌ pickle 로드 실패: {e1}")
             return None
 
 # 서버 시작 시 모델 로드
@@ -1170,6 +1170,60 @@ async def register(data: RegisterRequest):
             except Exception as e:
                 logger.warning(f"⚠️ new_skinthreshold 초기화 실패 (무시): {e}")
             
+            # room_threshold 테이블에 사용자별 기본값 저장 (처음 한 번만, predicted_results에서 사용자 정보 가져와서 계산)
+            try:
+                logger.info(f"🔍 room_threshold 초기화 시작 (user_no={user.no})")
+                
+                # predicted_results 테이블에서 사용자 정보 확인 (나이, BMI, 성별)
+                user_info_query = text("""
+                    SELECT age, bmi, gender 
+                    FROM predicted_results 
+                    WHERE age IS NOT NULL 
+                      AND bmi IS NOT NULL 
+                      AND gender IS NOT NULL
+                      AND user_no = :user_no
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                """)
+                user_info_result = conn.execute(user_info_query, {'user_no': user.no}).fetchone()
+                
+                if user_info_result:
+                    # 사용자 정보가 있으면 온도 범위 계산 및 저장
+                    age = int(user_info_result.age) if user_info_result.age else 30
+                    bmi = float(user_info_result.bmi) if user_info_result.bmi else 22.0
+                    gender_value = user_info_result.gender
+                    
+                    # gender 정규화 (0/1 또는 'M'/'F')
+                    if isinstance(gender_value, (int, float)):
+                        gender = 'M' if gender_value == 1.0 or gender_value == 1 else 'F'
+                    elif isinstance(gender_value, str):
+                        gender = 'M' if gender_value.upper() in ['M', 'MALE', '1'] else 'F'
+                    else:
+                        gender = 'M'  # 기본값
+                    
+                    logger.info(f"🔍 predicted_results에서 사용자 정보 확인: age={age}, bmi={bmi}, gender={gender}")
+                    
+                    # room_threshold 초기화 (이미 있으면 건너뜀)
+                    success, min_temp, max_temp = temperature_control_logic.initialize_user_temperature_range(
+                        engine=engine,
+                        age=age,
+                        bmi=bmi,
+                        gender=gender,
+                        force_update=False,  # 이미 있으면 업데이트하지 않음
+                        user_no=user.no
+                    )
+                    
+                    if success:
+                        logger.info(f"✅ room_threshold 초기화 완료: {min_temp}~{max_temp}°C, user_no={user.no}")
+                    else:
+                        logger.warning(f"⚠️ room_threshold 초기화 실패 또는 이미 존재함, user_no={user.no}")
+                else:
+                    logger.info(f"ℹ️ predicted_results에 사용자 정보가 없어 room_threshold 초기화 건너뜀 (건강 데이터 전송 후 자동 초기화됨), user_no={user.no}")
+            except Exception as e:
+                logger.warning(f"⚠️ room_threshold 초기화 실패 (무시): {e}")
+                import traceback
+                logger.debug(f"⚠️ room_threshold 초기화 실패 상세:\n{traceback.format_exc()}")
+            
             # JWT 토큰 생성
             access_token = create_access_token(data={"sub": str(user.no)})
             
@@ -1316,6 +1370,60 @@ async def login(data: LoginRequest):
                 import traceback
                 logger.error(f"❌ 초기화 실패 상세:\n{traceback.format_exc()}")
             
+            # room_threshold 테이블에 사용자별 기본값 저장 (처음 한 번만, predicted_results에서 사용자 정보 가져와서 계산)
+            try:
+                logger.info(f"🔍 room_threshold 초기화 시작 (user_no={user.no})")
+                
+                # predicted_results 테이블에서 사용자 정보 확인 (나이, BMI, 성별)
+                user_info_query = text("""
+                    SELECT age, bmi, gender 
+                    FROM predicted_results 
+                    WHERE age IS NOT NULL 
+                      AND bmi IS NOT NULL 
+                      AND gender IS NOT NULL
+                      AND user_no = :user_no
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                """)
+                user_info_result = conn.execute(user_info_query, {'user_no': user.no}).fetchone()
+                
+                if user_info_result:
+                    # 사용자 정보가 있으면 온도 범위 계산 및 저장
+                    age = int(user_info_result.age) if user_info_result.age else 30
+                    bmi = float(user_info_result.bmi) if user_info_result.bmi else 22.0
+                    gender_value = user_info_result.gender
+                    
+                    # gender 정규화 (0/1 또는 'M'/'F')
+                    if isinstance(gender_value, (int, float)):
+                        gender = 'M' if gender_value == 1.0 or gender_value == 1 else 'F'
+                    elif isinstance(gender_value, str):
+                        gender = 'M' if gender_value.upper() in ['M', 'MALE', '1'] else 'F'
+                    else:
+                        gender = 'M'  # 기본값
+                    
+                    logger.info(f"🔍 predicted_results에서 사용자 정보 확인: age={age}, bmi={bmi}, gender={gender}")
+                    
+                    # room_threshold 초기화 (이미 있으면 건너뜀)
+                    success, min_temp, max_temp = temperature_control_logic.initialize_user_temperature_range(
+                        engine=engine,
+                        age=age,
+                        bmi=bmi,
+                        gender=gender,
+                        force_update=False,  # 이미 있으면 업데이트하지 않음
+                        user_no=user.no
+                    )
+                    
+                    if success:
+                        logger.info(f"✅ room_threshold 초기화 완료: {min_temp}~{max_temp}°C, user_no={user.no}")
+                    else:
+                        logger.warning(f"⚠️ room_threshold 초기화 실패 또는 이미 존재함, user_no={user.no}")
+                else:
+                    logger.info(f"ℹ️ predicted_results에 사용자 정보가 없어 room_threshold 초기화 건너뜀 (건강 데이터 전송 후 자동 초기화됨), user_no={user.no}")
+            except Exception as e:
+                logger.warning(f"⚠️ room_threshold 초기화 실패 (무시): {e}")
+                import traceback
+                logger.debug(f"⚠️ room_threshold 초기화 실패 상세:\n{traceback.format_exc()}")
+            
             # JWT 토큰 생성
             access_token = create_access_token(data={"sub": str(user.no)})
             
@@ -1405,7 +1513,179 @@ async def get_current_user_info(user_no: int = Depends(verify_token)):
     """
     현재 로그인한 사용자 정보 조회 API
     """
-    return await get_current_user(user_no)
+    try:
+        with engine.connect() as conn:
+            # profile_image_url 컬럼 확인 및 추가
+            try:
+                column_check = text("""
+                    SELECT COLUMN_NAME 
+                    FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_SCHEMA = 'main' 
+                    AND TABLE_NAME = 'login'
+                    AND COLUMN_NAME = 'profile_image_url'
+                """)
+                has_profile_image = conn.execute(column_check).fetchone() is not None
+                if not has_profile_image:
+                    alter_query = text("ALTER TABLE login ADD COLUMN profile_image_url VARCHAR(500) DEFAULT NULL")
+                    conn.execute(alter_query)
+                    conn.commit()
+                    logger.info("✅ login 테이블에 profile_image_url 컬럼 추가 완료")
+            except Exception as e:
+                logger.warning(f"⚠️ profile_image_url 컬럼 확인/추가 실패: {str(e)}")
+            
+            query = text("""
+                SELECT no, id, COALESCE(profile_image_url, '') as profile_image_url 
+                FROM login WHERE no = :no
+            """)
+            result = conn.execute(query, {"no": user_no})
+            user = result.fetchone()
+            
+            if not user:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="사용자를 찾을 수 없습니다."
+                )
+            
+            return {
+                "user_no": user.no,
+                "id": user.id,
+                "profile_image_url": user.profile_image_url if user.profile_image_url else None
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 사용자 정보 조회 실패: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"사용자 정보 조회 실패: {str(e)}"
+        )
+
+@app.post("/auth/profile-image")
+async def upload_profile_image(
+    request: Request,
+    user_no: int = Depends(verify_token)
+):
+    """
+    프로필 이미지 업로드 API
+    """
+    try:
+        # multipart/form-data 파싱
+        form = await request.form()
+        if 'image' not in form:
+            raise HTTPException(status_code=400, detail="이미지 파일이 없습니다.")
+        
+        image = form['image']
+        
+        # 이미지 파일 검증
+        if not hasattr(image, 'content_type') or not image.content_type or not image.content_type.startswith('image/'):
+            raise HTTPException(status_code=400, detail="이미지 파일만 업로드 가능합니다.")
+        
+        # 파일 크기 제한 (5MB)
+        contents = await image.read()
+        if len(contents) > 5 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="이미지 크기는 5MB 이하여야 합니다.")
+        
+        # 파일 확장자 확인
+        file_ext = image.filename.split('.')[-1].lower() if image.filename else ''
+        if file_ext not in ['jpg', 'jpeg', 'png', 'gif', 'webp']:
+            raise HTTPException(status_code=400, detail="지원하지 않는 이미지 형식입니다.")
+        
+        # 프로필 이미지 저장 디렉토리 생성
+        profile_dir = os.path.join(BASE_DIR, 'profile_images')
+        os.makedirs(profile_dir, exist_ok=True)
+        
+        # 파일명 생성 (user_no_timestamp.ext)
+        import time
+        timestamp = int(time.time())
+        filename = f"{user_no}_{timestamp}.{file_ext}"
+        file_path = os.path.join(profile_dir, filename)
+        
+        # 파일 저장
+        with open(file_path, 'wb') as f:
+            f.write(contents)
+        
+        # DB에 URL 저장
+        profile_image_url = f"/profile-images/{filename}"
+        
+        with engine.connect() as conn:
+            # profile_image_url 컬럼 확인 및 추가
+            try:
+                column_check = text("""
+                    SELECT COLUMN_NAME 
+                    FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_SCHEMA = 'main' 
+                    AND TABLE_NAME = 'login'
+                    AND COLUMN_NAME = 'profile_image_url'
+                """)
+                has_profile_image = conn.execute(column_check).fetchone() is not None
+                if not has_profile_image:
+                    alter_query = text("ALTER TABLE login ADD COLUMN profile_image_url VARCHAR(500) DEFAULT NULL")
+                    conn.execute(alter_query)
+                    conn.commit()
+                    logger.info("✅ login 테이블에 profile_image_url 컬럼 추가 완료")
+            except Exception as e:
+                logger.warning(f"⚠️ profile_image_url 컬럼 확인/추가 실패: {str(e)}")
+            
+            # 기존 프로필 이미지 삭제 (있으면)
+            old_query = text("SELECT profile_image_url FROM login WHERE no = :no")
+            old_result = conn.execute(old_query, {"no": user_no}).fetchone()
+            if old_result and old_result.profile_image_url:
+                old_filename = old_result.profile_image_url.split('/')[-1]
+                old_file_path = os.path.join(profile_dir, old_filename)
+                try:
+                    if os.path.exists(old_file_path):
+                        os.remove(old_file_path)
+                except Exception as e:
+                    logger.warning(f"⚠️ 기존 프로필 이미지 삭제 실패: {str(e)}")
+            
+            # 새 프로필 이미지 URL 저장
+            update_query = text("UPDATE login SET profile_image_url = :url WHERE no = :no")
+            conn.execute(update_query, {"url": profile_image_url, "no": user_no})
+            conn.commit()
+        
+        logger.info(f"✅ 프로필 이미지 업로드 완료: user_no={user_no}, filename={filename}")
+        
+        return {
+            "success": True,
+            "profile_image_url": profile_image_url,
+            "message": "프로필 이미지가 업로드되었습니다."
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 프로필 이미지 업로드 실패: {str(e)}")
+        import traceback
+        logger.error(f"❌ 프로필 이미지 업로드 실패 상세:\n{traceback.format_exc()}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"프로필 이미지 업로드 실패: {str(e)}"
+        )
+
+@app.get("/profile-images/{filename}")
+async def get_profile_image(filename: str):
+    """
+    프로필 이미지 조회 API
+    """
+    try:
+        profile_dir = os.path.join(BASE_DIR, 'profile_images')
+        file_path = os.path.join(profile_dir, filename)
+        
+        # 보안: 파일명에 .. 또는 / 포함 시 차단
+        if '..' in filename or '/' in filename or '\\' in filename:
+            raise HTTPException(status_code=400, detail="잘못된 파일명입니다.")
+        
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail="이미지를 찾을 수 없습니다.")
+        
+        return FileResponse(file_path)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 프로필 이미지 조회 실패: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"프로필 이미지 조회 실패: {str(e)}"
+        )
 
 # ==================== Health Data API ====================
 
@@ -4179,27 +4459,83 @@ async def test_db_connection():
 # ==================== 차트 데이터 API ====================
 
 @app.get("/chart/heartrate")
-async def get_heartrate_chart_data(hours: int = 12):
+async def get_heartrate_chart_data(hours: int = 12, user_no: Optional[int] = Depends(verify_token_optional)):
     """
     심박수 차트 데이터 조회 (predicted_results 테이블에서)
+    - 사용자별 필터링 (user_no)
+    - 최근 12시간 이내 데이터만 조회 (created_at 기준)
     
     Args:
         hours: 조회할 시간 수 (기본값: 12시간)
+        user_no: 사용자 번호 (JWT 토큰에서 자동 추출)
     """
     try:
         with engine.connect() as conn:
-            # 최근 N개 데이터 조회 (no 기준으로 정렬)
-            query = text("""
-                SELECT 
-                    HR_mean as heartRate,
-                    no,
-                    predicted_skin_temp
-                FROM predicted_results
-                ORDER BY no DESC
-                LIMIT :limit
+            # 테이블 컬럼 확인
+            columns_check = text("""
+                SELECT COLUMN_NAME 
+                FROM INFORMATION_SCHEMA.COLUMNS 
+                WHERE TABLE_SCHEMA = 'main' 
+                AND TABLE_NAME = 'predicted_results'
             """)
+            columns_result = conn.execute(columns_check)
+            columns = [row.COLUMN_NAME for row in columns_result]
             
-            result = conn.execute(query, {"limit": hours})
+            has_created_at = 'created_at' in columns
+            has_user_no = 'user_no' in columns
+            
+            # WHERE 절 구성
+            where_clauses = []
+            query_params = {}
+            
+            # user_no 필터링 (로그인한 사용자만)
+            if has_user_no and user_no is not None:
+                where_clauses.append("user_no = :user_no")
+                query_params['user_no'] = user_no
+            elif user_no is not None:
+                logger.warning("⚠️ predicted_results 테이블에 user_no 컬럼이 없습니다. 모든 사용자 데이터를 반환합니다.")
+            
+            # 시간 필터링 (12시간 이내)
+            if has_created_at:
+                where_clauses.append("created_at >= DATE_SUB(NOW(), INTERVAL :hours HOUR)")
+                query_params['hours'] = hours
+            else:
+                logger.warning("⚠️ predicted_results 테이블에 created_at 컬럼이 없습니다. 시간 필터링을 건너뜁니다.")
+            
+            where_clause = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
+            
+            # ORDER BY 절 구성 (created_at 우선, 없으면 no 사용)
+            if has_created_at:
+                order_by = "ORDER BY created_at ASC"
+            elif 'no' in columns:
+                order_by = "ORDER BY no ASC"
+            else:
+                order_by = "ORDER BY 1 ASC"
+            
+            # 쿼리 실행
+            if has_created_at:
+                query = text(f"""
+                    SELECT 
+                        HR_mean as heartRate,
+                        no,
+                        predicted_skin_temp,
+                        created_at
+                    FROM predicted_results
+                    {where_clause}
+                    {order_by}
+                """)
+            else:
+                query = text(f"""
+                    SELECT 
+                        HR_mean as heartRate,
+                        no,
+                        predicted_skin_temp
+                    FROM predicted_results
+                    {where_clause}
+                    {order_by}
+                """)
+            
+            result = conn.execute(query, query_params)
             rows = result.fetchall()
             
             if not rows:
@@ -4210,32 +4546,52 @@ async def get_heartrate_chart_data(hours: int = 12):
                     "message": "데이터가 없습니다."
                 }
             
-            # 시간 순서대로 정렬 (no 오름차순)
-            data = []
-            for row in rows:
-                data.append({
-                    "heartRate": float(row.heartRate) if row.heartRate else 0,
-                    "no": int(row.no) if row.no else 0,
-                    "predicted_skin_temp": float(row.predicted_skin_temp) if row.predicted_skin_temp else 0
-                })
-            
-            # no 기준 오름차순 정렬
-            data.sort(key=lambda x: x["no"])
-            
-            # 시간 포맷팅 (1시간 간격으로 가정, 현재 시간부터 역산)
+            # 데이터 변환 (실제 시간 사용)
             chart_data = []
             now = datetime.now()
-            for i, item in enumerate(data):
-                # 현재 시간부터 역산하여 시간 계산
-                hours_ago = len(data) - 1 - i
-                target_time = now - timedelta(hours=hours_ago)
-                
-                chart_data.append({
-                    "timestamp": target_time.isoformat(),
-                    "hour": target_time.hour,
-                    "minute": target_time.minute,
-                    "heartRate": item["heartRate"]
-                })
+            for row in rows:
+                # created_at이 있으면 실제 시간 사용
+                if has_created_at:
+                    # created_at 컬럼 직접 접근
+                    created_at_value = getattr(row, 'created_at', None)
+                    if created_at_value:
+                        if isinstance(created_at_value, datetime):
+                            timestamp = created_at_value
+                        else:
+                            # 문자열인 경우 파싱
+                            try:
+                                timestamp = datetime.fromisoformat(str(created_at_value).replace('Z', '+00:00'))
+                            except:
+                                logger.warning(f"⚠️ created_at 파싱 실패, 스킵: {created_at_value}")
+                                continue
+                        
+                        # 시간 필터링 재확인 (서버 시간 기준)
+                        time_diff = (now - timestamp).total_seconds() / 3600  # 시간 단위
+                        if time_diff > hours:
+                            logger.debug(f"⚠️ 시간 필터링으로 제외: {timestamp} (현재로부터 {time_diff:.1f}시간 전)")
+                            continue
+                        
+                        chart_data.append({
+                            "timestamp": timestamp.isoformat(),
+                            "hour": timestamp.hour,
+                            "minute": timestamp.minute,
+                            "heartRate": float(row.heartRate) if row.heartRate else 0
+                        })
+                        logger.debug(f"✅ 차트 데이터 추가: {timestamp.strftime('%Y-%m-%d %H:%M:%S')}, HR={row.heartRate}")
+                    else:
+                        # created_at이 None이면 스킵
+                        logger.warning(f"⚠️ created_at이 None인 데이터 발견, 스킵: row.no={getattr(row, 'no', None)}")
+                        continue
+                else:
+                    # created_at 컬럼이 없으면 스킵 (시간 정보 없이 표시할 수 없음)
+                    logger.warning("⚠️ created_at 컬럼이 없어 시간 정보를 알 수 없습니다. 데이터를 스킵합니다.")
+                    continue
+            
+            logger.info(f"✅ 심박수 차트 데이터 조회 완료: {len(chart_data)}개 (user_no={user_no}, hours={hours})")
+            if chart_data:
+                first_time = chart_data[0]['timestamp']
+                last_time = chart_data[-1]['timestamp']
+                logger.info(f"📊 시간 범위: {first_time} ~ {last_time}")
             
             return {
                 "success": True,
@@ -4244,22 +4600,49 @@ async def get_heartrate_chart_data(hours: int = 12):
             }
     except Exception as e:
         logger.error(f"❌ 심박수 차트 데이터 조회 실패: {str(e)}")
+        import traceback
+        logger.error(f"❌ 심박수 차트 데이터 조회 실패 상세:\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"심박수 차트 데이터 조회 실패: {str(e)}")
 
 @app.get("/chart/temperature")
-async def get_temperature_chart_data(hours: int = 12):
+async def get_temperature_chart_data(hours: int = 12, user_no: Optional[int] = Depends(verify_token_optional)):
     """
     온도 차트 데이터 조회 (test_script_logs 테이블에서)
+    - 사용자별 필터링 (user_no)
+    - 최근 12시간 이내 데이터만 조회 (created_at 기준)
     
     Args:
         hours: 조회할 시간 수 (기본값: 12시간)
+        user_no: 사용자 번호 (JWT 토큰에서 자동 추출)
     """
     try:
         with engine.connect() as conn:
-            # 최근 N시간 데이터 조회 (created_at 기준)
-            cutoff_time = datetime.now() - timedelta(hours=hours)
+            # 테이블 컬럼 확인
+            columns_check = text("""
+                SELECT COLUMN_NAME 
+                FROM INFORMATION_SCHEMA.COLUMNS 
+                WHERE TABLE_SCHEMA = 'main' 
+                AND TABLE_NAME = 'test_script_logs'
+            """)
+            columns_result = conn.execute(columns_check)
+            columns = [row.COLUMN_NAME for row in columns_result]
             
-            query = text("""
+            has_user_no = 'user_no' in columns
+            
+            # WHERE 절 구성
+            where_clauses = ["created_at >= DATE_SUB(NOW(), INTERVAL :hours HOUR)"]
+            query_params = {'hours': hours}
+            
+            # user_no 필터링 (로그인한 사용자만)
+            if has_user_no and user_no is not None:
+                where_clauses.append("user_no = :user_no")
+                query_params['user_no'] = user_no
+            elif user_no is not None:
+                logger.warning("⚠️ test_script_logs 테이블에 user_no 컬럼이 없습니다. 모든 사용자 데이터를 반환합니다.")
+            
+            where_clause = "WHERE " + " AND ".join(where_clauses)
+            
+            query = text(f"""
                 SELECT 
                     classification_results,
                     majority_result,
@@ -4268,11 +4651,11 @@ async def get_temperature_chart_data(hours: int = 12):
                     new_temperature,
                     created_at
                 FROM test_script_logs
-                WHERE created_at >= :cutoff_time
+                {where_clause}
                 ORDER BY created_at ASC
             """)
             
-            result = conn.execute(query, {"cutoff_time": cutoff_time})
+            result = conn.execute(query, query_params)
             rows = result.fetchall()
             
             chart_data = []
@@ -4302,6 +4685,8 @@ async def get_temperature_chart_data(hours: int = 12):
                     "temperatureAction": row.temperature_action
                 })
             
+            logger.info(f"✅ 온도 차트 데이터 조회 완료: {len(chart_data)}개 (user_no={user_no}, hours={hours})")
+            
             return {
                 "success": True,
                 "data": chart_data,
@@ -4309,6 +4694,8 @@ async def get_temperature_chart_data(hours: int = 12):
             }
     except Exception as e:
         logger.error(f"❌ 온도 차트 데이터 조회 실패: {str(e)}")
+        import traceback
+        logger.error(f"❌ 온도 차트 데이터 조회 실패 상세:\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"온도 차트 데이터 조회 실패: {str(e)}")
 
 # ==================== Android App Health Monitoring ====================
