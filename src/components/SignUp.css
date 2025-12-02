@@ -18,10 +18,7 @@
   padding: 24px;
   max-width: 400px;
   width: 100%;
-  max-height: 90vh;
-  overflow-y: auto;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-  -webkit-overflow-scrolling: touch;
 }
 
 .sign-up-header {
@@ -43,9 +40,11 @@
 
 .sign-up-subtitle {
   color: #666;
-  font-size: 14px;
+  font-size: 15px;
   margin-bottom: 24px;
   display: block;
+  text-align: left;
+  line-height: 1.5;
 }
 
 .error-message {
@@ -87,6 +86,39 @@
 }
 
 .sign-up-input-item ion-input input::placeholder {
+  color: rgba(0, 0, 0, 0.4) !important;
+  font-size: 14px !important;
+  font-weight: normal !important;
+  letter-spacing: normal !important;
+}
+
+/* 비밀번호 입력 필드 스타일 - 마스킹 문자 표시 */
+.sign-up-input-item ion-input[type="password"] {
+  --color: #000000 !important;
+  --padding-start: 0 !important;
+  --padding-end: 0 !important;
+}
+
+.sign-up-input-item ion-input[type="password"]::part(native) {
+  color: #000000 !important;
+  --color: #000000 !important;
+}
+
+/* Shadow DOM 내부 input 요소 직접 스타일링 */
+.sign-up-input-item ion-input[type="password"] input,
+.sign-up-input-item ion-input[type="password"] input[type="password"] {
+  color: #000000 !important;
+  font-size: 22px !important;
+  font-weight: 700 !important;
+  letter-spacing: 5px !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  -webkit-text-security: disc !important;
+  text-security: disc !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Helvetica Neue", Arial, sans-serif !important;
+}
+
+.sign-up-input-item ion-input[type="password"] input::placeholder {
   color: rgba(0, 0, 0, 0.4) !important;
   font-size: 14px !important;
   font-weight: normal !important;
@@ -176,13 +208,92 @@ body.dark .sign-up-input-item ion-input[type="password"] input::placeholder {
 }
 
 .sign-up-button {
-  --background: linear-gradient(135deg, #90b0ef 0%, #a090ef 100%);
-  --background-hover: linear-gradient(135deg, #80a0df 0%, #9080df 100%);
-  --background-activated: linear-gradient(135deg, #80a0df 0%, #9080df 100%);
-  --color: white;
+  --background: linear-gradient(135deg, #C4A1C2 0%, #B0A0C0 50%, #9888A8 100%);
+  --background-hover: linear-gradient(135deg, #D4B1D2 0%, #C0B0D0 50%, #A898B8 100%);
+  --background-activated: linear-gradient(135deg, #D4B1D2 0%, #C0B0D0 50%, #A898B8 100%);
+  --color: #ffffff !important;
+  --border-radius: 14px !important;
+  --box-shadow: 0 6px 20px rgba(196, 161, 194, 0.5), 0 2px 8px rgba(152, 136, 168, 0.4), inset 0 2px 4px rgba(255, 255, 255, 0.2) !important;
   margin-top: 24px;
   margin-bottom: 16px;
-  box-shadow: 0 4px 12px rgba(144, 176, 239, 0.3);
+  border-radius: 14px !important;
+  font-weight: 600 !important;
+  height: 52px !important;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+.sign-up-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+  transition: left 0.5s ease;
+  z-index: 1;
+  pointer-events: none;
+  border-radius: 14px;
+}
+
+.sign-up-button:hover::before {
+  left: 100%;
+}
+
+.sign-up-button:hover {
+  transform: translateY(-3px) scale(1.02);
+  --box-shadow: 0 10px 28px rgba(196, 161, 194, 0.6), 0 4px 12px rgba(152, 136, 168, 0.5), inset 0 2px 4px rgba(255, 255, 255, 0.25) !important;
+}
+
+.sign-up-button:active {
+  transform: translateY(0);
+}
+
+.sign-up-button::part(native) {
+  border-radius: 14px !important;
+  background: linear-gradient(135deg, #C4A1C2 0%, #B0A0C0 50%, #9888A8 100%) !important;
+  box-shadow: 0 6px 20px rgba(196, 161, 194, 0.5), 0 2px 8px rgba(152, 136, 168, 0.4), inset 0 2px 4px rgba(255, 255, 255, 0.2) !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
+  overflow: hidden !important;
+  position: relative !important;
+}
+
+.sign-up-back-button {
+  --border-color: rgba(0, 0, 0, 0.15) !important;
+  --border-width: 1px !important;
+  --border-style: solid !important;
+  --color: #333 !important;
+  --background: #ffffff !important;
+  --background-hover: rgba(0, 0, 0, 0.05) !important;
+  --background-activated: rgba(0, 0, 0, 0.1) !important;
+  --border-radius: 12px !important;
+  font-weight: 500 !important;
+  border-radius: 12px !important;
+  overflow: hidden !important;
+}
+
+.sign-up-back-button::part(native) {
+  border: 1px solid rgba(0, 0, 0, 0.15) !important;
+  border-radius: 12px !important;
+  background: #ffffff !important;
+  overflow: hidden !important;
+}
+
+/* 다크모드 */
+body.dark .sign-up-back-button {
+  --color: #E0E5ED !important;
+  --border-color: rgba(124, 136, 169, 0.3) !important;
+  --background: rgba(58, 59, 69, 0.9) !important;
+  --background-hover: rgba(255, 255, 255, 0.1) !important;
+  --background-activated: rgba(255, 255, 255, 0.15) !important;
+}
+
+body.dark .sign-up-back-button::part(native) {
+  border: 1px solid rgba(124, 136, 169, 0.3) !important;
+  background: rgba(58, 59, 69, 0.9) !important;
 }
 
 /* PAT 토큰 버튼 스타일 - DeviceRegistration과 동일 */
@@ -230,6 +341,7 @@ body.dark .sign-up-input-item ion-input[type="password"] input::placeholder {
   font-weight: 700 !important;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2) !important;
   position: relative !important;
+  overflow: hidden !important;
 }
 
 .sign-up-container .pat-token-button:hover {
@@ -260,6 +372,18 @@ body.dark .sign-up-container {
   background: linear-gradient(135deg, #3A3B45 0%, #323340 50%, #2E2F3A 100%) !important;
   color: #E0E5ED !important;
   border: 1px solid rgba(124, 136, 169, 0.3) !important;
+}
+
+/* 다크모드 회원가입 버튼 */
+body.dark .sign-up-button {
+  --background: linear-gradient(135deg, #C4A1C2 0%, #B0A0C0 50%, #9888A8 100%) !important;
+  --background-hover: linear-gradient(135deg, #D4B1D2 0%, #C0B0D0 50%, #A898B8 100%) !important;
+  --background-activated: linear-gradient(135deg, #D4B1D2 0%, #C0B0D0 50%, #A898B8 100%) !important;
+}
+
+body.dark .sign-up-button::part(native) {
+  background: linear-gradient(135deg, #C4A1C2 0%, #B0A0C0 50%, #9888A8 100%) !important;
+  box-shadow: 0 6px 20px rgba(196, 161, 194, 0.6), 0 2px 8px rgba(152, 136, 168, 0.5), inset 0 2px 4px rgba(255, 255, 255, 0.15) !important;
 }
 
 body.dark .sign-up-title {

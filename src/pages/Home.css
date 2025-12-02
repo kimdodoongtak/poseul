@@ -38,13 +38,21 @@
 
 /* iOS에서 스크롤이 끝까지 내려가도록 마지막 컨테이너에 하단 패딩 추가 */
 .platform-ios .home-page .container:last-child {
-  padding-bottom: 40px !important;
-  margin-bottom: 40px !important;
+  padding-bottom: calc(36px + env(safe-area-inset-bottom, 0px)) !important;
+  margin-bottom: 0 !important;
 }
 
 /* iOS에서 마지막 카드에 하단 패딩 추가 */
 .platform-ios .home-page ion-card:last-of-type {
-  margin-bottom: 40px !important;
+  margin-bottom: calc(36px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+.platform-ios .home-page ion-content::part(scroll) {
+  padding-bottom: calc(36px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+.platform-ios .home-page ion-content .scroll-content {
+  padding-bottom: calc(36px + env(safe-area-inset-bottom, 0px)) !important;
 }
 
 /* Home 페이지의 Shadow DOM 내부 스타일 */
@@ -251,6 +259,7 @@
 /* 다크모드 카드 */
 .home-page .dark-mode-card {
   margin: 20px 0;
+  margin-top: 32px;
 }
 
 /* 다크모드 애니메이션 */

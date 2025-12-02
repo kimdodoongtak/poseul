@@ -22,7 +22,7 @@ import { refreshOutline } from 'ionicons/icons';
 import { useHistory } from 'react-router-dom';
 import { IotService, AirConditionerMode, FanSpeed, getIotServiceBaseUrl } from '../services';
 import { autoDetectServerUrl } from '../services/ServerConfig';
-import { isAuthenticated, getIotDeviceStatus } from '../services/AuthService';
+import { isAuthenticated, getIotDeviceStatus, getAuthHeaders } from '../services/AuthService';
 import './Iot.css';
 
 const Iot: React.FC = () => {
@@ -108,7 +108,9 @@ const Iot: React.FC = () => {
         // IotService의 baseUrl 가져오기
         const baseUrl = getIotServiceBaseUrl();
         console.log('🌡️ 온도 범위 조회 시작:', `${baseUrl}/temperature-range`);
-        const rangeResponse = await fetch(`${baseUrl}/temperature-range`);
+        const rangeResponse = await fetch(`${baseUrl}/temperature-range`, {
+          headers: getAuthHeaders()
+        });
         console.log('🌡️ 온도 범위 응답 상태:', rangeResponse.status);
         
         if (rangeResponse.ok) {

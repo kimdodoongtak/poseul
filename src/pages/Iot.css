@@ -15,14 +15,23 @@ ion-content.iot-page {
   -webkit-overflow-scrolling: touch !important;
 }
 
-/* iOS에서 하단 빈 공간 제거 */
+/* iOS에서 하단 여백 추가하여 끝까지 스크롤 가능하게 */
 .platform-ios .iot-page ion-content {
   --padding-bottom: 0 !important;
   padding-bottom: 0 !important;
 }
 
 .platform-ios .iot-page ion-content::part(scroll) {
-  padding-bottom: 0 !important;
+  padding-bottom: calc(36px + env(safe-area-inset-bottom, 0px)) !important;
+  margin-bottom: 0 !important;
+}
+
+.platform-ios .iot-page ion-content .scroll-content {
+  padding-bottom: calc(36px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+.platform-ios .iot-page .container:last-child {
+  padding-bottom: calc(36px + env(safe-area-inset-bottom, 0px)) !important;
   margin-bottom: 0 !important;
 }
 

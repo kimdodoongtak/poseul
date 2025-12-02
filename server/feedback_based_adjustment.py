@@ -13,19 +13,102 @@ from typing import Optional, Tuple
 import logging
 import json
 import os
+import threading
+try:
+    import fcntl  # Unix/Linux/Mac
+except ImportError:
+    fcntl = None  # Windows에서는 사용 불가
 
 logger = logging.getLogger(__name__)
 
 # 피드백 횟수 저장 파일 경로
 FEEDBACK_COUNT_FILE = os.path.join(os.path.dirname(__file__), 'feedback_count.json')
 
+# JSON 파일 잠금을 위한 딕셔너리 (파일별 Lock 객체)
+_json_file_locks = {}
+_json_file_locks_lock = threading.Lock()
 
-def get_last_prediction(engine) -> Optional[Tuple[float, str]]:
+def get_file_lock(file_path: str):
+    """
+    파일 경로별 Lock 객체 반환 (동시성 제어용)
+    """
+    with _json_file_locks_lock:
+        if file_path not in _json_file_locks:
+            _json_file_locks[file_path] = threading.Lock()
+        return _json_file_locks[file_path]
+
+def safe_json_read(file_path: str) -> dict:
+    """
+    파일 잠금을 사용하여 JSON 파일을 안전하게 읽기
+    
+    Returns:
+        JSON 파일 내용 (딕셔너리), 파일이 없거나 오류 시 빈 딕셔너리
+    """
+    lock = get_file_lock(file_path)
+    with lock:
+        try:
+            if os.path.exists(file_path):
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    # Unix/Linux/Mac에서 파일 레벨 잠금 추가
+                    if fcntl:
+                        fcntl.flock(f.fileno(), fcntl.LOCK_SH)  # 공유 잠금 (읽기)
+                    try:
+                        data = json.load(f)
+                    finally:
+                        if fcntl:
+                            fcntl.flock(f.fileno(), fcntl.LOCK_UN)  # 잠금 해제
+                    return data if isinstance(data, dict) else {}
+            return {}
+        except (json.JSONDecodeError, IOError, OSError) as e:
+            logger.warning(f"⚠️ JSON 파일 읽기 실패 ({file_path}): {str(e)}")
+            return {}
+
+def safe_json_write(file_path: str, data: dict):
+    """
+    파일 잠금을 사용하여 JSON 파일을 안전하게 쓰기
+    
+    Args:
+        file_path: 파일 경로
+        data: 저장할 데이터 (딕셔너리)
+    """
+    lock = get_file_lock(file_path)
+    with lock:
+        try:
+            # 임시 파일에 먼저 쓰기 (원자적 쓰기)
+            temp_file = file_path + '.tmp'
+            with open(temp_file, 'w', encoding='utf-8') as f:
+                # Unix/Linux/Mac에서 파일 레벨 잠금 추가
+                if fcntl:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_EX)  # 배타적 잠금 (쓰기)
+                try:
+                    json.dump(data, f, indent=2, ensure_ascii=False)
+                    f.flush()
+                    os.fsync(f.fileno())  # 디스크에 강제 쓰기
+                finally:
+                    if fcntl:
+                        fcntl.flock(f.fileno(), fcntl.LOCK_UN)  # 잠금 해제
+            
+            # 임시 파일을 원본 파일로 이동 (원자적 연산)
+            os.replace(temp_file, file_path)
+            logger.debug(f"✅ JSON 파일 저장 완료: {file_path}")
+        except (IOError, OSError) as e:
+            logger.error(f"❌ JSON 파일 쓰기 실패 ({file_path}): {str(e)}")
+            # 임시 파일 정리
+            try:
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
+            except:
+                pass
+            raise
+
+
+def get_last_prediction(engine, user_no: Optional[int] = None) -> Optional[Tuple[float, str]]:
     """
     피드백 받기 전 마지막 예측값 가져오기
     
     Args:
         engine: SQLAlchemy 엔진
+        user_no: 사용자 번호 (선택사항)
     
     Returns:
         (predicted_skin_temp, classification) 또는 None
@@ -54,14 +137,25 @@ def get_last_prediction(engine) -> Optional[Tuple[float, str]]:
             else:
                 logger.warning("⚠️ 정렬 컬럼을 찾을 수 없습니다. 최신 데이터가 아닐 수 있습니다.")
             
+            # user_no 필터링 추가
+            user_filter = ""
+            query_params = {}
+            if user_no is not None:
+                user_filter = "AND (user_no = :user_no OR user_no IS NULL)"
+                query_params['user_no'] = user_no
+            
             query = text(f"""
                 SELECT predicted_skin_temp 
                 FROM predicted_results 
                 WHERE predicted_skin_temp IS NOT NULL
+                  {user_filter}
                 {order_by_clause}
                 LIMIT 1
             """)
-            result = conn.execute(query).fetchone()
+            if query_params:
+                result = conn.execute(query, query_params).fetchone()
+            else:
+                result = conn.execute(query).fetchone()
             
             if result and result.predicted_skin_temp is not None:
                 predicted_temp = float(result.predicted_skin_temp)
@@ -79,12 +173,24 @@ def get_last_prediction(engine) -> Optional[Tuple[float, str]]:
                 max_skin = 35.6  # 기본값
                 
                 if has_new_table:
-                    threshold_query = text("""
+                    # user_no 필터링 추가
+                    threshold_user_filter = ""
+                    threshold_query_params = {}
+                    if user_no is not None:
+                        threshold_user_filter = "WHERE (user_no = :user_no OR user_no IS NULL)"
+                        threshold_query_params['user_no'] = user_no
+                    
+                    threshold_query = text(f"""
                         SELECT min_skinthreshold, max_skinthreshold 
                         FROM new_skinthreshold 
+                        {threshold_user_filter}
+                        ORDER BY no DESC
                         LIMIT 1
                     """)
-                    threshold_result = conn.execute(threshold_query).fetchone()
+                    if threshold_query_params:
+                        threshold_result = conn.execute(threshold_query, threshold_query_params).fetchone()
+                    else:
+                        threshold_result = conn.execute(threshold_query).fetchone()
                     
                     if threshold_result and threshold_result.min_skinthreshold is not None and threshold_result.max_skinthreshold is not None:
                         min_skin = float(threshold_result.min_skinthreshold)
@@ -106,14 +212,15 @@ def get_last_prediction(engine) -> Optional[Tuple[float, str]]:
         return None
 
 
-def get_current_thresholds(engine) -> Optional[Tuple[float, float, float, float]]:
+def get_current_thresholds(engine, user_no: Optional[int] = None) -> Optional[Tuple[float, float, float, float]]:
     """
-    현재 임계값 가져오기 (가장 최신 값)
+    현재 임계값 가져오기 (가장 최신 값, user_no 필터링)
     - room_threshold 테이블: 실내 온도 범위 (no 컬럼 기준 최신)
     - new_skinthreshold 테이블: 피부온도 범위 (no 컬럼 기준 최신)
     
     Args:
         engine: SQLAlchemy 엔진
+        user_no: 사용자 번호 (선택사항)
     
     Returns:
         (room_min_temp, room_max_temp, skin_min_temp, skin_max_temp) 또는 None
@@ -141,13 +248,24 @@ def get_current_thresholds(engine) -> Optional[Tuple[float, float, float, float]
             else:
                 logger.warning("⚠️ room_threshold 테이블에 정렬 컬럼을 찾을 수 없습니다. 최신 데이터가 아닐 수 있습니다.")
             
+            # user_no 필터링 추가
+            room_user_filter = ""
+            room_query_params = {}
+            if user_no is not None:
+                room_user_filter = "WHERE (user_no = :user_no OR user_no IS NULL)"
+                room_query_params['user_no'] = user_no
+            
             room_query = text(f"""
                 SELECT min_temp, max_temp 
                 FROM room_threshold 
+                {room_user_filter}
                 {room_order_by}
                 LIMIT 1
             """)
-            room_result = conn.execute(room_query).fetchone()
+            if room_query_params:
+                room_result = conn.execute(room_query, room_query_params).fetchone()
+            else:
+                room_result = conn.execute(room_query).fetchone()
             
             if not room_result or not room_result.min_temp or not room_result.max_temp:
                 return None
@@ -189,13 +307,24 @@ def get_current_thresholds(engine) -> Optional[Tuple[float, float, float, float]
                 else:
                     logger.warning("⚠️ new_skinthreshold 테이블에 정렬 컬럼을 찾을 수 없습니다. 최신 데이터가 아닐 수 있습니다.")
                 
+                # user_no 필터링 추가
+                skin_user_filter = ""
+                skin_query_params = {}
+                if user_no is not None:
+                    skin_user_filter = "WHERE (user_no = :user_no OR user_no IS NULL)"
+                    skin_query_params['user_no'] = user_no
+                
                 skin_query = text(f"""
                     SELECT min_skinthreshold, max_skinthreshold 
                     FROM new_skinthreshold 
+                    {skin_user_filter}
                     {skin_order_by}
                     LIMIT 1
                 """)
-                skin_result = conn.execute(skin_query).fetchone()
+                if skin_query_params:
+                    skin_result = conn.execute(skin_query, skin_query_params).fetchone()
+                else:
+                    skin_result = conn.execute(skin_query).fetchone()
                 
                 if skin_result and skin_result.min_skinthreshold is not None and skin_result.max_skinthreshold is not None:
                     skin_min = float(skin_result.min_skinthreshold)
@@ -252,7 +381,8 @@ def update_thresholds_in_db(
     room_min_temp: float,
     room_max_temp: float,
     skin_min_temp: float,
-    skin_max_temp: float
+    skin_max_temp: float,
+    user_no: Optional[int] = None
 ) -> bool:
     """
     조정된 임계값을 DB에 저장
@@ -285,15 +415,33 @@ def update_thresholds_in_db(
                 except Exception as e:
                     logger.warning(f"⚠️ AUTO_INCREMENT 리셋 실패 (무시): {e}")
             
+            # user_no 컬럼이 없으면 추가
+            try:
+                column_check = text("""
+                    SELECT COLUMN_NAME 
+                    FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_SCHEMA = 'main' 
+                    AND TABLE_NAME = 'room_threshold'
+                    AND COLUMN_NAME = 'user_no'
+                """)
+                has_user_no = conn.execute(column_check).fetchone() is not None
+                if not has_user_no:
+                    alter_query = text("ALTER TABLE room_threshold ADD COLUMN user_no INT DEFAULT NULL")
+                    conn.execute(alter_query)
+                    logger.info("✅ room_threshold 테이블에 user_no 컬럼 추가 완료")
+            except Exception as e:
+                logger.warning(f"⚠️ user_no 컬럼 확인/추가 실패: {str(e)}")
+            
             insert_room_query = text("""
-                INSERT INTO room_threshold (min_temp, max_temp)
-                VALUES (:room_min, :room_max)
+                INSERT INTO room_threshold (min_temp, max_temp, user_no)
+                VALUES (:room_min, :room_max, :user_no)
             """)
             conn.execute(insert_room_query, {
                 'room_min': room_min_temp,
-                'room_max': room_max_temp
+                'room_max': room_max_temp,
+                'user_no': user_no
             })
-            logger.info(f"✅ room_threshold 테이블에 임계값 저장: {room_min_temp}~{room_max_temp}°C")
+            logger.info(f"✅ room_threshold 테이블에 임계값 저장: {room_min_temp}~{room_max_temp}°C, user_no={user_no}")
             
             # 2. new_skinthreshold 테이블 확인 및 업데이트 (피부온도 범위)
             table_check = text("""
@@ -305,14 +453,15 @@ def update_thresholds_in_db(
             has_new_table = conn.execute(table_check).fetchone().count > 0
             
             if has_new_table:
-                # new_skinthreshold 테이블이 있으면 순차적으로 저장 (INSERT)
+                # new_skinthreshold 테이블이 있으면 순차적으로 저장 (INSERT, user_no 포함)
                 insert_skin_query = text("""
-                    INSERT INTO new_skinthreshold (min_skinthreshold, max_skinthreshold)
-                    VALUES (:skin_min, :skin_max)
+                    INSERT INTO new_skinthreshold (min_skinthreshold, max_skinthreshold, user_no)
+                    VALUES (:skin_min, :skin_max, :user_no)
                 """)
                 conn.execute(insert_skin_query, {
                     'skin_min': skin_min_temp,
-                    'skin_max': skin_max_temp
+                    'skin_max': skin_max_temp,
+                    'user_no': user_no
                 })
                 logger.info(f"✅ new_skinthreshold 테이블에 임계값 저장: {skin_min_temp}~{skin_max_temp}°C")
             else:
@@ -326,15 +475,33 @@ def update_thresholds_in_db(
                 """)
                 conn.execute(create_table_query)
                 
+                # user_no 컬럼이 없으면 추가
+                try:
+                    column_check = text("""
+                        SELECT COLUMN_NAME 
+                        FROM INFORMATION_SCHEMA.COLUMNS 
+                        WHERE TABLE_SCHEMA = 'main' 
+                        AND TABLE_NAME = 'new_skinthreshold'
+                        AND COLUMN_NAME = 'user_no'
+                    """)
+                    has_user_no = conn.execute(column_check).fetchone() is not None
+                    if not has_user_no:
+                        alter_query = text("ALTER TABLE new_skinthreshold ADD COLUMN user_no INT DEFAULT NULL")
+                        conn.execute(alter_query)
+                        logger.info("✅ new_skinthreshold 테이블에 user_no 컬럼 추가 완료")
+                except Exception as e:
+                    logger.warning(f"⚠️ user_no 컬럼 확인/추가 실패: {str(e)}")
+                
                 insert_skin_query = text("""
-                    INSERT INTO new_skinthreshold (min_skinthreshold, max_skinthreshold)
-                    VALUES (:skin_min, :skin_max)
+                    INSERT INTO new_skinthreshold (min_skinthreshold, max_skinthreshold, user_no)
+                    VALUES (:skin_min, :skin_max, :user_no)
                 """)
                 conn.execute(insert_skin_query, {
                     'skin_min': skin_min_temp,
-                    'skin_max': skin_max_temp
+                    'skin_max': skin_max_temp,
+                    'user_no': user_no
                 })
-                logger.info(f"✅ new_skinthreshold 테이블 생성 및 기본값 삽입: {skin_min_temp}~{skin_max_temp}°C")
+                logger.info(f"✅ new_skinthreshold 테이블 생성 및 기본값 삽입: {skin_min_temp}~{skin_max_temp}°C, user_no={user_no}")
             
             conn.commit()
             
@@ -349,75 +516,101 @@ def update_thresholds_in_db(
         return False
 
 
-def get_feedback_count(engine) -> int:
+def get_feedback_count(engine, user_no: Optional[int] = None) -> int:
     """
-    현재 피드백 기간의 피드백 횟수 가져오기
+    현재 피드백 기간의 피드백 횟수 가져오기 (user_no별로 분리)
     
     Args:
         engine: SQLAlchemy 엔진 (호환성을 위해 유지, 실제로는 사용 안 함)
+        user_no: 사용자 번호 (선택사항)
     
     Returns:
         피드백 횟수 (0부터 시작)
     """
     try:
-        if os.path.exists(FEEDBACK_COUNT_FILE):
-            with open(FEEDBACK_COUNT_FILE, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                return data.get('feedback_count', 0)
-        return 0
+        data = safe_json_read(FEEDBACK_COUNT_FILE)
+        if not data:
+            return 0
+        
+        # user_no별로 분리된 데이터 구조: {user_no: count}
+        if user_no is not None:
+            user_counts = data.get('user_counts', {})
+            return user_counts.get(str(user_no), 0)
+        else:
+            # user_no가 없으면 전체 합계 반환 (하위 호환성)
+            return data.get('feedback_count', 0)
     except Exception as e:
         logger.warning(f"⚠️ 피드백 횟수 조회 실패: {e}")
         return 0
 
 
-def reset_feedback_period(engine) -> Tuple[bool, Optional[str]]:
+def reset_feedback_period(engine, user_no: Optional[int] = None) -> Tuple[bool, Optional[str]]:
     """
-    피드백 기반 조정 기간을 재시작 (피드백 횟수 리셋)
+    피드백 기반 조정 기간을 재시작 (피드백 횟수 리셋, user_no별로 분리)
     
     Args:
         engine: SQLAlchemy 엔진 (호환성을 위해 유지, 실제로는 사용 안 함)
+        user_no: 사용자 번호 (선택사항)
     
     Returns:
         (성공 여부, 메시지)
     """
     try:
-        # 피드백 횟수를 0으로 리셋
-        data = {'feedback_count': 0, 'updated_at': datetime.now().isoformat()}
-        with open(FEEDBACK_COUNT_FILE, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        # 기존 데이터 읽기
+        data = safe_json_read(FEEDBACK_COUNT_FILE)
+        if not data:
+            data = {}
         
-        logger.info("✅ 피드백 기반 조정 기간 재시작: 피드백 횟수 리셋")
+        # user_no별로 분리된 데이터 구조
+        if 'user_counts' not in data:
+            data['user_counts'] = {}
+        
+        if user_no is not None:
+            # 특정 사용자의 피드백 횟수를 0으로 리셋
+            data['user_counts'][str(user_no)] = 0
+        else:
+            # user_no가 없으면 전체 리셋 (하위 호환성)
+            data['feedback_count'] = 0
+        
+        data['updated_at'] = datetime.now().isoformat()
+        
+        # 파일에 저장 (파일 잠금 사용)
+        safe_json_write(FEEDBACK_COUNT_FILE, data)
+        
+        logger.info(f"✅ 피드백 기반 조정 기간 재시작: 피드백 횟수 리셋, user_no={user_no}")
         return True, "피드백 기반 조정 기간이 재시작되었습니다. 다시 7번의 피드백을 받습니다."
     except Exception as e:
         logger.error(f"❌ 피드백 기간 재시작 실패: {e}")
         return False, f"피드백 기간 재시작 실패: {str(e)}"
 
 
-def is_within_feedback_limit(engine) -> bool:
+def is_within_feedback_limit(engine, user_no: Optional[int] = None) -> bool:
     """
     피드백 횟수가 7번 미만인지 확인
     
     Args:
         engine: SQLAlchemy 엔진
+        user_no: 사용자 번호 (선택사항, 향후 사용자별 분리 시 사용)
     
     Returns:
         True: 7번 미만 (계속 가능), False: 7번 이상 (종료)
     """
     try:
-        feedback_count = get_feedback_count(engine)
+        feedback_count = get_feedback_count(engine, user_no)
         return feedback_count < 7
     except Exception as e:
         logger.warning(f"⚠️ 피드백 횟수 확인 실패: {e}")
         return True  # 에러 시 계속 가능으로 간주
 
 
-def process_daily_feedback(engine, feedback: str) -> Tuple[bool, Optional[str]]:
+def process_daily_feedback(engine, feedback: str, user_no: Optional[int] = None) -> Tuple[bool, Optional[str]]:
     """
     피드백 처리 및 임계값 조정 (7번까지)
     
     Args:
         engine: SQLAlchemy 엔진
         feedback: 피드백 ('C': 춥다, 'H': 덥다, 'G': 쾌적)
+        user_no: 사용자 번호 (선택사항)
     
     Returns:
         (성공 여부, 메시지)
@@ -427,8 +620,8 @@ def process_daily_feedback(engine, feedback: str) -> Tuple[bool, Optional[str]]:
         if feedback not in ['C', 'H', 'G']:
             return False, f"유효하지 않은 피드백: {feedback} (C, H, G 중 하나여야 함)"
         
-        # 피드백 횟수 제한 확인 (7번까지)
-        feedback_count = get_feedback_count(engine)
+        # 피드백 횟수 제한 확인 (7번까지, user_no별로 분리)
+        feedback_count = get_feedback_count(engine, user_no)
         if feedback_count >= 7:
             logger.info(f"ℹ️ 피드백 기반 조정 기간이 지났습니다. (피드백 {feedback_count}번 완료)")
             return False, f"피드백 기반 조정은 7번까지만 가능합니다. (현재: {feedback_count}번)"
@@ -436,15 +629,15 @@ def process_daily_feedback(engine, feedback: str) -> Tuple[bool, Optional[str]]:
         logger.info(f"📝 피드백 수신: {feedback} ({'춥다' if feedback == 'C' else '덥다' if feedback == 'H' else '쾌적'})")
         
         # 2. 마지막 예측값 가져오기
-        prediction_result = get_last_prediction(engine)
+        prediction_result = get_last_prediction(engine, user_no)
         if not prediction_result:
             return False, "마지막 예측값이 없습니다."
         
         predicted_temp, prediction = prediction_result
-        logger.info(f"🔮 마지막 예측값: {predicted_temp}°C ({'춥다' if prediction == 'C' else '덥다' if prediction == 'H' else '쾌적'})")
+        logger.info(f"🔮 마지막 예측값: {predicted_temp}°C ({'춥다' if prediction == 'C' else '덥다' if prediction == 'H' else '쾌적'}), user_no={user_no}")
         
         # 3. 현재 임계값 가져오기
-        current_thresholds = get_current_thresholds(engine)
+        current_thresholds = get_current_thresholds(engine, user_no)
         if not current_thresholds:
             return False, "현재 실내온도 임계값을 가져올 수 없습니다."
         
@@ -477,10 +670,10 @@ def process_daily_feedback(engine, feedback: str) -> Tuple[bool, Optional[str]]:
             record_count = conn.execute(count_query).fetchone().count
             
             if record_count == 0:
-                # 레코드가 없으면 기본값으로 저장
+                # 레코드가 없으면 기본값으로 저장 (user_no는 NULL로 저장)
                 insert_query = text("""
-                    INSERT INTO new_skinthreshold (min_skinthreshold, max_skinthreshold)
-                    VALUES (34.6, 35.6)
+                    INSERT INTO new_skinthreshold (min_skinthreshold, max_skinthreshold, user_no)
+                    VALUES (34.6, 35.6, NULL)
                 """)
                 conn.execute(insert_query)
                 conn.commit()
@@ -515,19 +708,37 @@ def process_daily_feedback(engine, feedback: str) -> Tuple[bool, Optional[str]]:
             new_room_min,
             new_room_max,
             new_skin_min,
-            new_skin_max
+            new_skin_max,
+            user_no
         )
         
         if success:
             # 7. 피드백 횟수 증가
             try:
-                current_count = get_feedback_count(engine)
-                data = {
-                    'feedback_count': current_count + 1,
-                    'updated_at': datetime.now().isoformat()
-                }
-                with open(FEEDBACK_COUNT_FILE, 'w', encoding='utf-8') as f:
-                    json.dump(data, f, ensure_ascii=False, indent=2)
+                # 기존 데이터 읽기 (파일 잠금 사용)
+                data = safe_json_read(FEEDBACK_COUNT_FILE)
+                if not data:
+                    data = {}
+                
+                # user_no별로 분리된 데이터 구조
+                if 'user_counts' not in data:
+                    data['user_counts'] = {}
+                
+                if user_no is not None:
+                    # 특정 사용자의 피드백 횟수 증가
+                    user_counts = data.get('user_counts', {})
+                    current_user_count = user_counts.get(str(user_no), 0)
+                    user_counts[str(user_no)] = current_user_count + 1
+                    data['user_counts'] = user_counts
+                else:
+                    # user_no가 없으면 전체 카운트 증가 (하위 호환성)
+                    current_count = data.get('feedback_count', 0)
+                    data['feedback_count'] = current_count + 1
+                
+                data['updated_at'] = datetime.now().isoformat()
+                
+                # 파일에 저장 (파일 잠금 사용)
+                safe_json_write(FEEDBACK_COUNT_FILE, data)
             except Exception as e:
                 logger.warning(f"⚠️ 피드백 횟수 증가 실패: {e}")
             

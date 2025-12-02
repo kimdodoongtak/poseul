@@ -28,7 +28,7 @@ import { personOutline, closeOutline } from 'ionicons/icons';
 import SignIn from '../components/SignIn';
 import SignUp from '../components/SignUp';
 import './Health_ios.css';
-import { isAuthenticated, logout, getAuthHeaders } from '../services/AuthService';
+import { isAuthenticated, logout } from '../services/AuthService';
 import { getServerUrl, autoDetectServerUrl } from '../services/ServerConfig';
 import ChartDataService, {
   NightChartData,
@@ -593,7 +593,10 @@ const Health_ios: React.FC = () => {
       
       // 1. 심박수 데이터 가져오기 (predicted_results)
       try {
-        const heartRateResponse = await fetch(`${baseUrl}/chart/heartrate?hours=12`);
+        const { getAuthHeaders } = await import('../services/AuthService');
+        const heartRateResponse = await fetch(`${baseUrl}/chart/heartrate?hours=12`, {
+          headers: getAuthHeaders()
+        });
         if (heartRateResponse.ok) {
           const heartRateData = await heartRateResponse.json();
           if (heartRateData.success && heartRateData.data) {
@@ -616,7 +619,10 @@ const Health_ios: React.FC = () => {
       
       // 2. 온도 데이터 가져오기 (test_script_logs)
       try {
-        const tempResponse = await fetch(`${baseUrl}/chart/temperature?hours=12`);
+        const { getAuthHeaders } = await import('../services/AuthService');
+        const tempResponse = await fetch(`${baseUrl}/chart/temperature?hours=12`, {
+          headers: getAuthHeaders()
+        });
         if (tempResponse.ok) {
           const tempData = await tempResponse.json();
           if (tempData.success && tempData.data) {
@@ -818,12 +824,9 @@ const Health_ios: React.FC = () => {
 
       try {
         console.log('📡 서버 연결 시도:', serverURL);
-        
-        // Authorization 헤더 가져오기
-        const headers = {
-          'Content-Type': 'application/json',
-          ...getAuthHeaders(), // Authorization 헤더 추가
-        };
+        // 인증 헤더 추가
+        const { getAuthHeaders } = await import('../services/AuthService');
+        const headers = getAuthHeaders();
         
         const response = await fetch(serverURL, {
           method: 'POST',
@@ -877,14 +880,11 @@ const Health_ios: React.FC = () => {
             const retryController = new AbortController();
             const retryTimeoutId = setTimeout(() => retryController.abort(), 10000);
             try {
-              const retryHeaders = {
-                'Content-Type': 'application/json',
-                ...getAuthHeaders(), // Authorization 헤더 추가
-              };
-              
               const retryResponse = await fetch(newServerURL, {
                 method: 'POST',
-                headers: retryHeaders,
+                headers: {
+                  'Content-Type': 'application/json',
+                },
                 body: JSON.stringify(data),
                 signal: retryController.signal,
               });
@@ -926,14 +926,11 @@ const Health_ios: React.FC = () => {
             const retryController = new AbortController();
             const retryTimeoutId = setTimeout(() => retryController.abort(), 10000);
             try {
-              const retryHeaders = {
-                'Content-Type': 'application/json',
-                ...getAuthHeaders(), // Authorization 헤더 추가
-              };
-              
               const retryResponse = await fetch(newServerURL, {
                 method: 'POST',
-                headers: retryHeaders,
+                headers: {
+                  'Content-Type': 'application/json',
+                },
                 body: JSON.stringify(data),
                 signal: retryController.signal,
               });
