@@ -50,14 +50,14 @@ const TemperatureChart: React.FC<TemperatureChartProps> = ({ data }) => {
       }
       
       return {
-        time: `${point.hour}:${point.minute.toString().padStart(2, '0')}`,
-        hour: point.hour,
+    time: `${point.hour}:${point.minute.toString().padStart(2, '0')}`,
+    hour: point.hour,
         // predicted 제거 (분류 모드에서 불필요)
         categoryY: categoryYValue, // 분류 모드 y축 위치
-        current: point.currentTemperature,
-        target: point.targetTemperature,
-        category: point.temperatureCategory,
-        categoryColor: getCategoryColor(point.temperatureCategory),
+    current: point.currentTemperature,
+    target: point.targetTemperature,
+    category: point.temperatureCategory,
+    categoryColor: getCategoryColor(point.temperatureCategory),
       };
     });
 
@@ -220,8 +220,8 @@ const TemperatureChart: React.FC<TemperatureChartProps> = ({ data }) => {
     // 분류 모드: 고정 범위 (33~37도) - 실제 예측값 사용 안 함
     minTemp = 33;
     maxTemp = 37;
-    paddingTop = 0.2;
-    paddingBottom = 0.2;
+      paddingTop = 0.2;
+      paddingBottom = 0.2;
   }
 
   return (

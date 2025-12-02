@@ -19,6 +19,7 @@ import {
 } from '@ionic/react';
 import { ModelService, HealthDataService, IotService } from '../services';
 import { getServerUrl } from '../services/ServerConfig';
+import { getAuthHeaders } from '../services/AuthService';
 import './Home.css';
 
 const Home: React.FC = () => {
@@ -84,7 +85,9 @@ const Home: React.FC = () => {
   const fetchSleepModeStatus = async () => {
     try {
       const baseUrl = getServerUrl();
-      const response = await fetch(`${baseUrl}/sleep-mode/status`);
+      const response = await fetch(`${baseUrl}/sleep-mode/status`, {
+        headers: getAuthHeaders()
+      });
       if (response.ok) {
         const data = await response.json();
         setSleepModeActive(data.active);
@@ -111,11 +114,14 @@ const Home: React.FC = () => {
     setLoading(true);
     try {
       const baseUrl = getServerUrl();
+      const authHeaders = getAuthHeaders();
+      const headers = {
+        ...authHeaders,
+        'Content-Type': 'application/json',
+      };
       const response = await fetch(`${baseUrl}/sleep-mode/start`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: headers,
         body: JSON.stringify({ duration_hours: duration }),
       });
 
@@ -178,11 +184,14 @@ const Home: React.FC = () => {
     setLoading(true);
     try {
       const baseUrl = getServerUrl();
+      const authHeaders = getAuthHeaders();
+      const headers = {
+        ...authHeaders,
+        'Content-Type': 'application/json',
+      };
       const response = await fetch(`${baseUrl}/sleep-mode/stop`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: headers,
       });
 
       if (response.ok) {

@@ -107,8 +107,8 @@ def save_temperature_range_to_db(
     gender: str,
     min_temp: float,
     max_temp: float,
-    user_no: Optional[int] = None,
-    force_update: bool = False
+    force_update: bool = False,
+    user_no: Optional[int] = None
 ) -> bool:
     """
     계산된 온도 범위를 DB의 room_threshold 테이블에 저장
@@ -121,7 +121,6 @@ def save_temperature_range_to_db(
         gender: 성별
         min_temp: 최소 온도
         max_temp: 최대 온도
-        user_no: 사용자 번호 (선택사항)
         force_update: True면 기존 값이 있어도 강제 업데이트 (기본값: False)
     
     Returns:
@@ -139,100 +138,88 @@ def save_temperature_range_to_db(
             table_exists = conn.execute(table_check).fetchone().count > 0
             
             if not table_exists:
-                # 테이블이 없으면 생성 (user_no 컬럼 포함)
+                # 테이블이 없으면 생성 (min_temp, max_temp, user_no 포함)
                 create_table = text("""
                     CREATE TABLE IF NOT EXISTS room_threshold (
                         id INT AUTO_INCREMENT PRIMARY KEY,
                         min_temp DECIMAL(4,1) NOT NULL,
                         max_temp DECIMAL(4,1) NOT NULL,
-                        user_no INT DEFAULT NULL,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        user_no INT DEFAULT NULL
                     )
                 """)
                 conn.execute(create_table)
                 conn.commit()
-                logger.info("✅ room_threshold 테이블 생성 완료 (user_no 포함)")
-            
-            # user_no 컬럼이 없으면 추가
-            try:
-                column_check = text("""
-                    SELECT COUNT(*) as count
-                    FROM information_schema.columns 
-                    WHERE table_schema = 'main' 
-                    AND table_name = 'room_threshold'
-                    AND column_name = 'user_no'
-                """)
-                has_user_no = conn.execute(column_check).fetchone().count > 0
-                
-                if not has_user_no:
-                    alter_query = text("ALTER TABLE room_threshold ADD COLUMN user_no INT DEFAULT NULL")
-                    conn.execute(alter_query)
-                    conn.commit()
-                    logger.info("✅ room_threshold 테이블에 user_no 컬럼 추가 완료")
-            except Exception as e:
-                logger.warning(f"⚠️ user_no 컬럼 확인/추가 실패: {e}")
+                logger.info("✅ room_threshold 테이블 생성 완료 (min_temp, max_temp, user_no 포함)")
+            else:
+                # user_no 컬럼이 없으면 추가
+                try:
+                    column_check = text("""
+                        SELECT COLUMN_NAME 
+                        FROM INFORMATION_SCHEMA.COLUMNS 
+                        WHERE TABLE_SCHEMA = 'main' 
+                        AND TABLE_NAME = 'room_threshold'
+                        AND COLUMN_NAME = 'user_no'
+                    """)
+                    has_user_no = conn.execute(column_check).fetchone() is not None
+                    if not has_user_no:
+                        alter_query = text("ALTER TABLE room_threshold ADD COLUMN user_no INT DEFAULT NULL")
+                        conn.execute(alter_query)
+                        conn.commit()
+                        logger.info("✅ room_threshold 테이블에 user_no 컬럼 추가 완료")
+                except Exception as e:
+                    logger.warning(f"⚠️ user_no 컬럼 확인/추가 실패: {str(e)}")
             
             # 기존 레코드 확인 (user_no 필터링)
+            user_filter = ""
+            query_params = {}
             if user_no is not None:
-                check_existing = text("SELECT COUNT(*) as count FROM room_threshold WHERE user_no = :user_no")
-                existing_count = conn.execute(check_existing, {'user_no': user_no}).fetchone().count
+                user_filter = "WHERE (user_no = :user_no OR user_no IS NULL)"
+                query_params['user_no'] = user_no
+            
+            check_existing = text(f"SELECT COUNT(*) as count FROM room_threshold {user_filter}")
+            if query_params:
+                existing_count = conn.execute(check_existing, query_params).fetchone().count
             else:
-                check_existing = text("SELECT COUNT(*) as count FROM room_threshold WHERE user_no IS NULL")
                 existing_count = conn.execute(check_existing).fetchone().count
             
             if existing_count > 0:
                 # 이미 설정되어 있으면
                 if force_update:
-                    # 강제 업데이트 모드면 업데이트
-                    if user_no is not None:
-                        update_query = text("""
-                            UPDATE room_threshold 
-                            SET min_temp = :min_temp,
-                                max_temp = :max_temp,
-                                updated_at = NOW()
-                            WHERE user_no = :user_no
-                            LIMIT 1
-                        """)
-                        conn.execute(update_query, {
-                            'min_temp': min_temp,
-                            'max_temp': max_temp,
-                            'user_no': user_no
-                        })
-                    else:
-                        update_query = text("""
-                            UPDATE room_threshold 
-                            SET min_temp = :min_temp,
-                                max_temp = :max_temp,
-                                updated_at = NOW()
-                            WHERE user_no IS NULL
-                            LIMIT 1
-                        """)
-                        conn.execute(update_query, {
-                            'min_temp': min_temp,
-                            'max_temp': max_temp
-                        })
-                    logger.info(f"✅ room_threshold 강제 업데이트: {min_temp}~{max_temp}°C (user_no={user_no})")
+                    # 강제 업데이트 모드면 업데이트 (user_no 필터링)
+                    update_query = text(f"""
+                        UPDATE room_threshold 
+                        SET min_temp = :min_temp,
+                            max_temp = :max_temp,
+                            updated_at = NOW()
+                        {user_filter.replace('WHERE', 'WHERE') if user_filter else 'WHERE 1=1'}
+                        LIMIT 1
+                    """)
+                    update_params = {
+                        'min_temp': min_temp,
+                        'max_temp': max_temp
+                    }
+                    update_params.update(query_params)
+                    conn.execute(update_query, update_params)
+                    logger.info(f"✅ room_threshold 강제 업데이트: {min_temp}~{max_temp}°C, user_no={user_no}")
                     conn.commit()
                     return True
                 else:
-                    # 강제 업데이트가 아니면 기존 값 유지
-                    if user_no is not None:
-                        existing_query = text("SELECT min_temp, max_temp FROM room_threshold WHERE user_no = :user_no LIMIT 1")
-                        existing_result = conn.execute(existing_query, {'user_no': user_no}).fetchone()
+                    # 강제 업데이트가 아니면 기존 값 유지 (처음 한번만 적용)
+                    existing_query = text(f"SELECT min_temp, max_temp FROM room_threshold {user_filter} LIMIT 1")
+                    if query_params:
+                        existing_result = conn.execute(existing_query, query_params).fetchone()
                     else:
-                        existing_query = text("SELECT min_temp, max_temp FROM room_threshold WHERE user_no IS NULL LIMIT 1")
                         existing_result = conn.execute(existing_query).fetchone()
-                    
-                    if existing_result:
-                        logger.info(
-                            f"ℹ️ room_threshold가 이미 설정되어 있습니다. "
-                            f"기존 값 유지: {existing_result.min_temp}~{existing_result.max_temp}°C "
-                            f"(새로 계산된 값: {min_temp}~{max_temp}°C는 무시됨, user_no={user_no})"
-                        )
+                    logger.info(
+                        f"ℹ️ room_threshold가 이미 설정되어 있습니다. "
+                        f"기존 값 유지: {existing_result.min_temp}~{existing_result.max_temp}°C "
+                        f"(새로 계산된 값: {min_temp}~{max_temp}°C는 무시됨), user_no={user_no}"
+                    )
                     return True
             else:
-                # 새 레코드 삽입 (user_no 포함)
+                # 새 레코드 삽입 (처음 한번만, min_temp, max_temp, user_no 포함)
                 insert_query = text("""
                     INSERT INTO room_threshold 
                     (min_temp, max_temp, user_no)
@@ -244,7 +231,7 @@ def save_temperature_range_to_db(
                     'max_temp': max_temp,
                     'user_no': user_no
                 })
-                logger.info(f"✅ room_threshold 처음 저장: {min_temp}~{max_temp}°C (user_no={user_no})")
+                logger.info(f"✅ room_threshold 처음 저장: {min_temp}~{max_temp}°C, user_no={user_no}")
                 conn.commit()
                 return True
             
@@ -260,8 +247,8 @@ def initialize_user_temperature_range(
     gender: str,
     air_conditioner_available: bool = False,
     set_temperature_func = None,
-    user_no: Optional[int] = None,
-    force_update: bool = False
+    force_update: bool = False,
+    user_no: Optional[int] = None
 ) -> Tuple[bool, float, float]:
     """
     사용자 특성에 따라 쾌적 온도 범위를 계산하고 DB에 저장
@@ -274,15 +261,14 @@ def initialize_user_temperature_range(
         gender: 성별
         air_conditioner_available: 에어컨 모듈 사용 가능 여부
         set_temperature_func: 에어컨 온도 설정 함수 (선택사항)
-        user_no: 사용자 번호 (선택사항)
         force_update: True면 기존 값이 있어도 강제 업데이트 (기본값: False)
     
     Returns:
         (성공 여부, min_temp, max_temp) - 실제 저장된 온도 범위
     """
     try:
-        # 먼저 기존 값이 있는지 확인 (user_no 포함)
-        existing_range = get_temperature_range_from_db(engine, user_no=user_no)
+        # 먼저 기존 값이 있는지 확인 (user_no 필터링)
+        existing_range = get_temperature_range_from_db(engine, user_no)
         
         if existing_range is not None and not force_update:
             # 이미 설정되어 있고 강제 업데이트가 아니면 기존 값 반환
@@ -290,7 +276,7 @@ def initialize_user_temperature_range(
             logger.info(
                 f"ℹ️ 온도 범위가 이미 설정되어 있습니다. "
                 f"기존 값 사용: {min_temp}~{max_temp}°C "
-                f"(처음 한번만 적용 정책, user_no={user_no})"
+                f"(처음 한번만 적용 정책)"
             )
             return True, min_temp, max_temp
         
@@ -301,7 +287,7 @@ def initialize_user_temperature_range(
             gender=gender
         )
         
-        # DB에 저장 (처음 한번만 또는 강제 업데이트, user_no 포함)
+        # DB에 저장 (처음 한번만 또는 강제 업데이트)
         success = save_temperature_range_to_db(
             engine=engine,
             age=age,
@@ -309,8 +295,8 @@ def initialize_user_temperature_range(
             gender=gender,
             min_temp=min_temp,
             max_temp=max_temp,
-            user_no=user_no,
-            force_update=force_update
+            force_update=force_update,
+            user_no=user_no
         )
         
         if not success:
@@ -324,7 +310,7 @@ def initialize_user_temperature_range(
                     # 목표 온도는 범위의 중간값
                     target_temp = (min_temp + max_temp) / 2.0
                     set_temperature_func(target_temp=target_temp, unit='C')
-                    logger.info(f"✅ 에어컨 초기 온도 설정: {target_temp}°C (user_no={user_no})")
+                    logger.info(f"✅ 에어컨 초기 온도 설정: {target_temp}°C")
                 except Exception as e:
                     logger.warning(f"⚠️ 에어컨 초기 온도 설정 실패: {e}")
         
@@ -341,17 +327,16 @@ def get_temperature_range_from_db(engine, user_no: Optional[int] = None) -> Opti
     
     우선순위:
     1. 사용자가 수동으로 설정한 임계값 캐시 (12시간 유효) - temperature_threshold_cache
-    2. DB의 room_threshold 테이블에서 가져오기 (user_no 필터링)
+    2. DB의 room_threshold 테이블에서 가져오기
     
     Args:
         engine: SQLAlchemy 엔진
-        user_no: 사용자 번호 (선택사항)
     
     Returns:
         (min_temp, max_temp) 또는 None
     """
     try:
-        # 1. 먼저 캐시에서 확인 (사용자가 수동으로 설정한 임계값)
+        # 1. 먼저 캐시에서 확인 (사용자가 수동으로 설정한 임계값, user_no별 분리)
         try:
             from temperature_threshold_cache import get_temperature_threshold
             cached_threshold = get_temperature_threshold(user_no)
@@ -371,14 +356,14 @@ def get_temperature_range_from_db(engine, user_no: Optional[int] = None) -> Opti
                     logger.info("=" * 60)
                     return float(min_temp), float(max_temp)
                 else:
-                    logger.debug("ℹ️ 캐시에 임계값이 있지만 min_temp 또는 max_temp가 없습니다.")
+                    logger.debug(f"ℹ️ 캐시에 임계값이 있지만 min_temp 또는 max_temp가 없습니다. (user_no={user_no})")
         except ImportError as e:
             logger.warning(f"⚠️ temperature_threshold_cache 모듈 import 실패: {e}")
         except Exception as e:
             logger.warning(f"⚠️ 캐시 조회 중 오류 발생 (DB에서 가져오기로 전환): {e}")
         
-        # 2. 캐시가 없거나 만료되었으면 DB에서 가져오기 (user_no 필터링)
-        logger.debug(f"ℹ️ 캐시된 임계값이 없어 DB에서 가져옵니다. (user_no={user_no})")
+        # 2. 캐시가 없거나 만료되었으면 DB에서 가져오기
+        logger.debug("ℹ️ 캐시된 임계값이 없어 DB에서 가져옵니다.")
         with engine.connect() as conn:
             # 컬럼 확인하여 최신 데이터 가져오기
             try:
@@ -402,24 +387,29 @@ def get_temperature_range_from_db(engine, user_no: Optional[int] = None) -> Opti
                     logger.debug("ℹ️ room_threshold 테이블에 정렬 컬럼을 찾을 수 없습니다. 첫 번째 행을 사용합니다.")
                 
                 # user_no 필터링 추가
+                user_filter = ""
+                query_params = {}
                 if user_no is not None:
-                    query = text(f"SELECT min_temp, max_temp FROM room_threshold WHERE user_no = :user_no {order_by} LIMIT 1")
-                    result = conn.execute(query, {'user_no': user_no}).fetchone()
+                    user_filter = "WHERE (user_no = :user_no OR user_no IS NULL)"
+                    query_params['user_no'] = user_no
+                
+                query = text(f"SELECT min_temp, max_temp FROM room_threshold {user_filter} {order_by} LIMIT 1")
+                if query_params:
+                    result = conn.execute(query, query_params).fetchone()
                 else:
-                    query = text(f"SELECT min_temp, max_temp FROM room_threshold WHERE user_no IS NULL {order_by} LIMIT 1")
                     result = conn.execute(query).fetchone()
                 
                 if result and result.min_temp is not None and result.max_temp is not None:
                     min_temp = float(result.min_temp)
                     max_temp = float(result.max_temp)
                     logger.info("=" * 60)
-                    logger.info(f"📋 [자동 조절] DB에서 기본 온도 범위 사용 (user_no={user_no})")
+                    logger.info(f"📋 [자동 조절] DB에서 기본 온도 범위 사용")
                     logger.info(f"   임계값 범위: {min_temp}~{max_temp}°C")
                     logger.info(f"   (캐시된 수동 조절 임계값이 없거나 만료됨)")
                     logger.info("=" * 60)
                     return min_temp, max_temp
                 else:
-                    logger.warning(f"⚠️ room_threshold 테이블에 온도 범위가 없습니다. (user_no={user_no})")
+                    logger.warning("⚠️ room_threshold 테이블에 온도 범위가 없습니다.")
                     return None
             except Exception as e:
                 logger.error(f"❌ room_threshold 테이블 조회 중 오류: {e}")

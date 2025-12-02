@@ -53,8 +53,15 @@ export async function register(data: RegisterData): Promise<AuthResponse> {
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ detail: '회원가입에 실패했습니다.' }));
-      throw new Error(errorData.detail || '회원가입에 실패했습니다.');
+      let errorMessage = '회원가입에 실패했습니다.';
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.detail || errorData.message || errorData.error || JSON.stringify(errorData) || errorMessage;
+      } catch (parseError) {
+        // JSON 파싱 실패 시 상태 코드로 메시지 생성
+        errorMessage = `회원가입 실패 (상태 코드: ${response.status})`;
+      }
+      throw new Error(errorMessage);
     }
 
     const result: AuthResponse = await response.json();
@@ -79,18 +86,46 @@ export async function register(data: RegisterData): Promise<AuthResponse> {
  * 로그인
  */
 export async function login(data: LoginData): Promise<AuthResponse> {
-  const baseUrl = getServerUrl();
+  let baseUrl = getServerUrl();
+  
+  console.log('🔵 login - 서버 URL:', baseUrl);
+  
+  // iOS에서 localhost이거나 빈 문자열인 경우 자동 감지
+  if (!baseUrl || baseUrl === '' || (baseUrl.includes('localhost') && typeof window !== 'undefined')) {
+    try {
+      const { Capacitor } = await import('@capacitor/core');
+      if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios') {
+        console.log('⚠️ login - iOS에서 localhost 감지 또는 URL 없음, 자동 감지 시도');
+        const { autoDetectServerUrl } = await import('./ServerConfig');
+        const detectedUrl = await autoDetectServerUrl();
+        if (detectedUrl && detectedUrl !== '') {
+          baseUrl = detectedUrl;
+          console.log('✅ login - 자동 감지된 서버 URL:', baseUrl);
+        } else {
+          throw new Error('서버 URL 자동 감지 실패');
+        }
+      }
+    } catch (e) {
+      console.error('❌ login - 자동 감지 실패:', e);
+    }
+  }
   
   if (!baseUrl) {
+    console.error('❌ login - 서버 URL을 찾을 수 없음');
     throw new Error('서버 URL을 찾을 수 없습니다. 서버가 실행 중인지 확인해주세요.');
   }
+  
+  const loginUrl = `${baseUrl}/auth/login`;
+  console.log('🔵 login - 요청 URL:', loginUrl);
+  console.log('🔵 login - 요청 데이터:', { id: data.id, password: '***' });
   
   try {
     // 타임아웃 설정 (10초)
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
     
-    const response = await fetch(`${baseUrl}/auth/login`, {
+    console.log('🔵 login - fetch 시작...');
+    const response = await fetch(loginUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -100,9 +135,20 @@ export async function login(data: LoginData): Promise<AuthResponse> {
     });
 
     clearTimeout(timeoutId);
+    console.log('🔵 login - 응답 받음:', response.status, response.statusText);
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ detail: '로그인에 실패했습니다.' }));
+      console.error('❌ login - 응답 실패:', response.status, response.statusText);
+      let errorData;
+      try {
+        errorData = await response.json();
+        console.error('❌ login - 에러 데이터:', errorData);
+      } catch (parseError) {
+        console.error('❌ login - JSON 파싱 실패:', parseError);
+        const text = await response.text().catch(() => '');
+        console.error('❌ login - 응답 텍스트:', text);
+        errorData = { detail: `로그인에 실패했습니다. (상태 코드: ${response.status})` };
+      }
       throw new Error(errorData.detail || '로그인에 실패했습니다.');
     }
 
@@ -170,12 +216,71 @@ export async function login(data: LoginData): Promise<AuthResponse> {
     console.log('✅ login - 토큰 저장 확인 완료');
     return result;
   } catch (error: any) {
-    // 네트워크 오류 처리
-    if (error.name === 'AbortError') {
-      throw new Error('요청 시간이 초과되었습니다. 서버가 응답하지 않거나 네트워크 연결이 느립니다.');
+    console.error('❌ login - 에러 발생:', error);
+    console.error('❌ login - 에러 이름:', error.name);
+    console.error('❌ login - 에러 메시지:', error.message);
+    if (error.stack) {
+      console.error('❌ login - 에러 스택:', error.stack);
     }
-    if (error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError')) {
-      throw new Error('서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요.');
+    console.error('❌ login - 시도한 URL:', `${baseUrl}/auth/login`);
+    
+    // 네트워크 오류 처리 - 자동 감지 재시도
+    if (error.name === 'AbortError' || error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError') || error.message?.includes('load failed')) {
+      console.error('❌ login - 네트워크 연결 실패, 자동 감지 재시도:', baseUrl);
+      
+      // iOS에서 자동 감지 재시도
+      try {
+        const { Capacitor } = await import('@capacitor/core');
+        if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios') {
+          console.log('🔄 login - iOS에서 서버 URL 자동 감지 재시도...');
+          const { autoDetectServerUrl } = await import('./ServerConfig');
+          const detectedUrl = await autoDetectServerUrl();
+          
+          if (detectedUrl && detectedUrl !== '' && detectedUrl !== baseUrl) {
+            console.log('✅ login - 새로운 서버 URL 감지됨, 재시도:', detectedUrl);
+            baseUrl = detectedUrl;
+            
+            // 재시도
+            const retryController = new AbortController();
+            const retryTimeoutId = setTimeout(() => retryController.abort(), 10000);
+            
+            const retryResponse = await fetch(`${baseUrl}/auth/login`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(data),
+              signal: retryController.signal,
+            });
+            
+            clearTimeout(retryTimeoutId);
+            
+            if (!retryResponse.ok) {
+              const errorData = await retryResponse.json().catch(() => ({ detail: '로그인에 실패했습니다.' }));
+              throw new Error(errorData.detail || '로그인에 실패했습니다.');
+            }
+            
+            const result: AuthResponse = await retryResponse.json();
+            console.log('✅ login - 재시도 성공, 토큰 저장 시작');
+            
+            // 토큰 저장 로직 (기존 코드와 동일)
+            if (!result || !result.access_token) {
+              throw new Error('서버 응답에 토큰이 포함되지 않았습니다.');
+            }
+            
+            saveAuthData(result);
+            return result;
+          }
+        }
+      } catch (retryError: any) {
+        console.error('❌ login - 자동 감지 재시도 실패:', retryError);
+      }
+      
+      // 자동 감지 실패 시 원래 에러 메시지
+      if (error.name === 'AbortError') {
+        throw new Error('요청 시간이 초과되었습니다. 서버가 응답하지 않거나 네트워크 연결이 느립니다.');
+      }
+      throw new Error(`서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요. (URL: ${baseUrl})`);
     }
     throw error;
   }

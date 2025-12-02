@@ -9,7 +9,7 @@ import {
   IonText,
   IonSpinner,
 } from '@ionic/react';
-import { arrowForwardOutline, closeOutline, openOutline, checkmarkCircleOutline } from 'ionicons/icons';
+import { arrowForwardOutline, closeOutline, openOutline, checkmarkCircleOutline, arrowBackOutline } from 'ionicons/icons';
 import { register } from '../services/AuthService';
 import { getServerUrl, autoDetectServerUrl } from '../services/ServerConfig';
 import IotService from '../services/IotService';
@@ -21,6 +21,7 @@ interface SignUpProps {
 }
 
 const SignUp: React.FC<SignUpProps> = ({ onClose, onSuccess }) => {
+  const [step, setStep] = useState<1 | 2>(1); // 1: 회원가입 정보, 2: IoT 등록
   const [id, setId] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -134,7 +135,7 @@ const SignUp: React.FC<SignUpProps> = ({ onClose, onSuccess }) => {
     }
   };
 
-  const handleSignUp = async () => {
+  const handleNext = () => {
     // 입력 검증
     if (!id.trim()) {
       setError('아이디를 입력해주세요.');
@@ -157,6 +158,19 @@ const SignUp: React.FC<SignUpProps> = ({ onClose, onSuccess }) => {
     }
 
     setError('');
+    setStep(2);
+  };
+
+  const handleBack = () => {
+    setStep(1);
+    setIotError('');
+    setPatToken('');
+    setIsValidPatToken(false);
+  };
+
+  const handleSignUp = async () => {
+    setError('');
+    setIotError('');
     setIsLoading(true);
 
     try {
@@ -193,6 +207,7 @@ const SignUp: React.FC<SignUpProps> = ({ onClose, onSuccess }) => {
       
       setTimeout(() => {
         onClose();
+        setStep(1);
         setId('');
         setPassword('');
         setConfirmPassword('');
@@ -211,161 +226,175 @@ const SignUp: React.FC<SignUpProps> = ({ onClose, onSuccess }) => {
     <div className="sign-up-modal">
       <div className="sign-up-container">
         <div className="sign-up-header">
-          <IonText className="sign-up-title">회원가입</IonText>
+          <IonText className="sign-up-title">
+            {step === 1 ? '회원가입' : 'IoT 기기 등록'}
+          </IonText>
           <IonButton fill="clear" onClick={onClose} className="close-button">
             <IonIcon icon={closeOutline} />
           </IonButton>
         </div>
 
-        <IonText className="sign-up-subtitle">
-          포술 앱에 가입하여 건강 데이터를 관리하고 IoT 기기를 제어하세요.
-        </IonText>
+        {step === 1 ? (
+          <>
+            <IonText className="sign-up-subtitle">
+              포술 앱에 가입하여 건강 데이터를 관리하고<br />
+              IoT 기기를 제어하세요.
+            </IonText>
 
-        {error && (
-          <IonText color="danger" className="error-message">
-            {error}
-          </IonText>
-        )}
+            {error && (
+              <IonText color="danger" className="error-message">
+                {error}
+              </IonText>
+            )}
 
-        <IonItem className="sign-up-input-item">
-          <IonLabel position="stacked">아이디</IonLabel>
-          <IonInput
-            type="text"
-            autocomplete="username"
-            inputmode="text"
-            enterkeyhint="next"
-            value={id}
-            onIonInput={(e) => setId(e.detail.value!)}
-            placeholder="아이디를 입력하세요"
-            disabled={isLoading}
-          />
-        </IonItem>
+            <IonItem className="sign-up-input-item">
+              <IonLabel position="stacked">아이디</IonLabel>
+              <IonInput
+                type="text"
+                autocomplete="username"
+                inputmode="text"
+                enterkeyhint="next"
+                value={id}
+                onIonInput={(e) => setId(e.detail.value!)}
+                placeholder="아이디를 입력하세요"
+                disabled={isLoading}
+              />
+            </IonItem>
 
-        <IonItem className="sign-up-input-item">
-          <IonLabel position="stacked">비밀번호</IonLabel>
-          <IonInput
-            type="password"
-            autocomplete="new-password"
-            enterkeyhint="next"
-            value={password}
-            onIonInput={(e) => setPassword(e.detail.value!)}
-            placeholder="비밀번호를 입력하세요 (최소 4자)"
-            disabled={isLoading}
-            clearOnEdit={false}
-          />
-        </IonItem>
+            <IonItem className="sign-up-input-item">
+              <IonLabel position="stacked">비밀번호</IonLabel>
+              <IonInput
+                type="password"
+                autocomplete="new-password"
+                enterkeyhint="next"
+                value={password}
+                onIonInput={(e) => setPassword(e.detail.value!)}
+                placeholder="비밀번호를 입력하세요 (최소 4자)"
+                disabled={isLoading}
+                clearOnEdit={false}
+              />
+            </IonItem>
 
-        <IonItem className="sign-up-input-item">
-          <IonLabel position="stacked">비밀번호 확인</IonLabel>
-          <IonInput
-            type="password"
-            autocomplete="new-password"
-            enterkeyhint="done"
-            value={confirmPassword}
-            onIonInput={(e) => setConfirmPassword(e.detail.value!)}
-            placeholder="비밀번호를 다시 입력하세요"
-            disabled={isLoading}
-            clearOnEdit={false}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                handleSignUp();
-              }
-            }}
-          />
-        </IonItem>
+            <IonItem className="sign-up-input-item">
+              <IonLabel position="stacked">비밀번호 확인</IonLabel>
+              <IonInput
+                type="password"
+                autocomplete="new-password"
+                enterkeyhint="done"
+                value={confirmPassword}
+                onIonInput={(e) => setConfirmPassword(e.detail.value!)}
+                placeholder="비밀번호를 다시 입력하세요"
+                disabled={isLoading}
+                clearOnEdit={false}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleNext();
+                  }
+                }}
+              />
+            </IonItem>
 
-        {/* 구분선 */}
-        <div style={{ 
-          margin: '24px 0', 
-          display: 'flex', 
-          alignItems: 'center',
-          width: '100%'
-        }}>
-          <div style={{ 
-            flex: 1, 
-            height: '1px', 
-            backgroundColor: 'rgba(0, 0, 0, 0.1)' 
-          }}></div>
-        </div>
-
-        {/* IoT 기기 등록 섹션 */}
-        <IonText style={{ 
-          fontSize: '16px', 
-          fontWeight: '600', 
-          color: '#66748D',
-          display: 'block',
-          marginBottom: '16px'
-        }}>
-          IoT 기기 등록 (선택)
-        </IonText>
-
-        <IonText style={{ 
-          fontSize: '14px', 
-          color: '#666',
-          display: 'block',
-          marginBottom: '16px'
-        }}>
-          PAT 토큰을 입력하면 자동으로 등록된 에어컨을 찾아 연결합니다.
-        </IonText>
-
-        {/* PAT 토큰 만들기 버튼 */}
-        <IonButton
-          expand="block"
-          fill="outline"
-          onClick={handleOpenPatSite}
-          disabled={isLoading || iotLoading}
-          className="pat-token-button"
-          style={{ 
-            marginBottom: '16px'
-          }}
-        >
-          <IonIcon icon={openOutline} slot="start" />
-          PAT 토큰 만들러 가기
-        </IonButton>
-
-        {/* PAT 토큰 입력 */}
-        <IonItem className="sign-up-input-item">
-          <IonLabel position="stacked">PAT 토큰</IonLabel>
-          <IonInput
-            type="text"
-            value={patToken}
-            placeholder="thinqpat_..."
-            onIonInput={(e) => handlePatTokenChange(e.detail.value!)}
-            disabled={isLoading || iotLoading}
-          />
-        </IonItem>
-
-        {patToken && !isValidPatToken && (
-          <IonText color="danger" style={{ fontSize: '12px', display: 'block', marginTop: '8px' }}>
-            PAT 토큰은 'thinqpat_'로 시작해야 합니다.
-          </IonText>
-        )}
-
-        {iotError && (
-          <IonText color="danger" style={{ fontSize: '12px', display: 'block', marginTop: '8px' }}>
-            {iotError}
-          </IonText>
-        )}
-
-        <IonButton
-          className="sign-up-button"
-          expand="block"
-          type="submit"
-          onClick={handleSignUp}
-          disabled={isLoading || iotLoading}
-        >
-          {isLoading || iotLoading ? (
-            <>
-              <IonSpinner name="crescent" style={{ marginRight: '8px' }} />
-              {iotLoading ? iotLoadingMessage : '회원가입 중...'}
-            </>
-          ) : (
-            <>
+            <IonButton
+              className="sign-up-button"
+              expand="block"
+              onClick={handleNext}
+              disabled={isLoading}
+            >
               <IonIcon icon={arrowForwardOutline} slot="end" />
-              회원가입
-            </>
-          )}
-        </IonButton>
+              다음
+            </IonButton>
+          </>
+        ) : (
+          <>
+            <IonText className="sign-up-subtitle">
+              PAT 토큰을 입력하면 자동으로 등록된<br />
+              에어컨을 찾아 연결합니다. (선택사항)
+            </IonText>
+
+            {error && (
+              <IonText color="danger" className="error-message">
+                {error}
+              </IonText>
+            )}
+
+            {iotError && (
+              <IonText color="danger" className="error-message">
+                {iotError}
+              </IonText>
+            )}
+
+            {/* PAT 토큰 만들기 버튼 */}
+            <IonButton
+              expand="block"
+              fill="outline"
+              onClick={handleOpenPatSite}
+              disabled={isLoading || iotLoading}
+              className="pat-token-button"
+              style={{ 
+                marginBottom: '16px'
+              }}
+            >
+              <IonIcon icon={openOutline} slot="start" />
+              PAT 토큰 만들러 가기
+            </IonButton>
+
+            {/* PAT 토큰 입력 */}
+            <IonItem className="sign-up-input-item">
+              <IonLabel position="stacked">PAT 토큰 (선택사항)</IonLabel>
+              <IonInput
+                type="text"
+                value={patToken}
+                placeholder="thinqpat_..."
+                onIonInput={(e) => handlePatTokenChange(e.detail.value!)}
+                disabled={isLoading || iotLoading}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && patToken.trim() && isValidPatToken) {
+                    handleSignUp();
+                  }
+                }}
+              />
+            </IonItem>
+
+            {patToken && !isValidPatToken && (
+              <IonText color="danger" style={{ fontSize: '12px', display: 'block', marginTop: '8px' }}>
+                PAT 토큰은 'thinqpat_'로 시작해야 합니다.
+              </IonText>
+            )}
+
+            <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
+              <IonButton
+                fill="clear"
+                expand="block"
+                onClick={handleBack}
+                disabled={isLoading || iotLoading}
+                className="sign-up-back-button"
+                style={{ flex: 1 }}
+              >
+                <IonIcon icon={arrowBackOutline} slot="start" />
+                이전
+              </IonButton>
+              <IonButton
+                className="sign-up-button"
+                expand="block"
+                onClick={handleSignUp}
+                disabled={isLoading || iotLoading}
+                style={{ flex: 2 }}
+              >
+                {isLoading || iotLoading ? (
+                  <>
+                    <IonSpinner name="crescent" style={{ marginRight: '8px' }} />
+                    {iotLoading ? iotLoadingMessage : '회원가입 중...'}
+                  </>
+                ) : (
+                  <>
+                    <IonIcon icon={checkmarkCircleOutline} slot="end" />
+                    회원가입 완료
+                  </>
+                )}
+              </IonButton>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
