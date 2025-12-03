@@ -821,6 +821,54 @@ def save_iot_device_to_db(user_id: str, pat_token: str, device_id: str, device_n
     }
     logger.info(f"✅ IoT 디바이스 등록 정보 메모리 캐시 업데이트 완료: {user_id}")
 
+# ==================== 서버 IP 주소 가져오기 ====================
+
+def get_server_url(request: Request) -> str:
+    """
+    요청에서 서버 URL을 가져옵니다.
+    클라이언트가 접속할 수 있는 서버 주소를 반환합니다.
+    """
+    try:
+        # 요청에서 호스트 정보 가져오기
+        host = request.headers.get("host", "localhost:3000")
+        # X-Forwarded-Host 헤더 확인 (프록시 환경)
+        forwarded_host = request.headers.get("x-forwarded-host")
+        if forwarded_host:
+            host = forwarded_host
+        
+        # 프로토콜 확인 (HTTPS 또는 HTTP)
+        scheme = 'http'
+        forwarded_proto = request.headers.get("x-forwarded-proto")
+        if forwarded_proto:
+            scheme = forwarded_proto
+        elif hasattr(request, 'url') and hasattr(request.url, 'scheme'):
+            scheme = request.url.scheme
+        
+        # 서버 URL 구성
+        server_url = f"{scheme}://{host}"
+        
+        # localhost가 아닌 실제 IP 주소인지 확인
+        if "localhost" not in host and "127.0.0.1" not in host:
+            return server_url
+    except Exception as e:
+        logger.debug(f"서버 URL 구성 실패 (헤더 기반): {e}")
+    
+    # 헤더에서 가져오기 실패 시 로컬 IP 주소 가져오기
+    try:
+        import socket
+        # 활성 네트워크 인터페이스의 IP 주소 가져오기
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        local_ip = s.getsockname()[0]
+        s.close()
+        server_url = f"http://{local_ip}:3000"
+        logger.info(f"🌐 서버 IP 주소 자동 감지: {server_url}")
+        return server_url
+    except Exception as e:
+        logger.warning(f"로컬 IP 주소 가져오기 실패: {e}")
+        # 최종 기본값
+        return "http://localhost:3000"
+
 # ==================== 쾌적 온도 계산 함수 ====================
 
 def calculate_comfort_temperature(gender: str, age: int, bmi: float) -> tuple[float, float]:
@@ -1004,6 +1052,7 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user_no: int
+    server_url: Optional[str] = None  # 서버 IP 주소 (회원가입/로그인 시 반환)
 
 class AndroidAppHealthMetrics(BaseModel):
     """Android 앱 건강 지표 모델"""
@@ -1028,7 +1077,7 @@ class AndroidAppHealthMetrics(BaseModel):
 # ==================== 인증 API ====================
 
 @app.post("/auth/register", response_model=TokenResponse)
-async def register(data: RegisterRequest):
+async def register(data: RegisterRequest, request: Request):
     """
     회원가입 API
     """
@@ -1334,12 +1383,17 @@ async def register(data: RegisterRequest):
             # JWT 토큰 생성
             access_token = create_access_token(data={"sub": str(user.no)})
             
+            # 서버 URL 가져오기
+            server_url = get_server_url(request)
+            logger.info(f"🌐 회원가입 응답에 서버 URL 포함: {server_url}")
+            
             logger.info(f"✅ 회원가입 성공: {data.id} (no: {user.no})")
             
             return TokenResponse(
                 access_token=access_token,
                 token_type="bearer",
-                user_no=user.no
+                user_no=user.no,
+                server_url=server_url
             )
             
     except HTTPException:
@@ -1356,7 +1410,7 @@ async def register(data: RegisterRequest):
         )
 
 @app.post("/auth/login", response_model=TokenResponse)
-async def login(data: LoginRequest):
+async def login(data: LoginRequest, request: Request):
     """
     로그인 API
     """
@@ -1534,12 +1588,17 @@ async def login(data: LoginRequest):
             # JWT 토큰 생성
             access_token = create_access_token(data={"sub": str(user.no)})
             
+            # 서버 URL 가져오기
+            server_url = get_server_url(request)
+            logger.info(f"🌐 로그인 응답에 서버 URL 포함: {server_url}")
+            
             logger.info(f"✅ 로그인 성공: {data.id} (no: {user.no})")
             
             return TokenResponse(
                 access_token=access_token,
                 token_type="bearer",
-                user_no=user.no
+                user_no=user.no,
+                server_url=server_url
             )
             
     except HTTPException:
@@ -1598,7 +1657,7 @@ async def get_current_user(user_no: int = Depends(verify_token)):
             
             if not user:
                 raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
+                    status_code=status.HTTP_404_NOT_FOUND,  
                     detail="사용자를 찾을 수 없습니다."
                 )
             
@@ -3240,17 +3299,41 @@ async def get_air_conditioner_state_api(request: Request):
         # PAT 토큰으로 상태 조회
         state_response = get_device_state_with_pat_token(pat_token, device_id)
         
-        # 응답 구조 분석 및 상태 정보 추출
+        # 응답 구조 분석 및 상태 정보 추출 (다양한 경로 지원)
         state = None
-        if 'result' in state_response and 'value' in state_response['result']:
-            state = state_response['result']['value']
-        elif 'response' in state_response:
+        
+        # 1. result.value 경로 확인
+        if 'result' in state_response:
+            result = state_response['result']
+            if isinstance(result, dict) and 'value' in result:
+                state = result['value']
+                logger.debug("✅ 에어컨 상태 경로: result.value")
+        
+        # 2. response.value 경로 확인
+        if state is None and 'response' in state_response:
             response = state_response['response']
             if isinstance(response, dict):
                 if 'value' in response:
                     state = response['value']
+                    logger.debug("✅ 에어컨 상태 경로: response.value")
                 else:
                     state = response
+                    logger.debug("✅ 에어컨 상태 경로: response (직접)")
+            elif isinstance(response, list) and len(response) > 0:
+                state = response[0]
+                logger.debug("✅ 에어컨 상태 경로: response[0]")
+        
+        # 3. 최상위 value 경로 확인
+        if state is None and 'value' in state_response:
+            state = state_response['value']
+            logger.debug("✅ 에어컨 상태 경로: value (최상위)")
+        
+        # 4. state_response가 직접 상태 정보인 경우
+        if state is None and isinstance(state_response, dict):
+            # operation이나 temperature 키가 있으면 직접 상태 정보로 간주
+            if 'operation' in state_response or 'temperature' in state_response:
+                state = state_response
+                logger.debug("✅ 에어컨 상태 경로: state_response (직접)")
         
         if state:
             # 상태 정보를 앱에서 사용하기 쉬운 형태로 변환
@@ -3271,7 +3354,14 @@ async def get_air_conditioner_state_api(request: Request):
             logger.info(f"✅ 에어컨 상태 조회 성공")
             return result
         else:
-            raise HTTPException(status_code=500, detail="상태 정보를 찾을 수 없습니다.")
+            # 상태 정보를 찾을 수 없을 때 응답 구조를 로그로 출력
+            import json
+            try:
+                response_str = json.dumps(state_response, indent=2, ensure_ascii=False, default=str)
+                logger.error(f"❌ 에어컨 상태 정보를 찾을 수 없습니다. 응답 구조:\n{response_str[:2000]}")
+            except Exception as json_error:
+                logger.error(f"❌ 에어컨 상태 정보를 찾을 수 없습니다. 응답 내용: {str(state_response)[:500]}")
+            raise HTTPException(status_code=500, detail="상태 정보를 찾을 수 없습니다. 응답 구조를 확인해주세요.")
             
     except HTTPException:
         raise
@@ -3613,28 +3703,46 @@ async def auto_register_device_api(data: PatTokenRequest):
             
             logger.info(f"💾 IoT 디바이스 저장 시작: user_id={user_id}, device_id={device_id[:20] if device_id else 'None'}..., device_name={device_name}")
             
-            # login 테이블에 해당 user_id가 있는지 확인
-            try:
-                with engine.connect() as conn:
-                    user_check_query = text("""
-                        SELECT COUNT(*) as count FROM login WHERE id = :user_id
-                    """)
-                    user_check_result = conn.execute(user_check_query, {'user_id': user_id})
-                    user_exists = user_check_result.fetchone().count > 0
-                    
-                    if not user_exists:
-                        logger.warning(f"⚠️ login 테이블에 user_id={user_id}가 없습니다. IoT 등록을 건너뜁니다.")
+            # login 테이블에 해당 user_id가 있는지 확인 (재시도 로직 포함)
+            # 회원가입 직후 DB 커밋이 완전히 반영되기 전에 요청이 올 수 있으므로 재시도
+            # time 모듈은 파일 상단에서 이미 import되어 있음
+            user_exists = False
+            max_retries = 3
+            retry_delay = 0.5  # 0.5초
+            
+            for retry in range(max_retries):
+                try:
+                    with engine.connect() as conn:
+                        user_check_query = text("""
+                            SELECT COUNT(*) as count FROM login WHERE id = :user_id
+                        """)
+                        user_check_result = conn.execute(user_check_query, {'user_id': user_id})
+                        user_exists = user_check_result.fetchone().count > 0
+                        
+                        if user_exists:
+                            logger.info(f"✅ login 테이블에 user_id={user_id} 존재 확인 (재시도 {retry + 1}/{max_retries})")
+                            break
+                        else:
+                            if retry < max_retries - 1:
+                                logger.info(f"⏳ 사용자 확인 재시도 중... (재시도 {retry + 1}/{max_retries})")
+                                time.sleep(retry_delay)
+                            else:
+                                logger.warning(f"⚠️ login 테이블에 user_id={user_id}가 없습니다. IoT 등록을 건너뜁니다.")
+                except Exception as e:
+                    if retry < max_retries - 1:
+                        logger.warning(f"⚠️ 사용자 확인 실패, 재시도 중... (재시도 {retry + 1}/{max_retries}): {str(e)}")
+                        time.sleep(retry_delay)
+                    else:
+                        logger.error(f"❌ 사용자 확인 실패: {str(e)}")
                         return {
                             'success': False,
-                            'message': f'사용자 {user_id}가 등록되지 않았습니다. 먼저 회원가입을 완료해주세요.'
+                            'message': '사용자 확인 중 오류가 발생했습니다.'
                         }
-                    else:
-                        logger.info(f"✅ login 테이블에 user_id={user_id} 존재 확인")
-            except Exception as e:
-                logger.error(f"❌ 사용자 확인 실패: {str(e)}")
+            
+            if not user_exists:
                 return {
                     'success': False,
-                    'message': '사용자 확인 중 오류가 발생했습니다.'
+                    'message': f'사용자 {user_id}가 등록되지 않았습니다. 먼저 회원가입을 완료해주세요.'
                 }
             
             # 사용자별로 저장 (DB + 메모리 캐시)
@@ -4706,38 +4814,7 @@ async def get_thresholds_api(user_no: int = Depends(verify_token)):
 async def health_check(request: Request):
     """서버 상태 확인 (모델, 에어컨, DB 연결 상태 포함)"""
     # 서버의 실제 IP 주소 가져오기
-    server_url = None
-    try:
-        # 요청에서 호스트 정보 가져오기
-        host = request.headers.get("host", "localhost:3000")
-        # X-Forwarded-Host 헤더 확인 (프록시 환경)
-        forwarded_host = request.headers.get("x-forwarded-host")
-        if forwarded_host:
-            host = forwarded_host
-        
-        # 프로토콜 확인 (HTTPS 또는 HTTP)
-        scheme = 'http'
-        forwarded_proto = request.headers.get("x-forwarded-proto")
-        if forwarded_proto:
-            scheme = forwarded_proto
-        elif hasattr(request, 'url') and hasattr(request.url, 'scheme'):
-            scheme = request.url.scheme
-        
-        # 서버 URL 구성
-        server_url = f"{scheme}://{host}"
-    except Exception as e:
-        logger.warning(f"서버 URL 구성 실패: {e}")
-        # 실패 시 기본값 사용
-        try:
-            import socket
-            # 로컬 IP 주소 가져오기
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.connect(("8.8.8.8", 80))
-            local_ip = s.getsockname()[0]
-            s.close()
-            server_url = f"http://{local_ip}:3000"
-        except:
-            server_url = "http://localhost:3000"
+    server_url = get_server_url(request)
     
     # DB 연결 테스트
     db_connected = False

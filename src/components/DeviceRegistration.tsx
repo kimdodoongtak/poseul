@@ -47,13 +47,24 @@ const DeviceRegistration: React.FC<DeviceRegistrationProps> = ({ onSuccess, onSk
   // user_id 가져오기 함수
   const getUserIdForRegistration = async (): Promise<string> => {
     if (userId) {
+      console.log('🔍 IoT 등록 - props로 전달된 userId 사용:', userId);
       return userId;
     }
     try {
+      // 로그인 상태 확인
+      const { isAuthenticated } = await import('../services/AuthService');
+      if (!isAuthenticated()) {
+        console.warn('⚠️ IoT 등록 - 로그인 상태가 아닙니다. user_id를 "default"로 사용합니다.');
+        return 'default';
+      }
+      
       const user = await getCurrentUser();
+      console.log('🔍 IoT 등록 - getCurrentUser() 성공, user_id:', user.id);
       return user.id;
-    } catch (error) {
-      console.error('사용자 정보 가져오기 실패:', error);
+    } catch (error: any) {
+      console.error('❌ IoT 등록 - 사용자 정보 가져오기 실패:', error);
+      console.error('   에러 메시지:', error.message);
+      console.warn('⚠️ IoT 등록 - user_id를 "default"로 사용합니다.');
       return 'default';
     }
   };
@@ -351,6 +362,8 @@ const DeviceRegistration: React.FC<DeviceRegistrationProps> = ({ onSuccess, onSk
       
       // user_id 가져오기
       const finalUserId = userId || await getUserIdForRegistration();
+      console.log('🔍 IoT 등록 시도 - 최종 user_id:', finalUserId);
+      console.log('🔍 IoT 등록 시도 - props userId:', userId);
       
       let response: Response;
       try {
@@ -424,6 +437,7 @@ const DeviceRegistration: React.FC<DeviceRegistrationProps> = ({ onSuccess, onSk
         // 여기서는 첫 번째 것을 자동 선택
         if (data.devices && data.devices.length > 0) {
           const selectedDevice = data.devices[0];
+          console.log('🔍 IoT 등록 - register-device 호출, user_id:', finalUserId);
           const registerResponse = await fetch(`${baseUrl}/iot/register-device`, {
             method: 'POST',
             headers: {

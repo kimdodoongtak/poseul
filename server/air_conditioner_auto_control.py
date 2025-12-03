@@ -479,41 +479,64 @@ def adjust_air_conditioner(
                     try:
                         state_response = get_air_conditioner_state_func()
                         
-                        # 응답 구조 확인 및 다양한 경로 지원
-                        # 1. result.value 경로 확인
-                        if state_response and 'result' in state_response:
-                            result = state_response['result']
-                            if isinstance(result, dict) and 'value' in result:
-                                state = result['value']
-                        
-                        # 2. response.value 경로 확인
-                        if state is None and state_response and 'response' in state_response:
-                            response = state_response['response']
-                            if isinstance(response, dict):
-                                if 'value' in response:
-                                    state = response['value']
-                                else:
-                                    state = response
-                            elif isinstance(response, list) and len(response) > 0:
-                                state = response[0]
-                        
-                        # 3. 최상위 value 경로 확인
-                        if state is None and state_response and 'value' in state_response:
-                            state = state_response['value']
-                        
-                        if state:
-                            # 에어컨 전원 상태 확인
-                            power_state = state.get('operation', {}).get('airConOperationMode')
-                            is_power_on = power_state == 'POWER_ON'
-                            current_temp = state.get('temperature', {}).get('currentTemperature')
-                            target_temp = state.get('temperature', {}).get('targetTemperature')
+                        if state_response is None:
+                            logger.warning("⚠️ 에어컨 상태 응답이 None입니다.")
                         else:
-                            logger.warning("⚠️ 에어컨 상태를 가져올 수 없습니다.")
-                            if state_response:
-                                import json
-                                logger.warning(f"응답 내용 (일부): {json.dumps({k: str(v)[:100] for k, v in list(state_response.items())[:3]}, indent=2, ensure_ascii=False)}")
+                            # 응답 구조 확인 및 다양한 경로 지원 (server.py와 동일한 로직)
+                            # 1. result.value 경로 확인
+                            if 'result' in state_response:
+                                result = state_response['result']
+                                if isinstance(result, dict) and 'value' in result:
+                                    state = result['value']
+                                    logger.debug("✅ 에어컨 상태 경로: result.value")
+                            
+                            # 2. response.value 경로 확인
+                            if state is None and 'response' in state_response:
+                                response = state_response['response']
+                                if isinstance(response, dict):
+                                    if 'value' in response:
+                                        state = response['value']
+                                        logger.debug("✅ 에어컨 상태 경로: response.value")
+                                    else:
+                                        state = response
+                                        logger.debug("✅ 에어컨 상태 경로: response (직접)")
+                                elif isinstance(response, list) and len(response) > 0:
+                                    state = response[0]
+                                    logger.debug("✅ 에어컨 상태 경로: response[0]")
+                            
+                            # 3. 최상위 value 경로 확인
+                            if state is None and 'value' in state_response:
+                                state = state_response['value']
+                                logger.debug("✅ 에어컨 상태 경로: value (최상위)")
+                            
+                            # 4. state_response가 직접 상태 정보인 경우
+                            if state is None and isinstance(state_response, dict):
+                                # operation이나 temperature 키가 있으면 직접 상태 정보로 간주
+                                if 'operation' in state_response or 'temperature' in state_response:
+                                    state = state_response
+                                    logger.debug("✅ 에어컨 상태 경로: state_response (직접)")
+                            
+                            if state:
+                                # 에어컨 전원 상태 확인
+                                power_state = state.get('operation', {}).get('airConOperationMode')
+                                is_power_on = power_state == 'POWER_ON'
+                                current_temp = state.get('temperature', {}).get('currentTemperature')
+                                target_temp = state.get('temperature', {}).get('targetTemperature')
+                                logger.debug(f"🌡️ 에어컨 상태 파싱 성공: 전원={'ON' if is_power_on else 'OFF'}, 현재온도={current_temp}°C, 목표온도={target_temp}°C")
+                            else:
+                                logger.warning("⚠️ 에어컨 상태를 가져올 수 없습니다. 응답 구조를 확인할 수 없습니다.")
+                                if state_response:
+                                    import json
+                                    try:
+                                        # 응답 구조 전체를 로그로 출력 (디버깅용)
+                                        response_str = json.dumps(state_response, indent=2, ensure_ascii=False, default=str)
+                                        logger.warning(f"📋 응답 구조 (전체):\n{response_str[:1000]}")  # 처음 1000자만 출력
+                                    except Exception as json_error:
+                                        logger.warning(f"응답 내용 (일부): {str(state_response)[:500]}")
                     except Exception as e:
                         logger.warning(f"⚠️ 에어컨 상태 조회 실패: {e}")
+                        import traceback
+                        logger.debug(f"상세 에러:\n{traceback.format_exc()}")
                 
                 # 에어컨이 꺼져있으면 조절은 하지 않지만 다수결 결과는 저장
                 actions_taken = []
