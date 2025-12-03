@@ -61,26 +61,55 @@ const SignUp: React.FC<SignUpProps> = ({ onClose, onSuccess }) => {
     setIotLoadingMessage('서버 연결 확인 중...');
 
     try {
-      let baseUrl = getServerUrl();
+      // 항상 자동 감지 시도 (서버 IP가 변경될 수 있으므로)
+      setIotLoadingMessage('서버 자동 감지 중...');
+      let baseUrl: string;
       
-      if (!baseUrl || baseUrl === '' || baseUrl.includes('localhost')) {
-        setIotLoadingMessage('서버 자동 감지 중...');
-        try {
+      try {
+        // 먼저 저장된 URL 확인
+        const savedUrl = getServerUrl();
+        if (savedUrl && savedUrl !== '' && !savedUrl.includes('localhost') && !savedUrl.includes('10.0.2.2')) {
+          // 저장된 URL이 유효하면 먼저 시도
+          try {
+            const testResponse = await fetch(`${savedUrl}/health`, {
+              method: 'GET',
+              signal: AbortSignal.timeout(3000)
+            });
+            if (testResponse.ok) {
+              baseUrl = savedUrl;
+              console.log('✅ 저장된 서버 URL 사용:', baseUrl);
+            } else {
+              throw new Error('저장된 URL 실패');
+            }
+          } catch {
+            // 저장된 URL 실패 시 자동 감지
+            console.log('⚠️ 저장된 URL 실패, 자동 감지 시작');
+            const detectedUrl = await autoDetectServerUrl();
+            if (!detectedUrl || detectedUrl === '') {
+              throw new Error('서버 URL 자동 감지 실패. 서버가 실행 중인지 확인해주세요.');
+            }
+            baseUrl = detectedUrl;
+          }
+        } else {
+          // 저장된 URL이 없거나 유효하지 않으면 자동 감지
           const detectedUrl = await autoDetectServerUrl();
           if (!detectedUrl || detectedUrl === '') {
             throw new Error('서버 URL 자동 감지 실패. 서버가 실행 중인지 확인해주세요.');
           }
           baseUrl = detectedUrl;
-          IotService.updateBaseUrl(detectedUrl);
-        } catch (detectError) {
-          throw new Error('서버를 찾을 수 없습니다. 서버가 실행 중인지 확인해주세요.');
         }
+        
+        IotService.updateBaseUrl(baseUrl);
+        console.log('✅ 최종 서버 URL:', baseUrl);
+      } catch (detectError: any) {
+        console.error('❌ 서버 자동 감지 실패:', detectError);
+        throw new Error(`서버를 찾을 수 없습니다. 서버가 실행 중인지 확인해주세요. (${detectError.message || ''})`);
       }
 
       setIotLoadingMessage('PAT 토큰 검증 중...');
       
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60초로 증가
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30초로 설정 (LG API 응답 대기)
       
       let response: Response;
       try {
@@ -98,11 +127,11 @@ const SignUp: React.FC<SignUpProps> = ({ onClose, onSuccess }) => {
       } catch (fetchError: any) {
         clearTimeout(timeoutId);
         if (fetchError.name === 'AbortError') {
-          throw new Error('요청 시간이 초과되었습니다. 서버가 응답하지 않거나 네트워크 연결이 느립니다.');
+          throw new Error('IoT 등록 요청 시간이 초과되었습니다. 네트워크 연결을 확인하거나 나중에 다시 시도해주세요.');
         } else if (fetchError.message?.includes('Failed to fetch') || fetchError.message?.includes('NetworkError')) {
-          throw new Error(`서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요. (${baseUrl})`);
+          throw new Error(`서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요.`);
         } else {
-          throw new Error(`요청 실패: ${fetchError.message || '알 수 없는 오류'}`);
+          throw new Error(`IoT 등록 요청 실패: ${fetchError.message || '알 수 없는 오류'}`);
         }
       }
 
@@ -212,29 +241,37 @@ const SignUp: React.FC<SignUpProps> = ({ onClose, onSuccess }) => {
       
       console.log('✅ 회원가입 성공:', registerResult);
       
-      // 회원가입 성공 후 IoT 등록 시도 (PAT 토큰이 입력되어 있으면)
-      if (patToken.trim() && isValidPatToken) {
-        try {
-          console.log('🔍 회원가입 후 IoT 등록 시작...');
-          const deviceInfo = await handleRegisterIot();
-          if (!deviceInfo) {
-            // IoT 등록 실패해도 회원가입은 성공
-            setIotError('IoT 등록에 실패했지만 회원가입은 완료되었습니다.');
-          } else {
-            console.log('✅ IoT 등록 성공:', deviceInfo);
-          }
-        } catch (iotError: any) {
-          // IoT 등록 실패해도 회원가입은 성공
-          console.error('IoT 등록 실패:', iotError);
-          setIotError('IoT 등록에 실패했지만 회원가입은 완료되었습니다.');
-        }
-      }
-      
-      // 회원가입 성공
+      // 회원가입 성공 - 즉시 완료 처리
       if (onSuccess) {
         onSuccess();
       }
       
+      // IoT 등록은 비동기로 처리 (회원가입 완료 후 백그라운드에서 진행)
+      if (patToken.trim() && isValidPatToken) {
+        // DB 커밋이 완전히 반영될 때까지 약간의 지연
+        setTimeout(async () => {
+          try {
+            console.log('🔍 회원가입 후 IoT 등록 시작 (비동기)...');
+            setIotLoading(true);
+            setIotLoadingMessage('IoT 기기 등록 중...');
+            const deviceInfo = await handleRegisterIot();
+            if (!deviceInfo) {
+              // IoT 등록 실패해도 회원가입은 성공
+              console.warn('⚠️ IoT 등록 실패했지만 회원가입은 완료되었습니다.');
+            } else {
+              console.log('✅ IoT 등록 성공:', deviceInfo);
+            }
+          } catch (iotError: any) {
+            // IoT 등록 실패해도 회원가입은 성공
+            console.error('IoT 등록 실패:', iotError);
+          } finally {
+            setIotLoading(false);
+            setIotLoadingMessage('등록 중...');
+          }
+        }, 500); // 500ms 지연으로 DB 커밋 반영 대기
+      }
+      
+      // 회원가입 성공 후 모달 닫기
       setTimeout(() => {
         onClose();
         setStep(1);
@@ -375,7 +412,8 @@ const SignUp: React.FC<SignUpProps> = ({ onClose, onSuccess }) => {
           <>
             <IonText className="sign-up-subtitle">
               PAT 토큰을 입력하면 자동으로 등록된<br />
-              에어컨을 찾아 연결합니다.
+              에어컨을 찾아 연결합니다.<br />
+              <span style={{ fontSize: '12px', color: '#666' }}>(선택사항 - 나중에 등록 가능)</span>
             </IonText>
 
             {error && (
