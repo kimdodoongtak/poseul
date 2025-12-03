@@ -24,7 +24,7 @@ import {
   IonSelect,
   IonSelectOption
 } from '@ionic/react';
-import { personOutline, closeOutline, cameraOutline } from 'ionicons/icons';
+import { personOutline, closeOutline } from 'ionicons/icons';
 import SignIn from '../components/SignIn';
 import SignUp from '../components/SignUp';
 import './Health_ios.css';
