@@ -26,6 +26,7 @@ import Iot from './pages/Iot';
 import User from './pages/User';
 import Health_ios from './pages/Health_ios';
 import DeviceRegistration from './components/DeviceRegistration';
+import { isAuthenticated, getUserNo } from './services/AuthService';
 
 /* Core CSS required for Ionic components to work properly */
 import '@ionic/react/css/core.css';
@@ -99,6 +100,23 @@ const AppContent: React.FC = () => {
                          window.location.hostname.includes('localhost') ||
                          import.meta.env.DEV;
     
+    const checkAuthAndShowLogin = () => {
+      const authenticated = isAuthenticated();
+      const userNo = getUserNo();
+      
+      // 로그인 안 되어 있거나 user_no가 null이면 User 페이지로 이동하여 로그인 모달 표시
+      if (!authenticated || userNo === null) {
+        console.log('⚠️ 앱 시작 - 로그인 필요 또는 user_no가 null, User 페이지로 이동');
+        setTimeout(() => {
+          history.push('/user');
+          // User 페이지에 로그인 모달 표시하라는 이벤트 전달
+          window.dispatchEvent(new CustomEvent('showLoginModal'));
+        }, 100);
+      } else {
+        console.log('✅ 앱 시작 - 로그인 확인됨, user_no:', userNo);
+      }
+    };
+    
     if (isDevelopment) {
       // 개발 환경에서는 항상 표시
       setShowDisclaimer(true);
@@ -107,23 +125,39 @@ const AppContent: React.FC = () => {
       const disclaimerAccepted = localStorage.getItem('disclaimer_accepted');
       if (!disclaimerAccepted) {
         setShowDisclaimer(true);
+      } else {
+        // 면책사항이 이미 수락되었으면 로그인 체크
+        checkAuthAndShowLogin();
       }
     }
-  }, []);
+  }, [history]);
   
   const handleDisclaimerAccept = () => {
     localStorage.setItem('disclaimer_accepted', 'true');
     setShowDisclaimer(false);
-    // 초기 설정 페이지(Health)로 이동 - 기본정보 입력 화면
-    // 모달이 닫힌 후 라우팅이 확실히 적용되도록 약간의 딜레이 추가
-    setTimeout(() => {
-      history.push('/health_ios');
-      // 탭도 활성화
-      const healthTab = document.querySelector('ion-tab-button[tab="health_ios"]');
-      if (healthTab) {
-        (healthTab as HTMLElement).click();
-      }
-    }, 100);
+    
+    // 면책사항 수락 후 로그인 체크
+    const authenticated = isAuthenticated();
+    const userNo = getUserNo();
+    
+    if (!authenticated || userNo === null) {
+      // 로그인 안 되어 있으면 User 페이지로 이동하여 로그인 모달 표시
+      setTimeout(() => {
+        history.push('/user');
+        // User 페이지에 로그인 모달 표시하라는 이벤트 전달
+        window.dispatchEvent(new CustomEvent('showLoginModal'));
+      }, 100);
+    } else {
+      // 로그인되어 있으면 Health 페이지로 이동
+      setTimeout(() => {
+        history.push('/health_ios');
+        // 탭도 활성화
+        const healthTab = document.querySelector('ion-tab-button[tab="health_ios"]');
+        if (healthTab) {
+          (healthTab as HTMLElement).click();
+        }
+      }, 100);
+    }
   };
   
   return (

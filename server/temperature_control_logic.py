@@ -170,6 +170,24 @@ def save_temperature_range_to_db(
                         logger.info("✅ room_threshold 테이블에 user_no 컬럼 추가 완료")
                 except Exception as e:
                     logger.warning(f"⚠️ user_no 컬럼 확인/추가 실패: {str(e)}")
+                
+                # updated_at 컬럼이 없으면 추가
+                try:
+                    updated_at_check = text("""
+                        SELECT COLUMN_NAME 
+                        FROM INFORMATION_SCHEMA.COLUMNS 
+                        WHERE TABLE_SCHEMA = 'main' 
+                        AND TABLE_NAME = 'room_threshold'
+                        AND COLUMN_NAME = 'updated_at'
+                    """)
+                    has_updated_at = conn.execute(updated_at_check).fetchone() is not None
+                    if not has_updated_at:
+                        alter_query = text("ALTER TABLE room_threshold ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP")
+                        conn.execute(alter_query)
+                        conn.commit()
+                        logger.info("✅ room_threshold 테이블에 updated_at 컬럼 추가 완료")
+                except Exception as e:
+                    logger.warning(f"⚠️ updated_at 컬럼 확인/추가 실패: {str(e)}")
             
             # 기존 레코드 확인 (user_no 필터링)
             user_filter = ""
@@ -188,14 +206,38 @@ def save_temperature_range_to_db(
                 # 이미 설정되어 있으면
                 if force_update:
                     # 강제 업데이트 모드면 업데이트 (user_no 필터링)
-                    update_query = text(f"""
-                        UPDATE room_threshold 
-                        SET min_temp = :min_temp,
-                            max_temp = :max_temp,
-                            updated_at = NOW()
-                        {user_filter.replace('WHERE', 'WHERE') if user_filter else 'WHERE 1=1'}
-                        LIMIT 1
-                    """)
+                    # updated_at 컬럼 존재 여부 확인
+                    try:
+                        updated_at_check = text("""
+                            SELECT COLUMN_NAME 
+                            FROM INFORMATION_SCHEMA.COLUMNS 
+                            WHERE TABLE_SCHEMA = 'main' 
+                            AND TABLE_NAME = 'room_threshold'
+                            AND COLUMN_NAME = 'updated_at'
+                        """)
+                        has_updated_at = conn.execute(updated_at_check).fetchone() is not None
+                    except Exception:
+                        has_updated_at = False
+                    
+                    # updated_at 컬럼이 있으면 포함, 없으면 제외
+                    if has_updated_at:
+                        update_query = text(f"""
+                            UPDATE room_threshold 
+                            SET min_temp = :min_temp,
+                                max_temp = :max_temp,
+                                updated_at = NOW()
+                            {user_filter.replace('WHERE', 'WHERE') if user_filter else 'WHERE 1=1'}
+                            LIMIT 1
+                        """)
+                    else:
+                        update_query = text(f"""
+                            UPDATE room_threshold 
+                            SET min_temp = :min_temp,
+                                max_temp = :max_temp
+                            {user_filter.replace('WHERE', 'WHERE') if user_filter else 'WHERE 1=1'}
+                            LIMIT 1
+                        """)
+                    
                     update_params = {
                         'min_temp': min_temp,
                         'max_temp': max_temp

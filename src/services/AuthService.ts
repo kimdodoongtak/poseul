@@ -13,6 +13,9 @@ export interface RegisterData {
   id: string;
   password: string;
   device?: string;  // IoT 디바이스 정보 (선택적)
+  age?: number;  // 나이 (선택적)
+  bmi?: number;  // BMI (선택적)
+  gender?: string;  // 성별 (선택적, 'M' 또는 'F')
 }
 
 export interface LoginData {
