@@ -26,6 +26,7 @@ import Iot from './pages/Iot';
 import User from './pages/User';
 import Health_ios from './pages/Health_ios';
 import DeviceRegistration from './components/DeviceRegistration';
+import SplashScreen from './components/SplashScreen';
 import { isAuthenticated, getUserNo } from './services/AuthService';
 
 /* Core CSS required for Ionic components to work properly */
@@ -62,11 +63,14 @@ import './App.css';
 setupIonicReact();
 
 const AppContent: React.FC = () => {
+  const [showSplash, setShowSplash] = useState<boolean>(true);
   const [showDisclaimer, setShowDisclaimer] = useState<boolean>(false);
+  const [splashCompleted, setSplashCompleted] = useState<boolean>(false);
   const history = useHistory();
+  const logoutInProgressRef = React.useRef<boolean>(false); // 로그아웃 진행 중 플래그
   
+  // 플랫폼 설정 (앱 시작 시 즉시 실행)
   useEffect(() => {
-    // 플랫폼에 따라 body에 클래스 추가
     const platform = Capacitor.getPlatform();
     if (platform === 'android') {
       document.body.classList.add('platform-android');
@@ -92,6 +96,36 @@ const AppContent: React.FC = () => {
       root.style.setProperty('--safe-area-inset-left', 'env(safe-area-inset-left, 0px)');
       root.style.setProperty('--safe-area-inset-right', 'env(safe-area-inset-right, 0px)');
     }
+  }, []);
+
+  // 로그아웃 이벤트 리스너 (앱 시작 시 즉시 등록)
+  useEffect(() => {
+    const handleAuthStateChanged = (event: CustomEvent) => {
+      const authenticated = event.detail?.authenticated ?? isAuthenticated();
+      if (!authenticated) {
+        // 로그아웃 감지
+        logoutInProgressRef.current = true;
+        console.log('🔍 App - 로그아웃 감지, 플래그 설정');
+        // 5초 후 플래그 해제 (User.tsx와 동일하게)
+        setTimeout(() => {
+          logoutInProgressRef.current = false;
+          console.log('✅ App - 로그아웃 완료 플래그 해제');
+        }, 5000);
+      }
+    };
+    
+    window.addEventListener('authStateChanged', handleAuthStateChanged as EventListener);
+    
+    return () => {
+      window.removeEventListener('authStateChanged', handleAuthStateChanged as EventListener);
+    };
+  }, []);
+
+  // 스플래시 스크린 완료 후 면책사항 체크
+  useEffect(() => {
+    if (!splashCompleted) {
+      return; // 스플래시가 완료되기 전에는 면책사항 체크하지 않음
+    }
     
     // 앱 처음 실행 시 면책사항 팝업 확인
     // 개발 서버에서는 항상 면책사항 표시
@@ -101,6 +135,12 @@ const AppContent: React.FC = () => {
                          import.meta.env.DEV;
     
     const checkAuthAndShowLogin = () => {
+      // 로그아웃 진행 중이면 무시
+      if (logoutInProgressRef.current) {
+        console.log('🔍 App - 로그아웃 진행 중, 로그인 체크 무시');
+        return;
+      }
+      
       const authenticated = isAuthenticated();
       const userNo = getUserNo();
       
@@ -121,24 +161,49 @@ const AppContent: React.FC = () => {
       // 개발 환경에서는 항상 표시
       setShowDisclaimer(true);
     } else {
-      // 프로덕션 환경에서는 localStorage 확인
-      const disclaimerAccepted = localStorage.getItem('disclaimer_accepted');
-      if (!disclaimerAccepted) {
-        setShowDisclaimer(true);
+      // 프로덕션 환경에서는 사용자별 localStorage 확인
+      const authenticated = isAuthenticated();
+      const userNo = getUserNo();
+      
+      if (authenticated && userNo !== null) {
+        // 로그인되어 있으면 사용자별 면책사항 동의 확인
+        const disclaimerAccepted = localStorage.getItem(`disclaimer_accepted_${userNo}`);
+        if (!disclaimerAccepted) {
+          setShowDisclaimer(true);
+        } else {
+          // 면책사항이 이미 수락되었으면 로그인 체크
+          checkAuthAndShowLogin();
+        }
       } else {
-        // 면책사항이 이미 수락되었으면 로그인 체크
-        checkAuthAndShowLogin();
+        // 로그인 안 되어 있으면 면책사항 표시 (나중에 로그인하면 사용자별로 저장됨)
+        // 기존 공통 면책사항도 확인 (하위 호환성)
+        const oldDisclaimerAccepted = localStorage.getItem('disclaimer_accepted');
+        if (!oldDisclaimerAccepted) {
+          setShowDisclaimer(true);
+        } else {
+          // 기존 공통 면책사항이 있으면 로그인 체크
+          checkAuthAndShowLogin();
+        }
       }
     }
-  }, [history]);
+  }, [history, splashCompleted]);
   
   const handleDisclaimerAccept = () => {
-    localStorage.setItem('disclaimer_accepted', 'true');
-    setShowDisclaimer(false);
-    
     // 면책사항 수락 후 로그인 체크
     const authenticated = isAuthenticated();
     const userNo = getUserNo();
+    
+    if (authenticated && userNo !== null) {
+      // 로그인되어 있으면 사용자별로 저장
+      localStorage.setItem(`disclaimer_accepted_${userNo}`, 'true');
+      console.log(`✅ 면책사항 동의 저장 (user_no: ${userNo})`);
+    } else {
+      // 로그인 안 되어 있으면 임시로 공통 저장 (나중에 로그인하면 사용자별로 저장됨)
+      localStorage.setItem('disclaimer_accepted', 'true');
+      console.log('✅ 면책사항 동의 저장 (임시, 로그인 후 사용자별로 저장됨)');
+    }
+    
+    setShowDisclaimer(false);
     
     if (!authenticated || userNo === null) {
       // 로그인 안 되어 있으면 User 페이지로 이동하여 로그인 모달 표시
@@ -160,8 +225,16 @@ const AppContent: React.FC = () => {
     }
   };
   
+  const handleSplashComplete = () => {
+    setShowSplash(false);
+    setSplashCompleted(true);
+  };
+
   return (
     <>
+      {showSplash && (
+        <SplashScreen onComplete={handleSplashComplete} />
+      )}
       <IonTabs>
         <IonRouterOutlet>
           <Route exact path="/home">

@@ -6,7 +6,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from typing import Optional, Tuple
 from sqlalchemy import text
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 import os
 import sys
@@ -16,6 +16,9 @@ import pandas as pd
 import joblib
 import time
 import threading
+
+# 한국 시간대 (KST, UTC+9) 전역 정의
+KST = timezone(timedelta(hours=9))
 try:
     import fcntl  # Unix/Linux/Mac
 except ImportError:
@@ -89,7 +92,7 @@ async def track_connectivity_errors(request: Request, call_next):
         error_msg = str(e)
         connectivity_error_count += 1
         last_connectivity_error = {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(KST).isoformat(),
             "path": str(request.url.path),
             "method": request.method,
             "error": error_msg
@@ -99,7 +102,7 @@ async def track_connectivity_errors(request: Request, call_next):
         
         # Android 앱 건강 로그에 연결 오류 기록
         android_app_health_logs.append({
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(KST).isoformat(),
             "type": "connectivity_error",
             "path": str(request.url.path),
             "method": request.method,
@@ -611,8 +614,8 @@ def init_iot_devices_table():
                         device_id VARCHAR(255) NOT NULL,
                         device_name VARCHAR(255),
                         model_name VARCHAR(255),
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        created_at DATETIME,
+                        updated_at DATETIME,
                         UNIQUE KEY unique_user_device (user_id, device_id)
                     )
                 """)
@@ -625,8 +628,8 @@ def init_iot_devices_table():
                 columns_to_check = [
                     ('device_name', 'VARCHAR(255)'),
                     ('model_name', 'VARCHAR(255)'),
-                    ('created_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP'),
-                    ('updated_at', 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP')
+                    ('created_at', 'DATETIME'),
+                    ('updated_at', 'DATETIME')
                 ]
                 
                 for column_name, column_type in columns_to_check:
@@ -767,30 +770,88 @@ def save_iot_device_to_db(user_id: str, pat_token: str, device_id: str, device_n
                 # 같은 사용자가 같은 device를 재등록하는 경우는 업데이트
                 logger.info(f"🔄 같은 사용자가 기기 재등록: user_id={user_id}, device_id={device_id[:20]}...")
                 # UPSERT 쿼리 (user_id, device_id 조합이 unique이므로)
-                query = text("""
-                    INSERT INTO iot_devices (user_id, pat_token, device_id, device_name, model_name, updated_at)
-                    VALUES (:user_id, :pat_token, :device_id, :device_name, :model_name, NOW())
-                    ON DUPLICATE KEY UPDATE
-                        pat_token = VALUES(pat_token),
-                        device_id = VALUES(device_id),
-                        device_name = VALUES(device_name),
-                        model_name = VALUES(model_name),
-                        updated_at = NOW()
-                """)
+                # 한국 시간으로 updated_at 설정
+                current_time_kst = datetime.now(KST)
+                # created_at 컬럼 존재 여부 확인
+                try:
+                    created_at_check = text("""
+                        SELECT COUNT(*) as count
+                        FROM information_schema.columns 
+                        WHERE table_schema = DATABASE()
+                        AND TABLE_NAME = 'iot_devices'
+                        AND COLUMN_NAME = 'created_at'
+                    """)
+                    has_created_at = conn.execute(created_at_check).fetchone().count > 0
+                except Exception:
+                    has_created_at = False
+                
+                if has_created_at:
+                    query = text("""
+                        INSERT INTO iot_devices (user_id, pat_token, device_id, device_name, model_name, created_at, updated_at)
+                        VALUES (:user_id, :pat_token, :device_id, :device_name, :model_name, :created_at, :updated_at)
+                        ON DUPLICATE KEY UPDATE
+                            pat_token = VALUES(pat_token),
+                            device_id = VALUES(device_id),
+                            device_name = VALUES(device_name),
+                            model_name = VALUES(model_name),
+                            updated_at = :updated_at
+                    """)
+                else:
+                    query = text("""
+                        INSERT INTO iot_devices (user_id, pat_token, device_id, device_name, model_name, updated_at)
+                        VALUES (:user_id, :pat_token, :device_id, :device_name, :model_name, :updated_at)
+                        ON DUPLICATE KEY UPDATE
+                            pat_token = VALUES(pat_token),
+                            device_id = VALUES(device_id),
+                            device_name = VALUES(device_name),
+                            model_name = VALUES(model_name),
+                            updated_at = :updated_at
+                    """)
             else:
                 # 새로운 등록 (다른 사용자가 같은 device를 사용해도 허용)
                 logger.info(f"✅ 새로운 디바이스 등록: user_id={user_id}, device_id={device_id[:20]}... (다른 사용자가 같은 device를 사용해도 허용)")
-                query = text("""
-                    INSERT INTO iot_devices (user_id, pat_token, device_id, device_name, model_name, updated_at)
-                    VALUES (:user_id, :pat_token, :device_id, :device_name, :model_name, NOW())
-                """)
-            result = conn.execute(query, {
-                'user_id': user_id,
-                'pat_token': pat_token,
-                'device_id': device_id,
-                'device_name': device_name,
-                'model_name': model_name
-            })
+                # 한국 시간으로 created_at, updated_at 설정
+                current_time_kst = datetime.now(KST)
+                # created_at 컬럼 존재 여부 확인
+                try:
+                    created_at_check = text("""
+                        SELECT COUNT(*) as count
+                        FROM information_schema.columns 
+                        WHERE table_schema = DATABASE()
+                        AND TABLE_NAME = 'iot_devices'
+                        AND COLUMN_NAME = 'created_at'
+                    """)
+                    has_created_at_new = conn.execute(created_at_check).fetchone().count > 0
+                except Exception:
+                    has_created_at_new = False
+                
+                if has_created_at_new:
+                    query = text("""
+                        INSERT INTO iot_devices (user_id, pat_token, device_id, device_name, model_name, created_at, updated_at)
+                        VALUES (:user_id, :pat_token, :device_id, :device_name, :model_name, :created_at, :updated_at)
+                    """)
+                    result = conn.execute(query, {
+                        'user_id': user_id,
+                        'pat_token': pat_token,
+                        'device_id': device_id,
+                        'device_name': device_name,
+                        'model_name': model_name,
+                        'created_at': current_time_kst,
+                        'updated_at': current_time_kst
+                    })
+                else:
+                    query = text("""
+                        INSERT INTO iot_devices (user_id, pat_token, device_id, device_name, model_name, updated_at)
+                        VALUES (:user_id, :pat_token, :device_id, :device_name, :model_name, :updated_at)
+                    """)
+                    result = conn.execute(query, {
+                        'user_id': user_id,
+                        'pat_token': pat_token,
+                        'device_id': device_id,
+                        'device_name': device_name,
+                        'model_name': model_name,
+                        'updated_at': current_time_kst
+                    })
             conn.commit()
             
             # 저장 확인
@@ -1256,17 +1317,20 @@ async def register(data: RegisterRequest, request: Request):
                         has_created_at = conn.execute(created_at_check).fetchone().count > 0
                         
                         if has_user_no and has_created_at:
+                            # 한국 시간으로 created_at 설정
+                            current_time_kst = datetime.now(KST)
                             insert_query = text("""
                                 INSERT INTO predicted_results 
                                 (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp, user_no, created_at)
                                 VALUES 
-                                (0, 0, 0, :bmi, :age, :gender, 0, :user_no, NOW())
+                                (0, 0, 0, :bmi, :age, :gender, 0, :user_no, :created_at)
                             """)
                             conn.execute(insert_query, {
                                 'bmi': bmi,
                                 'age': age,
                                 'gender': gender,
-                                'user_no': user.no
+                                'user_no': user.no,
+                                'created_at': current_time_kst
                             })
                         elif has_user_no:
                             insert_query = text("""
@@ -1284,12 +1348,20 @@ async def register(data: RegisterRequest, request: Request):
                         else:
                             # user_no 컬럼이 없으면 기본값으로 저장
                             if has_created_at:
+                                # 한국 시간으로 created_at 설정
+                                current_time_kst = datetime.now(KST)
                                 insert_query = text("""
                                     INSERT INTO predicted_results 
                                     (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp, created_at)
                                     VALUES 
-                                    (0, 0, 0, :bmi, :age, :gender, 0, NOW())
+                                    (0, 0, 0, :bmi, :age, :gender, 0, :created_at)
                                 """)
+                                conn.execute(insert_query, {
+                                    'bmi': bmi,
+                                    'age': age,
+                                    'gender': gender,
+                                    'created_at': current_time_kst
+                                })
                             else:
                                 insert_query = text("""
                                     INSERT INTO predicted_results 
@@ -1448,10 +1520,12 @@ async def login(data: LoginRequest, request: Request):
             
             # 마지막 로그인 시간 업데이트 (컬럼이 있다면)
             try:
+                # 한국 시간으로 last_login 설정
+                current_time_kst = datetime.now(KST)
                 update_query = text("""
-                    UPDATE login SET last_login = NOW() WHERE no = :no
+                    UPDATE login SET last_login = :last_login WHERE no = :no
                 """)
-                conn.execute(update_query, {"no": user.no})
+                conn.execute(update_query, {"no": user.no, "last_login": current_time_kst})
                 conn.commit()
             except Exception as e:
                 # last_login 컬럼이 없어도 계속 진행
@@ -1993,17 +2067,20 @@ async def update_user_profile(
                 else:
                     # 기존 레코드가 없으면 새로 생성
                     if has_user_no and has_created_at:
+                        # 한국 시간으로 created_at 설정
+                        current_time_kst = datetime.now(KST)
                         insert_query = text("""
                             INSERT INTO predicted_results 
                             (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp, user_no, created_at)
                             VALUES 
-                            (0, 0, 0, :bmi, :age, :gender, 0, :user_no, NOW())
+                            (0, 0, 0, :bmi, :age, :gender, 0, :user_no, :created_at)
                         """)
                         conn.execute(insert_query, {
                             'bmi': update_bmi,
                             'age': update_age,
                             'gender': update_gender,
-                            'user_no': user_no
+                            'user_no': user_no,
+                            'created_at': current_time_kst
                         })
                     elif has_user_no:
                         insert_query = text("""
@@ -2020,12 +2097,20 @@ async def update_user_profile(
                         })
                     else:
                         if has_created_at:
+                            # 한국 시간으로 created_at 설정
+                            current_time_kst = datetime.now(KST)
                             insert_query = text("""
                                 INSERT INTO predicted_results 
                                 (HR_mean, HRV_SDNN, mean_sa02, bmi, age, gender, predicted_skin_temp, created_at)
                                 VALUES 
-                                (0, 0, 0, :bmi, :age, :gender, 0, NOW())
+                                (0, 0, 0, :bmi, :age, :gender, 0, :created_at)
                             """)
+                            conn.execute(insert_query, {
+                                'bmi': update_bmi,
+                                'age': update_age,
+                                'gender': update_gender,
+                                'created_at': current_time_kst
+                            })
                         else:
                             insert_query = text("""
                                 INSERT INTO predicted_results 
@@ -2033,11 +2118,11 @@ async def update_user_profile(
                                 VALUES 
                                 (0, 0, 0, :bmi, :age, :gender, 0)
                             """)
-                        conn.execute(insert_query, {
-                            'bmi': update_bmi,
-                            'age': update_age,
-                            'gender': update_gender
-                        })
+                            conn.execute(insert_query, {
+                                'bmi': update_bmi,
+                                'age': update_age,
+                                'gender': update_gender
+                            })
                     logger.info(f"✅ predicted_results 새로 생성 완료: age={update_age}, bmi={update_bmi}, gender={update_gender}, user_no={user_no}")
                 
                 conn.commit()
@@ -2329,15 +2414,43 @@ async def receive_health_data(data: HealthData, user_no: Optional[int] = Depends
                         # 레코드가 없을 때만 삽입 (처음 한 번만)
                         if threshold_count == 0:
                             try:
-                                insert_threshold = text("""
-                                    INSERT INTO room_threshold (min_temp, max_temp, user_no)
-                                    VALUES (:min_temp, :max_temp, :user_no)
-                                """)
-                                insert_params = {
-                                    'min_temp': comfort_min,
-                                    'max_temp': comfort_max,
-                                    'user_no': user_no
-                                }
+                                # created_at 컬럼 존재 여부 확인
+                                try:
+                                    created_at_check = text("""
+                                        SELECT COLUMN_NAME 
+                                        FROM INFORMATION_SCHEMA.COLUMNS 
+                                        WHERE TABLE_SCHEMA = 'main' 
+                                        AND TABLE_NAME = 'room_threshold'
+                                        AND COLUMN_NAME = 'created_at'
+                                    """)
+                                    has_created_at = conn.execute(created_at_check).fetchone() is not None
+                                except Exception:
+                                    has_created_at = False
+                                
+                                # 한국 시간으로 created_at 설정
+                                current_time_kst = datetime.now(KST)
+                                
+                                if has_created_at:
+                                    insert_threshold = text("""
+                                        INSERT INTO room_threshold (min_temp, max_temp, user_no, created_at)
+                                        VALUES (:min_temp, :max_temp, :user_no, :created_at)
+                                    """)
+                                    insert_params = {
+                                        'min_temp': comfort_min,
+                                        'max_temp': comfort_max,
+                                        'user_no': user_no,
+                                        'created_at': current_time_kst
+                                    }
+                                else:
+                                    insert_threshold = text("""
+                                        INSERT INTO room_threshold (min_temp, max_temp, user_no)
+                                        VALUES (:min_temp, :max_temp, :user_no)
+                                    """)
+                                    insert_params = {
+                                        'min_temp': comfort_min,
+                                        'max_temp': comfort_max,
+                                        'user_no': user_no
+                                    }
                                 conn.execute(insert_threshold, insert_params)
                                 conn.commit()
                                 logger.info(f"✅ room_threshold 테이블에 임계값 저장 (처음 저장): {comfort_min}~{comfort_max}°C, user_no={user_no}")
@@ -2373,10 +2486,10 @@ async def receive_health_data(data: HealthData, user_no: Optional[int] = Depends
                 has_created_at_column = 'created_at' in columns
                 if not has_created_at_column:
                     try:
-                        # created_at 컬럼 추가
+                        # created_at 컬럼 추가 (DEFAULT는 사용하지 않음, 명시적으로 KST 시간 설정)
                         alter_query = text("""
                             ALTER TABLE predicted_results 
-                            ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                            ADD COLUMN created_at DATETIME
                         """)
                         conn.execute(alter_query)
                         conn.commit()
@@ -2477,9 +2590,10 @@ async def receive_health_data(data: HealthData, user_no: Optional[int] = Depends
                     logger.debug(f"중복 체크 실패 상세: {traceback.format_exc()}")
                 
                 data_inserted = False
-                # 현재 시간 가져오기
-                from datetime import datetime
-                current_time = datetime.now()
+                # 현재 시간 가져오기 (한국 시간대 KST 사용, UTC+9)
+                from datetime import datetime, timezone, timedelta
+                kst = timezone(timedelta(hours=9))  # UTC+9 (한국 시간)
+                current_time = datetime.now(kst)
                 
                 if has_predicted_skin_column and predicted_skin_code is not None:
                     # predicted_skin 컬럼이 있으면 함께 저장
@@ -2490,7 +2604,7 @@ async def receive_health_data(data: HealthData, user_no: Optional[int] = Depends
                             VALUES 
                             (:heart_rate, :hrv, :oxygen_sat, :bmi, :age, :gender, :predicted_temp, :predicted_skin, :created_at, :user_no)
                         """)
-                        conn.execute(insert_query, {
+                        insert_params = {
                             'heart_rate': data.heartRate,
                             'hrv': data.HRV,
                             'oxygen_sat': data.oxygenSaturation,
@@ -2501,7 +2615,10 @@ async def receive_health_data(data: HealthData, user_no: Optional[int] = Depends
                             'predicted_skin': predicted_skin_code,
                             'created_at': current_time,
                             'user_no': user_no
-                        })
+                        }
+                        logger.info(f"🔍 INSERT 파라미터 확인: {insert_params}")
+                        logger.info(f"🔍 데이터 타입 확인: heartRate={type(data.heartRate)}({data.heartRate}), HRV={type(data.HRV)}({data.HRV}), O2={type(data.oxygenSaturation)}({data.oxygenSaturation})")
+                        conn.execute(insert_query, insert_params)
                         logger.info(f"✅ 데이터 저장 완료 (predicted_skin 포함, created_at 포함): HR={data.heartRate}, HRV={data.HRV}, O2={data.oxygenSaturation}, 예측온도={predicted_skin_temp}°C, 시간={current_time}")
                     else:
                         insert_query = text("""
@@ -2510,7 +2627,7 @@ async def receive_health_data(data: HealthData, user_no: Optional[int] = Depends
                             VALUES 
                             (:heart_rate, :hrv, :oxygen_sat, :bmi, :age, :gender, :predicted_temp, :predicted_skin, :user_no)
                         """)
-                        conn.execute(insert_query, {
+                        insert_params = {
                             'heart_rate': data.heartRate,
                             'hrv': data.HRV,
                             'oxygen_sat': data.oxygenSaturation,
@@ -2520,7 +2637,10 @@ async def receive_health_data(data: HealthData, user_no: Optional[int] = Depends
                             'predicted_temp': predicted_skin_temp,
                             'predicted_skin': predicted_skin_code,
                             'user_no': user_no
-                        })
+                        }
+                        logger.info(f"🔍 INSERT 파라미터 확인: {insert_params}")
+                        logger.info(f"🔍 데이터 타입 확인: heartRate={type(data.heartRate)}({data.heartRate}), HRV={type(data.HRV)}({data.HRV}), O2={type(data.oxygenSaturation)}({data.oxygenSaturation})")
+                        conn.execute(insert_query, insert_params)
                         logger.info(f"✅ 데이터 저장 완료 (predicted_skin 포함, created_at 없음): HR={data.heartRate}, HRV={data.HRV}, O2={data.oxygenSaturation}, 예측온도={predicted_skin_temp}°C")
                     data_inserted = True
                 else:
@@ -2532,7 +2652,7 @@ async def receive_health_data(data: HealthData, user_no: Optional[int] = Depends
                             VALUES 
                             (:heart_rate, :hrv, :oxygen_sat, :bmi, :age, :gender, :predicted_temp, :created_at, :user_no)
                         """)
-                        conn.execute(insert_query, {
+                        insert_params = {
                             'heart_rate': data.heartRate,
                             'hrv': data.HRV,
                             'oxygen_sat': data.oxygenSaturation,
@@ -2542,7 +2662,10 @@ async def receive_health_data(data: HealthData, user_no: Optional[int] = Depends
                             'predicted_temp': predicted_skin_temp,
                             'created_at': current_time,
                             'user_no': user_no
-                        })
+                        }
+                        logger.info(f"🔍 INSERT 파라미터 확인: {insert_params}")
+                        logger.info(f"🔍 데이터 타입 확인: heartRate={type(data.heartRate)}({data.heartRate}), HRV={type(data.HRV)}({data.HRV}), O2={type(data.oxygenSaturation)}({data.oxygenSaturation})")
+                        conn.execute(insert_query, insert_params)
                         logger.info(f"✅ 데이터 저장 완료 (predicted_skin 없음, created_at 포함): HR={data.heartRate}, HRV={data.HRV}, O2={data.oxygenSaturation}, 예측온도={predicted_skin_temp}°C, 시간={current_time}")
                     else:
                         insert_query = text("""
@@ -2567,8 +2690,7 @@ async def receive_health_data(data: HealthData, user_no: Optional[int] = Depends
                 logger.warning(f"⚠️ predicted_skin 컬럼 확인 실패, 기존 방식으로 저장: {str(e)}")
                 # 예외 발생 시에만 기존 방식으로 저장 (중복 방지)
                 if not data_inserted:
-                    from datetime import datetime
-                    current_time = datetime.now()
+                    current_time = datetime.now(KST)
                     
                     # created_at 컬럼 확인
                     try:
@@ -2588,7 +2710,7 @@ async def receive_health_data(data: HealthData, user_no: Optional[int] = Depends
                                 VALUES 
                                 (:heart_rate, :hrv, :oxygen_sat, :bmi, :age, :gender, :predicted_temp, :created_at)
                             """)
-                            conn.execute(insert_query, {
+                            insert_params = {
                                 'heart_rate': data.heartRate,
                                 'hrv': data.HRV,
                                 'oxygen_sat': data.oxygenSaturation,
@@ -2597,7 +2719,10 @@ async def receive_health_data(data: HealthData, user_no: Optional[int] = Depends
                                 'gender': gender,
                                 'predicted_temp': predicted_skin_temp,
                                 'created_at': current_time
-                            })
+                            }
+                            logger.info(f"🔍 INSERT 파라미터 확인 (예외 처리): {insert_params}")
+                            logger.info(f"🔍 데이터 타입 확인: heartRate={type(data.heartRate)}({data.heartRate}), HRV={type(data.HRV)}({data.HRV}), O2={type(data.oxygenSaturation)}({data.oxygenSaturation})")
+                            conn.execute(insert_query, insert_params)
                         else:
                             insert_query = text("""
                                 INSERT INTO predicted_results 
@@ -2605,7 +2730,7 @@ async def receive_health_data(data: HealthData, user_no: Optional[int] = Depends
                                 VALUES 
                                 (:heart_rate, :hrv, :oxygen_sat, :bmi, :age, :gender, :predicted_temp)
                             """)
-                            conn.execute(insert_query, {
+                            insert_params = {
                                 'heart_rate': data.heartRate,
                                 'hrv': data.HRV,
                                 'oxygen_sat': data.oxygenSaturation,
@@ -2613,7 +2738,10 @@ async def receive_health_data(data: HealthData, user_no: Optional[int] = Depends
                                 'age': age,
                                 'gender': gender,
                                 'predicted_temp': predicted_skin_temp
-                            })
+                            }
+                            logger.info(f"🔍 INSERT 파라미터 확인 (예외 처리, created_at 없음): {insert_params}")
+                            logger.info(f"🔍 데이터 타입 확인: heartRate={type(data.heartRate)}({data.heartRate}), HRV={type(data.HRV)}({data.HRV}), O2={type(data.oxygenSaturation)}({data.oxygenSaturation})")
+                            conn.execute(insert_query, insert_params)
                     except Exception as e2:
                         logger.warning(f"⚠️ created_at 컬럼 확인 실패: {str(e2)}")
                         insert_query = text("""
@@ -2805,7 +2933,7 @@ async def receive_health_data(data: HealthData, user_no: Optional[int] = Depends
                                 cold_threshold=cold_threshold,
                                 hot_threshold=hot_threshold,
                                 update_threshold_callback=update_thresholds_wrapper,
-                                min_interval_minutes=30.0,  # 30분 간격으로 조절
+                                min_interval_minutes=10.0,  # 10분 간격으로 조절
                                 user_no=user_no
                             )
                             logger.info("✅ 실시간 제어 로직 실행 완료")
@@ -2870,6 +2998,7 @@ async def get_latest_health_data(user_no: int = Depends(verify_token)):
                     order_by = f"ORDER BY {date_column} DESC" if date_column else "ORDER BY 1 DESC"  # 1은 첫 번째 컬럼
                     
                     # SELECT 절 생성 (created_at이 있으면 포함, 없으면 제외)
+                    # user_no 컬럼도 포함하여 실제 조회된 데이터의 user_no 확인
                     select_columns = """
                         HR_mean as heartRate,
                         HRV_SDNN as hrv,
@@ -2878,6 +3007,8 @@ async def get_latest_health_data(user_no: int = Depends(verify_token)):
                         age,
                         gender
                     """
+                    if 'user_no' in columns or 'user_no' in [c.lower() for c in columns]:
+                        select_columns += ", user_no"
                     if date_column:
                         select_columns += f", {date_column} as created_at"
                     
@@ -2893,30 +3024,86 @@ async def get_latest_health_data(user_no: int = Depends(verify_token)):
                 except Exception as e:
                     logger.warning(f"테이블 구조 확인 실패, 기본 쿼리 사용: {e}")
                     # 기본 쿼리 (created_at 없이, user_no 필터링)
-                    query = text("""
+                    # user_no 컬럼 포함 여부 확인
+                    try:
+                        check_user_no = text("SELECT COUNT(*) as cnt FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'main' AND TABLE_NAME = 'predicted_results' AND COLUMN_NAME = 'user_no'")
+                        has_user_no_result = conn.execute(check_user_no).fetchone()
+                        has_user_no_col = has_user_no_result and has_user_no_result.cnt > 0
+                    except:
+                        has_user_no_col = False
+                    user_no_select = ", user_no" if has_user_no_col else ""
+                    query = text(f"""
                         SELECT 
                             HR_mean as heartRate,
                             HRV_SDNN as hrv,
                             mean_sa02 as oxygenSaturation,
                             bmi,
                             age,
-                            gender
+                            gender{user_no_select}
                         FROM predicted_results
                         WHERE user_no = :user_no
                         ORDER BY 1 DESC
                         LIMIT 1
                     """)
                 
+                # 쿼리 실행 전 로그
+                logger.info(f"🔍 쿼리 실행: user_no={user_no}, 쿼리 파라미터: {{'user_no': {user_no}}}")
                 result = conn.execute(query, {"user_no": user_no})
                 row = result.fetchone()
                 
                 if row is None:
-                    logger.info("📊 저장된 건강 데이터가 없습니다.")
+                    logger.info(f"📊 user_no={user_no}에 대한 저장된 건강 데이터가 없습니다.")
                     return {
                         "success": True,
                         "data": {},
                         "message": "저장된 건강 데이터가 없습니다."
                     }
+                
+                # 실제 조회된 데이터의 user_no 확인 (테이블에 user_no 컬럼이 있는 경우)
+                actual_user_no = None
+                try:
+                    if hasattr(row, 'user_no'):
+                        actual_user_no = row.user_no
+                        logger.info(f"🔍 조회된 데이터의 user_no: {actual_user_no} (요청한 user_no: {user_no})")
+                    else:
+                        # columns 변수가 try 블록 밖에 있을 수 있으므로 다시 확인
+                        try:
+                            columns_check = text("""
+                                SELECT COLUMN_NAME 
+                                FROM INFORMATION_SCHEMA.COLUMNS 
+                                WHERE TABLE_SCHEMA = 'main' 
+                                AND TABLE_NAME = 'predicted_results'
+                            """)
+                            columns_result_check = conn.execute(columns_check)
+                            columns_list = [row_check.COLUMN_NAME for row_check in columns_result_check]
+                            
+                            if 'user_no' in columns_list or 'user_no' in [c.lower() for c in columns_list]:
+                                user_check_query = text(f"""
+                                    SELECT user_no FROM predicted_results 
+                                    WHERE user_no = :user_no {order_by if 'order_by' in locals() else 'ORDER BY 1 DESC'} LIMIT 1
+                                """)
+                                user_result = conn.execute(user_check_query, {"user_no": user_no})
+                                user_row = user_result.fetchone()
+                                if user_row:
+                                    actual_user_no = user_row.user_no
+                                    logger.info(f"🔍 별도 조회로 확인한 user_no: {actual_user_no} (요청한 user_no: {user_no})")
+                        except Exception as check_err:
+                            logger.warning(f"user_no 확인 실패: {check_err}")
+                except Exception as e:
+                    logger.warning(f"실제 user_no 확인 중 오류: {e}")
+                
+                # 타입을 정수로 변환하여 비교 (DB에서 문자열로 올 수 있음)
+                if actual_user_no is not None:
+                    try:
+                        actual_user_no_int = int(actual_user_no)
+                        if actual_user_no_int != user_no:
+                            logger.error(f"⚠️⚠️⚠️ 심각한 오류: 요청한 user_no={user_no}와 조회된 데이터의 user_no={actual_user_no_int}가 일치하지 않습니다! ⚠️⚠️⚠️")
+                        else:
+                            logger.info(f"✅ user_no 검증 성공: 요청한 {user_no} = 조회된 {actual_user_no_int}")
+                    except (ValueError, TypeError) as e:
+                        logger.warning(f"⚠️ user_no 타입 변환 실패: actual_user_no={actual_user_no}, type={type(actual_user_no)}, error={e}")
+                
+                logger.info(f"✅ user_no={user_no}의 건강 데이터 조회 성공 (조회된 데이터 user_no: {actual_user_no if actual_user_no else '확인불가'})")
                 
                 # 데이터 변환
                 health_data = {
@@ -2929,23 +3116,44 @@ async def get_latest_health_data(user_no: int = Depends(verify_token)):
                 try:
                     created_at = getattr(row, 'created_at', None)
                     if created_at is None:
-                        # created_at 컬럼이 없으면 현재 시간 사용
-                        created_at = datetime.now()
+                        # created_at 컬럼이 없으면 현재 시간 사용 (한국 시간대 KST)
+                        from datetime import timezone, timedelta
+                        kst = timezone(timedelta(hours=9))  # UTC+9 (한국 시간)
+                        created_at = datetime.now(kst)
                         date_str = created_at.isoformat()
                     elif isinstance(created_at, datetime):
                         date_str = created_at.isoformat()
                     else:
                         date_str = str(created_at)
                 except AttributeError:
-                    # created_at 속성이 없으면 현재 시간 사용
-                    created_at = datetime.now()
+                    # created_at 속성이 없으면 현재 시간 사용 (한국 시간대 KST)
+                    from datetime import timezone, timedelta
+                    kst = timezone(timedelta(hours=9))  # UTC+9 (한국 시간)
+                    created_at = datetime.now(kst)
                     date_str = created_at.isoformat()
                 
                 logger.info(f"✅ 최신 건강 데이터 조회 성공: {health_data}")
                 
                 # 사용자 정보 추출 (age, bmi, gender)
-                user_age = int(row.age) if hasattr(row, 'age') and row.age is not None else None
-                user_bmi = float(row.bmi) if hasattr(row, 'bmi') and row.bmi is not None else None
+                # predicted_results에서 가져온 값이 0이면 None으로 처리
+                user_age = None
+                if hasattr(row, 'age') and row.age is not None:
+                    try:
+                        age_value = int(row.age) if isinstance(row.age, (int, float)) else (int(row.age) if str(row.age).isdigit() else None)
+                        # 0이면 None으로 처리 (실제 값이 없는 경우)
+                        user_age = age_value if age_value and age_value > 0 else None
+                    except (ValueError, TypeError):
+                        user_age = None
+                
+                user_bmi = None
+                if hasattr(row, 'bmi') and row.bmi is not None:
+                    try:
+                        bmi_value = float(row.bmi) if isinstance(row.bmi, (int, float)) else (float(row.bmi) if str(row.bmi).replace('.', '').replace('-', '').isdigit() else None)
+                        # 0이면 None으로 처리 (실제 값이 없는 경우)
+                        user_bmi = bmi_value if bmi_value and bmi_value > 0 else None
+                    except (ValueError, TypeError):
+                        user_bmi = None
+                
                 user_gender = None
                 if hasattr(row, 'gender') and row.gender is not None:
                     gender_value = row.gender
@@ -2955,6 +3163,39 @@ async def get_latest_health_data(user_no: int = Depends(verify_token)):
                         user_gender = 'M' if gender_value.upper() in ['M', 'MALE', '1'] else 'F'
                     else:
                         user_gender = str(gender_value)
+                
+                # predicted_results에서 age/bmi가 0이거나 None이면, 별도로 사용자 정보 조회 시도
+                if (user_age is None or user_bmi is None) and user_no:
+                    try:
+                        logger.info(f"🔍 predicted_results에서 사용자 정보가 없음, 별도 조회 시도 (user_no={user_no})")
+                        user_info_query = text("""
+                            SELECT age, bmi, gender 
+                            FROM predicted_results 
+                            WHERE user_no = :user_no 
+                              AND age IS NOT NULL 
+                              AND age > 0
+                              AND bmi IS NOT NULL 
+                              AND bmi > 0
+                            ORDER BY created_at DESC
+                            LIMIT 1
+                        """)
+                        user_info_result = conn.execute(user_info_query, {"user_no": user_no}).fetchone()
+                        if user_info_result:
+                            if user_age is None and user_info_result.age:
+                                user_age = int(user_info_result.age)
+                            if user_bmi is None and user_info_result.bmi:
+                                user_bmi = float(user_info_result.bmi)
+                            if user_gender is None and user_info_result.gender:
+                                gender_val = user_info_result.gender
+                                if isinstance(gender_val, (int, float)):
+                                    user_gender = 'M' if gender_val == 1.0 or gender_val == 1 else 'F'
+                                elif isinstance(gender_val, str):
+                                    user_gender = 'M' if gender_val.upper() in ['M', 'MALE', '1'] else 'F'
+                            logger.info(f"✅ 별도 조회로 사용자 정보 복구: age={user_age}, bmi={user_bmi}, gender={user_gender}")
+                    except Exception as e:
+                        logger.warning(f"⚠️ 사용자 정보 별도 조회 실패: {e}")
+                
+                logger.info(f"🔍 최종 사용자 정보: age={user_age}, bmi={user_bmi}, gender={user_gender} (원본: age={getattr(row, 'age', None)}, bmi={getattr(row, 'bmi', None)}, gender={getattr(row, 'gender', None)})")
                 
                 return {
                     "success": True,
@@ -3497,7 +3738,10 @@ class TemperatureThresholdRequest(BaseModel):
 async def save_temperature_threshold_api(data: TemperatureThresholdRequest, user_no: int = Depends(verify_token)):
     """에어컨 온도 임계값을 캐시에 저장 (유효, 사용자별 분리)"""
     try:
+        logger.info(f"🌡️ 온도 임계값 저장 요청: user_no={user_no}, target_temperature={data.target_temperature}°C")
         threshold = save_threshold(data.target_temperature, user_no)
+        
+        logger.info(f"✅ 온도 임계값 저장 성공: user_no={user_no}, threshold={threshold}")
         
         return {
             "success": True,
@@ -3505,7 +3749,7 @@ async def save_temperature_threshold_api(data: TemperatureThresholdRequest, user
             "threshold": threshold
         }
     except Exception as e:
-        logger.error(f"❌ 온도 임계값 저장 실패: {str(e)}")
+        logger.error(f"❌ 온도 임계값 저장 실패: user_no={user_no}, error={str(e)}")
         raise HTTPException(status_code=500, detail=f'온도 임계값 저장 실패: {str(e)}')
 
 @app.get("/air_conditioner/temperature_threshold")
@@ -4286,7 +4530,7 @@ async def start_sleep_mode(data: SleepModeRequest, user_no: int = Depends(verify
     try:
         from datetime import datetime, timedelta
         
-        start_time = datetime.now()
+        start_time = datetime.now(KST)  # 한국 시간 사용
         end_time = start_time + timedelta(hours=data.duration_hours)
         
         # user_no별로 관리
@@ -4769,7 +5013,7 @@ async def update_thresholds_api(data: ThresholdUpdateRequest, user_no: int = Dep
                     cold_threshold=cold_threshold,
                     hot_threshold=hot_threshold,
                     update_threshold_callback=update_thresholds_wrapper,
-                    min_interval_minutes=30.0,  # 30분 간격으로 조절
+                                min_interval_minutes=30.0,  # 30분 간격으로 조절
                     user_no=user_no
                 )
                 logger.info(f"✅ 임계값 업데이트 즉시 적용 완료 (user_no={user_no})")
@@ -5481,7 +5725,7 @@ def adjust_air_conditioner_wrapper():
                 cold_threshold=cold_threshold,
                 hot_threshold=hot_threshold,
                 update_threshold_callback=update_thresholds_wrapper,
-                min_interval_minutes=30.0,  # 30분 간격으로 조절
+                                min_interval_minutes=30.0,  # 30분 간격으로 조절
                 user_no=user_no
             )
             print(f"✅ [{current_time}] 스케줄러 실행 완료: 에어컨 자동 조절 종료 (user_no: {user_no})")
@@ -5496,7 +5740,7 @@ def adjust_air_conditioner_wrapper():
 
 scheduler.add_job(
     adjust_air_conditioner_wrapper,
-    trigger=IntervalTrigger(minutes=30),  # 30분마다 백업용 실행 (실제 제어는 실시간 데이터 수신 시 10분 간격으로 실행)
+    trigger=IntervalTrigger(minutes=30),  # 30분마다 백업용 실행
     id='air_conditioner_adjustment',
     name='에어컨 자동 온도 조절 (백업)',
     replace_existing=True
@@ -5530,7 +5774,7 @@ async def startup_event():
         set_temperature_func=set_temperature
     )
     scheduler.start()
-    logger.info("✅ 스케줄러 시작 완료 (30분마다 백업용 자동 조절, 실제 제어는 실시간 데이터 수신 시 10분 간격으로 실행)")
+    logger.info("✅ 스케줄러 시작 완료 (30분마다 백업용 자동 조절)")
 
 @app.on_event("shutdown")
 async def shutdown_event():

@@ -7,9 +7,12 @@
 """
 
 from sqlalchemy import text
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import logging
 from temperature_threshold_cache import get_temperature_threshold
+
+# 한국 시간대 (KST, UTC+9) 전역 정의
+KST = timezone(timedelta(hours=9))
 
 logger = logging.getLogger(__name__)
 
@@ -156,7 +159,7 @@ def adjust_air_conditioner(
     try:
         # 사용자별 마지막 조절 시간 확인 (user_no가 None이면 기본 키 사용)
         user_key = user_no if user_no is not None else "default"
-        now = datetime.now()
+        now = datetime.now(KST)  # 한국 시간 사용
         
         if user_key in last_adjustment_times:
             last_time = last_adjustment_times[user_key]
@@ -635,40 +638,53 @@ def adjust_air_conditioner(
                     actual_new_temp = target_temp  # 실제로 설정된 새 온도
                     
                     # 온도 조절
-                    if majority_feedback == 'G':
-                        # 쾌적하면 조절 없음
-                        logger.info("✅ 쾌적 상태 - 조절 없음")
-                        print(f"✅ 쾌적 상태 - 온도 조절 없음")
-                        actions_taken.append("none")
-                    else:
-                        # 목표 온도 조절 계산
-                        if target_temp is not None:
-                            new_target_temp = target_temp
-                            
-                            if majority_feedback == 'H':
-                                # 더움 → 목표 온도 -0.5
-                                new_target_temp = target_temp - 0.5
-                                actions_taken.append("temp_down")
-                                print(f"🔥 더움 감지 → 목표 온도 낮춤: {target_temp}°C → {new_target_temp}°C")
-                            elif majority_feedback == 'C':
-                                # 추움 → 목표 온도 +0.5
-                                new_target_temp = target_temp + 0.5
-                                actions_taken.append("temp_up")
-                                print(f"❄️ 추움 감지 → 목표 온도 높임: {target_temp}°C → {new_target_temp}°C")
-                            
-                            # 조절 후 목표 온도가 범위 내인지 확인하고, 범위를 벗어나면 최소값/최대값으로 조정
-                            if new_target_temp < min_temp:
+                    if target_temp is not None:
+                        new_target_temp = target_temp
+                        
+                        if majority_feedback == 'G':
+                            # 쾌적 상태: 목표 온도가 쾌적 범위 밖에 있으면 범위 내로 조절
+                            if target_temp < min_temp:
                                 # 최소값보다 낮으면 최소값으로 조정
                                 new_target_temp = min_temp
-                                logger.info(f"📈 조절 후 온도가 최소값({min_temp}°C)보다 낮아 최소값으로 조정: {new_target_temp}°C")
-                                print(f"📈 조절 후 온도가 최소값({min_temp}°C)보다 낮아 최소값으로 조정: {new_target_temp}°C")
-                            elif new_target_temp > max_temp:
-                                # 최대값보다 높으면 최대값까지 내림
+                                actions_taken.append("temp_up_to_range")
+                                logger.info(f"✅ 쾌적 상태 - 목표 온도가 범위 밖({target_temp}°C < {min_temp}°C) → 최소값으로 조정: {new_target_temp}°C")
+                                print(f"✅ 쾌적 상태 - 목표 온도가 범위 밖({target_temp}°C < {min_temp}°C) → 최소값으로 조정: {new_target_temp}°C")
+                            elif target_temp > max_temp:
+                                # 최대값보다 높으면 최대값으로 조정
                                 new_target_temp = max_temp
-                                logger.info(f"📉 조절 후 온도가 최대값({max_temp}°C)보다 높아 최대값까지 내림: {new_target_temp}°C")
-                                print(f"📉 조절 후 온도가 최대값({max_temp}°C)보다 높아 최대값까지 내림: {new_target_temp}°C")
-                            
-                            # 조정된 온도로 설정
+                                actions_taken.append("temp_down_to_range")
+                                logger.info(f"✅ 쾌적 상태 - 목표 온도가 범위 밖({target_temp}°C > {max_temp}°C) → 최대값으로 조정: {new_target_temp}°C")
+                                print(f"✅ 쾌적 상태 - 목표 온도가 범위 밖({target_temp}°C > {max_temp}°C) → 최대값으로 조정: {new_target_temp}°C")
+                            else:
+                                # 범위 내에 있으면 조절 없음
+                                logger.info(f"✅ 쾌적 상태 - 목표 온도가 범위 내({target_temp}°C, 범위: {min_temp}~{max_temp}°C) → 조절 없음")
+                                print(f"✅ 쾌적 상태 - 목표 온도가 범위 내({target_temp}°C, 범위: {min_temp}~{max_temp}°C) → 조절 없음")
+                                actions_taken.append("none")
+                        elif majority_feedback == 'H':
+                            # 더움 → 목표 온도 -0.5
+                            new_target_temp = target_temp - 0.5
+                            actions_taken.append("temp_down")
+                            print(f"🔥 더움 감지 → 목표 온도 낮춤: {target_temp}°C → {new_target_temp}°C")
+                        elif majority_feedback == 'C':
+                            # 추움 → 목표 온도 +0.5
+                            new_target_temp = target_temp + 0.5
+                            actions_taken.append("temp_up")
+                            print(f"❄️ 추움 감지 → 목표 온도 높임: {target_temp}°C → {new_target_temp}°C")
+                        
+                        # 조절 후 목표 온도가 범위 내인지 확인하고, 범위를 벗어나면 최소값/최대값으로 조정
+                        if new_target_temp < min_temp:
+                            # 최소값보다 낮으면 최소값으로 조정
+                            new_target_temp = min_temp
+                            logger.info(f"📈 조절 후 온도가 최소값({min_temp}°C)보다 낮아 최소값으로 조정: {new_target_temp}°C")
+                            print(f"📈 조절 후 온도가 최소값({min_temp}°C)보다 낮아 최소값으로 조정: {new_target_temp}°C")
+                        elif new_target_temp > max_temp:
+                            # 최대값보다 높으면 최대값까지 내림
+                            new_target_temp = max_temp
+                            logger.info(f"📉 조절 후 온도가 최대값({max_temp}°C)보다 높아 최대값까지 내림: {new_target_temp}°C")
+                            print(f"📉 조절 후 온도가 최대값({max_temp}°C)보다 높아 최대값까지 내림: {new_target_temp}°C")
+                        
+                        # 온도가 변경되었을 때만 에어컨에 설정
+                        if new_target_temp != target_temp:
                             try:
                                 set_temperature_func(target_temp=new_target_temp, unit='C')
                                 logger.info(f"🌡️ 온도 조절 완료: {target_temp}°C → {new_target_temp}°C (다수결: {majority_feedback}, 범위: {min_temp}~{max_temp}°C)")
@@ -681,9 +697,13 @@ def adjust_air_conditioner(
                                 print(f"❌ 목표 온도 조절 실패: {e}")
                                 actual_new_temp = original_target_temp
                         else:
-                            logger.warning("⚠️ 목표 온도를 가져올 수 없습니다.")
-                            print(f"⚠️ 목표 온도를 가져올 수 없습니다.")
+                            # 온도가 변경되지 않았으면 조절 없음으로 표시
+                            temperature_adjusted = False
                             actual_new_temp = original_target_temp
+                    else:
+                        logger.warning("⚠️ 목표 온도를 가져올 수 없습니다.")
+                        print(f"⚠️ 목표 온도를 가져올 수 없습니다.")
+                        actual_new_temp = original_target_temp
                     
 
                     # 조절 결과를 DB에 기록
@@ -732,7 +752,7 @@ def adjust_air_conditioner(
                                 temperature_action VARCHAR(20) NOT NULL COMMENT '온도 조절 방향 (up, down, none)',
                                 previous_temperature FLOAT COMMENT '이전 목표 온도',
                                 new_temperature FLOAT COMMENT '새로운 목표 온도',
-                                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                                created_at DATETIME,
                                 user_no INT DEFAULT NULL
                             )
                         """)
@@ -777,8 +797,17 @@ def adjust_air_conditioner(
                             # 추움 → 온도 높임
                             temp_action = "up" if temperature_adjusted else "none"
                         elif majority_feedback == 'G':
-                            # 쾌적 → 조절 없음
-                            temp_action = "none"
+                            # 쾌적 → 온도가 범위 밖이면 범위 내로 조절, 범위 내면 조절 없음
+                            if temperature_adjusted:
+                                # 온도가 범위 밖에서 범위 내로 조절된 경우
+                                if original_target_temp and original_target_temp > max_temp:
+                                    temp_action = "down"  # 최대값보다 높았으면 내림
+                                elif original_target_temp and original_target_temp < min_temp:
+                                    temp_action = "up"  # 최소값보다 낮았으면 올림
+                                else:
+                                    temp_action = "none"
+                            else:
+                                temp_action = "none"
                     else:
                         # 에어컨이 꺼져있으면 조절 없음
                         temp_action = "none"
@@ -792,8 +821,8 @@ def adjust_air_conditioner(
                         logger.info(f"📊 전체 분류 결과 {len(feedbacks)}개 중 최근 3개만 저장: {classification_str} (전체: {','.join(feedbacks)})")
                         print(f"📊 전체 분류 결과 {len(feedbacks)}개 중 최근 3개만 저장: {classification_str}")
                     
-                    # test_script_logs 테이블에 저장
-                    current_datetime = datetime.now()
+                    # test_script_logs 테이블에 저장 (한국 시간 사용)
+                    current_datetime = datetime.now(KST)
                     test_log_query = text("""
                         INSERT INTO test_script_logs 
                         (classification_results, majority_result, temperature_action, previous_temperature, new_temperature, created_at, user_no)

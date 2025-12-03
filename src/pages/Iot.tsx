@@ -355,6 +355,49 @@ const Iot: React.FC = () => {
       const result = await IotService.saveTemperatureThreshold(targetTemp);
       if (result.success) {
         console.log('✅ 온도 임계값 저장 성공');
+        
+        // 온도 범위 다시 불러오기 (수동 조절 범위로 갱신)
+        try {
+          const { getAuthHeaders } = await import('../services/AuthService');
+          const { getServerUrl } = await import('../services/ServerConfig');
+          const baseUrl = getServerUrl();
+          const rangeResponse = await fetch(`${baseUrl}/temperature-range`, {
+            headers: getAuthHeaders()
+          });
+          
+          if (rangeResponse.ok) {
+            const rangeData = await rangeResponse.json();
+            console.log('🌡️ 수동 조절 후 온도 범위 갱신:', rangeData);
+            
+            if (rangeData.success && rangeData.min_temp != null && rangeData.max_temp != null) {
+              setTemperatureRange({
+                min: rangeData.min_temp,
+                max: rangeData.max_temp,
+              });
+              
+              // 캐시 여부 저장 (수동 조절 캐시)
+              setIsCachedRange(rangeData.is_cached === true);
+              
+              // 자동 조절 범위 여부 저장
+              setIsAutoRange(rangeData.is_auto === true);
+              
+              // 원래 설정된 온도 범위도 저장
+              if (rangeData.original_min_temp != null && rangeData.original_max_temp != null) {
+                setOriginalTemperatureRange({
+                  min: rangeData.original_min_temp,
+                  max: rangeData.original_max_temp,
+                });
+              }
+              
+              console.log('✅ 온도 범위 갱신 완료: 수동 조절 범위로 변경됨');
+            }
+          } else {
+            console.warn('⚠️ 온도 범위 갱신 실패:', rangeResponse.status);
+          }
+        } catch (rangeError) {
+          console.error('❌ 온도 범위 갱신 중 오류:', rangeError);
+          // 온도 범위 갱신 실패해도 온도는 설정되었으므로 에러는 표시하지 않음
+        }
       } else {
         console.warn('⚠️ 온도 임계값 저장 실패:', result.message);
         // 임계값 저장 실패해도 온도는 설정되었으므로 에러는 표시하지 않음

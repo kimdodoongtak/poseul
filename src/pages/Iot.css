@@ -134,7 +134,24 @@ ion-content.iot-page .scroll-content {
   border: 1px solid rgba(196, 161, 194, 0.35);
   margin-bottom: 16px;
   position: relative;
-  overflow: hidden;
+  overflow: visible;
+}
+
+/* fly.png 이미지를 status-main-card(현재 온도) 모서리에 배치 (스플래시 스크린과 동일한 그림자 효과) */
+.iot-page .status-main-card::after {
+  content: '';
+  position: absolute;
+  top: -5px;
+  right: 120px;
+  width: 300px;
+  height: 300px;
+  background-image: url('/fly.png');
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  z-index: 9999;
+  filter: drop-shadow(0 4px 4px rgba(0, 0, 0, 0.15)) drop-shadow(0 2px 2px rgba(0, 0, 0, 0.1));
+  pointer-events: none;
 }
 
 .iot-page .status-main-card::before {
@@ -466,9 +483,16 @@ body.dark .iot-page .power-section > * {
 
 .iot-page ion-card-content {
   padding: 24px;
+  padding-top: 32px;
   background: linear-gradient(135deg, #E8E9F0 0%, #E5DCE8 50%, #E0E5ED 100%) !important;
   background-color: transparent !important;
   color: #66748D !important;
+}
+
+/* 작동모드와 풍량 카드의 헤더와 내용 간격 추가 */
+.iot-page ion-card.mode-card ion-card-content,
+.iot-page ion-card.fan-card ion-card-content {
+  padding-top: 32px !important;
 }
 
 /* 상태 표시 - Home과 동일한 스타일 */

@@ -302,29 +302,52 @@ class IotService {
    */
   async saveTemperatureThreshold(targetTemperature: number): Promise<{ success: boolean; message?: string }> {
     try {
-      console.log(`온도 임계값 저장 요청: ${this.baseUrl}/air_conditioner/temperature_threshold`, { target_temperature: targetTemperature });
+      // 인증 헤더 추가
+      const { getAuthHeaders } = await import('./AuthService');
+      const authHeaders = getAuthHeaders();
+      const authHeaderValue = (authHeaders as Record<string, string>)['Authorization'];
+      
+      console.log(`🌡️ 온도 임계값 저장 요청: ${this.baseUrl}/air_conditioner/temperature_threshold`, { 
+        target_temperature: targetTemperature,
+        url: `${this.baseUrl}/air_conditioner/temperature_threshold`,
+        hasAuth: !!authHeaderValue
+      });
       
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
       
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+      };
+      if (authHeaderValue) {
+        (headers as Record<string, string>)['Authorization'] = authHeaderValue;
+      }
+      
       const response = await fetch(`${this.baseUrl}/air_conditioner/temperature_threshold`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: headers,
         body: JSON.stringify({ target_temperature: targetTemperature }),
         signal: controller.signal,
       });
 
       clearTimeout(timeoutId);
 
+      console.log(`🌡️ 온도 임계값 저장 응답 상태: ${response.status} ${response.statusText}`);
+
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+        const errorText = await response.text();
+        console.error(`❌ 온도 임계값 저장 실패: ${response.status} - ${errorText}`);
+        let errorData: any = {};
+        try {
+          errorData = JSON.parse(errorText);
+        } catch (e) {
+          // JSON 파싱 실패 시 빈 객체 사용
+        }
+        throw new Error(errorData.detail || errorData.error || `HTTP error! status: ${response.status}`);
       }
 
       const data = await response.json();
-      console.log('온도 임계값 저장 응답:', data);
+      console.log('✅ 온도 임계값 저장 응답:', data);
       
       if (!data.success) {
         throw new Error(data.error || '임계값 저장 실패');
@@ -335,7 +358,7 @@ class IotService {
         message: data.message || '임계값 저장 성공',
       };
     } catch (error: any) {
-      console.error('Failed to save temperature threshold:', error);
+      console.error('❌ Failed to save temperature threshold:', error);
       
       if (error.name === 'AbortError') {
         return {

@@ -8,9 +8,12 @@
 """
 
 from sqlalchemy import text
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple
 import logging
+
+# 한국 시간대 (KST, UTC+9) 전역 정의
+KST = timezone(timedelta(hours=9))
 import json
 import os
 import threading
@@ -572,7 +575,7 @@ def reset_feedback_period(engine, user_no: Optional[int] = None) -> Tuple[bool, 
             # user_no가 없으면 전체 리셋 (하위 호환성)
             data['feedback_count'] = 0
         
-        data['updated_at'] = datetime.now().isoformat()
+        data['updated_at'] = datetime.now(KST).isoformat()
         
         # 파일에 저장 (파일 잠금 사용)
         safe_json_write(FEEDBACK_COUNT_FILE, data)
@@ -735,7 +738,7 @@ def process_daily_feedback(engine, feedback: str, user_no: Optional[int] = None)
                     current_count = data.get('feedback_count', 0)
                     data['feedback_count'] = current_count + 1
                 
-                data['updated_at'] = datetime.now().isoformat()
+                data['updated_at'] = datetime.now(KST).isoformat()
                 
                 # 파일에 저장 (파일 잠금 사용)
                 safe_json_write(FEEDBACK_COUNT_FILE, data)

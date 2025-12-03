@@ -883,6 +883,7 @@ ion-item ion-input {
   width: 100%;
   padding: 0 20px; /* 양옆 패딩 추가 */
   box-sizing: border-box;
+  position: relative;
 }
 
 .health-ios-page .hrv-card,
@@ -937,6 +938,32 @@ ion-item ion-input {
 /* HRV 카드를 산소포화도 카드와 동일한 크기로 맞춤 */
 .health-ios-page .hrv-card {
   height: 100% !important;
+  position: relative;
+  overflow: visible;
+}
+
+/* 산소포화도 카드에 position과 overflow 설정 */
+.health-ios-page ion-card.oxygen-card,
+.health-ios-page .oxygen-card {
+  position: relative !important;
+  overflow: visible !important;
+}
+
+/* fly.png 이미지를 oxygen-card 모서리에 배치 (스플래시 스크린과 동일한 그림자 효과) */
+.health-ios-page .health-data-secondary-row::after {
+  content: '';
+  position: absolute;
+  top: -173px;
+  right: -143px; /* padding(20px) + offset(-145px) = -125px */
+  width: 350px;
+  height: 350px;
+  background-image: url('/fly.png');
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  z-index: 9999;
+  filter: drop-shadow(0 4px 4px rgba(0, 0, 0, 0.15)) drop-shadow(0 2px 2px rgba(0, 0, 0, 0.1));
+  pointer-events: none;
 }
 
 /* 산소포화도 카드 크기 기준 */

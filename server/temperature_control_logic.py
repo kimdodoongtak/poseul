@@ -9,9 +9,12 @@
 """
 
 from sqlalchemy import text
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from typing import Optional, Tuple
 import logging
+
+# 한국 시간대 (KST, UTC+9) 전역 정의
+KST = timezone(timedelta(hours=9))
 
 logger = logging.getLogger(__name__)
 
@@ -139,13 +142,14 @@ def save_temperature_range_to_db(
             
             if not table_exists:
                 # 테이블이 없으면 생성 (min_temp, max_temp, user_no 포함)
+                # created_at은 명시적으로 KST 시간을 설정하므로 DEFAULT는 사용하지 않음
                 create_table = text("""
                     CREATE TABLE IF NOT EXISTS room_threshold (
                         id INT AUTO_INCREMENT PRIMARY KEY,
                         min_temp DECIMAL(4,1) NOT NULL,
                         max_temp DECIMAL(4,1) NOT NULL,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        created_at DATETIME,
+                        updated_at DATETIME,
                         user_no INT DEFAULT NULL
                     )
                 """)
@@ -221,11 +225,13 @@ def save_temperature_range_to_db(
                     
                     # updated_at 컬럼이 있으면 포함, 없으면 제외
                     if has_updated_at:
+                        # 한국 시간으로 updated_at 설정
+                        current_time_kst = datetime.now(KST)
                         update_query = text(f"""
                             UPDATE room_threshold 
                             SET min_temp = :min_temp,
                                 max_temp = :max_temp,
-                                updated_at = NOW()
+                                updated_at = :updated_at
                             {user_filter.replace('WHERE', 'WHERE') if user_filter else 'WHERE 1=1'}
                             LIMIT 1
                         """)
@@ -242,6 +248,8 @@ def save_temperature_range_to_db(
                         'min_temp': min_temp,
                         'max_temp': max_temp
                     }
+                    if has_updated_at:
+                        update_params['updated_at'] = current_time_kst
                     update_params.update(query_params)
                     conn.execute(update_query, update_params)
                     logger.info(f"✅ room_threshold 강제 업데이트: {min_temp}~{max_temp}°C, user_no={user_no}")
@@ -262,17 +270,47 @@ def save_temperature_range_to_db(
                     return True
             else:
                 # 새 레코드 삽입 (처음 한번만, min_temp, max_temp, user_no 포함)
-                insert_query = text("""
-                    INSERT INTO room_threshold 
-                    (min_temp, max_temp, user_no)
-                    VALUES 
-                    (:min_temp, :max_temp, :user_no)
-                """)
-                conn.execute(insert_query, {
-                    'min_temp': min_temp,
-                    'max_temp': max_temp,
-                    'user_no': user_no
-                })
+                # created_at 컬럼 존재 여부 확인
+                try:
+                    created_at_check = text("""
+                        SELECT COLUMN_NAME 
+                        FROM INFORMATION_SCHEMA.COLUMNS 
+                        WHERE TABLE_SCHEMA = 'main' 
+                        AND TABLE_NAME = 'room_threshold'
+                        AND COLUMN_NAME = 'created_at'
+                    """)
+                    has_created_at = conn.execute(created_at_check).fetchone() is not None
+                except Exception:
+                    has_created_at = False
+                
+                # 한국 시간으로 created_at 설정
+                current_time_kst = datetime.now(KST)
+                
+                if has_created_at:
+                    insert_query = text("""
+                        INSERT INTO room_threshold 
+                        (min_temp, max_temp, user_no, created_at)
+                        VALUES 
+                        (:min_temp, :max_temp, :user_no, :created_at)
+                    """)
+                    conn.execute(insert_query, {
+                        'min_temp': min_temp,
+                        'max_temp': max_temp,
+                        'user_no': user_no,
+                        'created_at': current_time_kst
+                    })
+                else:
+                    insert_query = text("""
+                        INSERT INTO room_threshold 
+                        (min_temp, max_temp, user_no)
+                        VALUES 
+                        (:min_temp, :max_temp, :user_no)
+                    """)
+                    conn.execute(insert_query, {
+                        'min_temp': min_temp,
+                        'max_temp': max_temp,
+                        'user_no': user_no
+                    })
                 logger.info(f"✅ room_threshold 처음 저장: {min_temp}~{max_temp}°C, user_no={user_no}")
                 conn.commit()
                 return True

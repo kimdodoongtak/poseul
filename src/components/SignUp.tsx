@@ -12,7 +12,7 @@ import {
   IonSelectOption,
 } from '@ionic/react';
 import { arrowForwardOutline, closeOutline, openOutline, checkmarkCircleOutline, arrowBackOutline } from 'ionicons/icons';
-import { register } from '../services/AuthService';
+import { register, getUserNo } from '../services/AuthService';
 import { getServerUrl, autoDetectServerUrl } from '../services/ServerConfig';
 import IotService from '../services/IotService';
 import './SignUp.css';
@@ -23,7 +23,7 @@ interface SignUpProps {
 }
 
 const SignUp: React.FC<SignUpProps> = ({ onClose, onSuccess }) => {
-  const [step, setStep] = useState<1 | 2>(1); // 1: 회원가입 정보, 2: IoT 등록
+  const [step, setStep] = useState<1 | 2 | 3>(1); // 1: 아이디/비밀번호, 2: 나이/BMI/성별, 3: IoT 등록
   const [id, setId] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -182,36 +182,74 @@ const SignUp: React.FC<SignUpProps> = ({ onClose, onSuccess }) => {
   };
 
   const handleNext = () => {
-    // 입력 검증
-    if (!id.trim()) {
-      setError('아이디를 입력해주세요.');
-      return;
-    }
+    if (step === 1) {
+      // 1단계: 아이디/비밀번호 검증
+      if (!id.trim()) {
+        setError('아이디를 입력해주세요.');
+        return;
+      }
 
-    if (!password.trim()) {
-      setError('비밀번호를 입력해주세요.');
-      return;
-    }
+      if (!password.trim()) {
+        setError('비밀번호를 입력해주세요.');
+        return;
+      }
 
-    if (password.length < 4) {
-      setError('비밀번호는 최소 4자 이상이어야 합니다.');
-      return;
-    }
+      if (password.length < 4) {
+        setError('비밀번호는 최소 4자 이상이어야 합니다.');
+        return;
+      }
 
-    if (password !== confirmPassword) {
-      setError('비밀번호가 일치하지 않습니다.');
-      return;
-    }
+      if (password !== confirmPassword) {
+        setError('비밀번호가 일치하지 않습니다.');
+        return;
+      }
 
-    setError('');
-    setStep(2);
+      setError('');
+      setStep(2);
+    } else if (step === 2) {
+      // 2단계: 나이/BMI/성별 검증
+      if (!age.trim()) {
+        setError('나이를 입력해주세요.');
+        return;
+      }
+
+      const ageNum = parseInt(age.trim(), 10);
+      if (isNaN(ageNum) || ageNum < 1 || ageNum > 150) {
+        setError('올바른 나이를 입력해주세요.');
+        return;
+      }
+
+      if (!bmi.trim()) {
+        setError('BMI를 입력해주세요.');
+        return;
+      }
+
+      const bmiNum = parseFloat(bmi.trim());
+      if (isNaN(bmiNum) || bmiNum < 10 || bmiNum > 50) {
+        setError('올바른 BMI를 입력해주세요. (10~50)');
+        return;
+      }
+
+      if (!gender.trim()) {
+        setError('성별을 선택해주세요.');
+        return;
+      }
+
+      setError('');
+      setStep(3);
+    }
   };
 
   const handleBack = () => {
-    setStep(1);
-    setIotError('');
-    setPatToken('');
-    setIsValidPatToken(false);
+    if (step === 2) {
+      setStep(1);
+      setError('');
+    } else if (step === 3) {
+      setStep(2);
+      setIotError('');
+      setPatToken('');
+      setIsValidPatToken(false);
+    }
   };
 
   const handleSignUp = async () => {
@@ -241,7 +279,42 @@ const SignUp: React.FC<SignUpProps> = ({ onClose, onSuccess }) => {
       
       console.log('✅ 회원가입 성공:', registerResult);
       
-      // 회원가입 성공 - 즉시 완료 처리
+      // 면책사항 동의 사용자별로 저장 (회원가입 후 자동 로그인됨)
+      const userNo = getUserNo();
+      if (userNo !== null) {
+        const oldDisclaimerAccepted = localStorage.getItem('disclaimer_accepted');
+        const userDisclaimerAccepted = localStorage.getItem(`disclaimer_accepted_${userNo}`);
+        
+        if (oldDisclaimerAccepted && !userDisclaimerAccepted) {
+          // 기존 공통 면책사항이 있고 사용자별 면책사항이 없으면 마이그레이션
+          localStorage.setItem(`disclaimer_accepted_${userNo}`, 'true');
+          console.log(`✅ 면책사항 동의 사용자별로 저장 (user_no: ${userNo}, 기존 공통 동의 마이그레이션)`);
+        } else if (!userDisclaimerAccepted) {
+          // 사용자별 면책사항이 없으면 새로 저장 (회원가입 전에 동의한 경우)
+          localStorage.setItem(`disclaimer_accepted_${userNo}`, 'true');
+          console.log(`✅ 면책사항 동의 사용자별로 저장 (user_no: ${userNo})`);
+        }
+      }
+      
+      // 회원가입 성공 후 IoT 등록 시도 (PAT 토큰이 입력되어 있으면)
+      if (patToken.trim() && isValidPatToken) {
+        try {
+          console.log('🔍 회원가입 후 IoT 등록 시작...');
+          const deviceInfo = await handleRegisterIot();
+          if (!deviceInfo) {
+            // IoT 등록 실패해도 회원가입은 성공
+            setIotError('IoT 등록에 실패했지만 회원가입은 완료되었습니다.');
+          } else {
+            console.log('✅ IoT 등록 성공:', deviceInfo);
+          }
+        } catch (iotError: any) {
+          // IoT 등록 실패해도 회원가입은 성공
+          console.error('IoT 등록 실패:', iotError);
+          setIotError('IoT 등록에 실패했지만 회원가입은 완료되었습니다.');
+        }
+      }
+      
+      // 회원가입 성공
       if (onSuccess) {
         onSuccess();
       }
@@ -297,7 +370,7 @@ const SignUp: React.FC<SignUpProps> = ({ onClose, onSuccess }) => {
       <div className="sign-up-container">
         <div className="sign-up-header">
           <IonText className="sign-up-title">
-            {step === 1 ? '회원가입' : 'IoT 기기 등록'}
+            {step === 1 ? '회원가입' : step === 2 ? '회원가입' : 'IoT 기기 등록'}
           </IonText>
           <IonButton fill="clear" onClick={onClose} className="close-button">
             <IonIcon icon={closeOutline} />
@@ -307,7 +380,7 @@ const SignUp: React.FC<SignUpProps> = ({ onClose, onSuccess }) => {
         {step === 1 ? (
           <>
             <IonText className="sign-up-subtitle">
-              포술 앱에 가입하여 건강 데이터를 관리하고<br />
+              포슬 앱에 가입하여 건강 데이터를 관리하고<br />
               IoT 기기를 제어하세요.
             </IonText>
 
@@ -350,14 +423,42 @@ const SignUp: React.FC<SignUpProps> = ({ onClose, onSuccess }) => {
               <IonInput
                 type="password"
                 autocomplete="new-password"
-                enterkeyhint="next"
+                enterkeyhint="done"
                 value={confirmPassword}
                 onIonInput={(e) => setConfirmPassword(e.detail.value!)}
                 placeholder="비밀번호를 다시 입력하세요"
                 disabled={isLoading}
                 clearOnEdit={false}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleNext();
+                  }
+                }}
               />
             </IonItem>
+
+            <IonButton
+              className="sign-up-button"
+              expand="block"
+              onClick={handleNext}
+              disabled={isLoading}
+            >
+              <IonIcon icon={arrowForwardOutline} slot="end" />
+              다음
+            </IonButton>
+          </>
+        ) : step === 2 ? (
+          <>
+            <IonText className="sign-up-subtitle">
+              건강 데이터 관리를 위해<br />
+              나이, BMI, 성별 정보를 입력해주세요.
+            </IonText>
+
+            {error && (
+              <IonText color="danger" className="error-message">
+                {error}
+              </IonText>
+            )}
 
             <IonItem className="sign-up-input-item">
               <IonLabel position="stacked">나이</IonLabel>
@@ -380,7 +481,7 @@ const SignUp: React.FC<SignUpProps> = ({ onClose, onSuccess }) => {
                 enterkeyhint="next"
                 value={bmi}
                 onIonInput={(e) => setBmi(e.detail.value!)}
-                placeholder="BMI를 입력하세요"
+                placeholder="BMI를 입력하세요 (10~50)"
                 disabled={isLoading}
               />
             </IonItem>
@@ -398,15 +499,29 @@ const SignUp: React.FC<SignUpProps> = ({ onClose, onSuccess }) => {
               </IonSelect>
             </IonItem>
 
-            <IonButton
-              className="sign-up-button"
-              expand="block"
-              onClick={handleNext}
-              disabled={isLoading}
-            >
-              <IonIcon icon={arrowForwardOutline} slot="end" />
-              다음
-            </IonButton>
+            <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
+              <IonButton
+                fill="clear"
+                expand="block"
+                onClick={handleBack}
+                disabled={isLoading}
+                className="sign-up-back-button"
+                style={{ flex: 1 }}
+              >
+                <IonIcon icon={arrowBackOutline} slot="start" />
+                이전
+              </IonButton>
+              <IonButton
+                className="sign-up-button"
+                expand="block"
+                onClick={handleNext}
+                disabled={isLoading}
+                style={{ flex: 2 }}
+              >
+                <IonIcon icon={arrowForwardOutline} slot="end" />
+                다음
+              </IonButton>
+            </div>
           </>
         ) : (
           <>

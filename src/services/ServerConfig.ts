@@ -6,8 +6,8 @@
 const SERVER_URL_KEY = 'server_url';
 
 // 하드코딩된 서버 IP 목록 (우선 사용)
-// 현재 네트워크: 172.15.5.72 (Wi-Fi IP 우선)
-const HARDCODED_SERVER_IPS = ['172.15.5.72', '192.168.0.143', '172.30.1.68', '192.168.68.75', '192.168.68.77', '192.168.68.72', '192.168.219.125'];
+// 현재 네트워크: 172.15.5.x 대역 (현재 컴퓨터 IP: 172.15.5.58)
+const HARDCODED_SERVER_IPS = ['172.15.5.58', '192.168.0.143', '172.30.1.68', '192.168.68.75', '192.168.68.77', '192.168.68.72', '172.15.5.72', '192.168.219.125'];
 const HARDCODED_SERVER_URL = `http://${HARDCODED_SERVER_IPS[0]}:3000`; // 첫 번째를 기본값으로 사용
 
 // 동기 버전 (기본값 반환용)
@@ -332,8 +332,8 @@ export async function autoDetectServerUrl(): Promise<string> {
       HARDCODED_SERVER_IPS.forEach(ip => {
         ipCandidates.push(`http://${ip}:3000`);
       });
-      // 현재 네트워크 IP 최우선 시도 (192.168.0.143 - 현재 컴퓨터 IP)
-      ipCandidates.push('http://192.168.0.143:3000');
+      // 현재 네트워크 IP 최우선 시도 (172.15.5.58 - 현재 컴퓨터 IP)
+      ipCandidates.push('http://172.15.5.58:3000');
       // 192.168.0.x 대역 시도 (현재 네트워크)
       for (const ip of [1, 100, 143, 200, 254]) {
         const url = `http://192.168.0.${ip}:3000`;
@@ -392,8 +392,8 @@ export async function autoDetectServerUrl(): Promise<string> {
       HARDCODED_SERVER_IPS.forEach(ip => {
         ipCandidates.push(`http://${ip}:3000`);
       });
-      // 현재 네트워크 IP 최우선 시도 (192.168.0.143 - 현재 컴퓨터 IP)
-      ipCandidates.push('http://192.168.0.143:3000');
+      // 현재 네트워크 IP 최우선 시도 (172.15.5.58 - 현재 컴퓨터 IP)
+      ipCandidates.push('http://172.15.5.58:3000');
       // 192.168.0.x 대역 시도 (현재 네트워크)
       for (const ip of [1, 100, 143, 200, 254]) {
         const url = `http://192.168.0.${ip}:3000`;

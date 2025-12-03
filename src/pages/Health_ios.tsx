@@ -24,7 +24,7 @@ import {
   IonSelect,
   IonSelectOption
 } from '@ionic/react';
-import { personOutline, closeOutline } from 'ionicons/icons';
+import { personOutline, closeOutline, cameraOutline } from 'ionicons/icons';
 import SignIn from '../components/SignIn';
 import SignUp from '../components/SignUp';
 import './Health_ios.css';
@@ -64,7 +64,7 @@ const Health_ios: React.FC = () => {
   
   // 초기 설정 단계 관리
   const [setupStep, setSetupStep] = useState<'info' | 'permission' | 'monitoring' | 'complete'>('info');
-  const [isSetupComplete, setIsSetupComplete] = useState<boolean>(false);
+  const [isSetupComplete, setIsSetupComplete] = useState<boolean>(true); // 초기값을 true로 설정하여 즉시 메인 화면 표시
   const [hasHealthKitPermission, setHasHealthKitPermission] = useState<boolean>(false);
   
   // UI 템플릿 관련 상태
@@ -77,14 +77,30 @@ const Health_ios: React.FC = () => {
   const [userId, setUserId] = useState<string>('');
   const location = useLocation();
   const loginSuccessRef = useRef<boolean>(false); // 로그인 성공 플래그
+  const logoutInProgressRef = useRef<boolean>(false); // 로그아웃 진행 중 플래그
 
   // URL 파라미터 변경 감지 (IoT 페이지에서 로그인 요청 시)
   useEffect(() => {
     const searchParams = new URLSearchParams(location.search);
     if (searchParams.get('showLogin') === 'true') {
-      setShowSignIn(true);
-      // URL에서 파라미터 제거 (뒤로가기 시 다시 열리지 않도록)
-      window.history.replaceState({}, '', '/health_ios');
+      // 로그아웃 진행 중이면 무시
+      if (logoutInProgressRef.current) {
+        console.log('🔍 Health 페이지 - 로그아웃 진행 중, URL 파라미터 무시');
+        setShowSignIn(false);
+        window.history.replaceState({}, '', '/health_ios');
+        return;
+      }
+      // 로그인 상태 확인 후에만 모달 표시
+      const authenticated = isAuthenticated();
+      console.log(`🔍 URL 파라미터 showLogin=true 감지, 로그인 상태: ${authenticated}`);
+      if (!authenticated) {
+        setShowSignIn(true);
+        // URL에서 파라미터 제거 (뒤로가기 시 다시 열리지 않도록)
+        window.history.replaceState({}, '', '/health_ios');
+      } else {
+        // 이미 로그인되어 있으면 URL만 정리
+        window.history.replaceState({}, '', '/health_ios');
+      }
     }
   }, [location.search]);
 
@@ -126,13 +142,35 @@ const Health_ios: React.FC = () => {
         }
       }
       
-      // 2. 사용자 건강 정보 (나이, BMI, 성별) - predicted_results에서 최신 데이터 가져오기
+      // 2. 사용자 건강 정보 (나이, BMI, 성별, 건강 데이터) - predicted_results에서 최신 데이터 가져오기
+      const authHeaders = getAuthHeaders();
+      const token = (await import('../services/AuthService')).getToken();
+      console.log(`🔍 Health 페이지 - 사용자별 건강 데이터 조회 시작`);
+      console.log(`  - 클라이언트 user_no: ${userNo}`);
+      console.log(`  - 토큰 존재: ${!!token}`);
+      console.log(`  - 토큰 앞부분: ${token ? token.substring(0, 30) + '...' : '없음'}`);
       const healthResponse = await fetch(`${baseUrl}/healthdata/latest`, {
-        headers: getAuthHeaders()
+        headers: authHeaders
       });
       
       if (healthResponse.ok) {
         const healthResult = await healthResponse.json();
+        console.log(`✅ Health 페이지 - 사용자별 건강 데이터 조회 성공`);
+        console.log(`  - 클라이언트 user_no: ${userNo}`);
+        console.log(`  - 서버 응답 데이터:`, {
+          hasHeartRate: !!healthResult.data?.heartRate,
+          hasHrv: !!healthResult.data?.hrv,
+          hasOxygenSaturation: !!healthResult.data?.oxygenSaturation,
+          age: healthResult.data?.age,
+          bmi: healthResult.data?.bmi,
+          gender: healthResult.data?.gender,
+          heartRateValue: healthResult.data?.heartRate?.value,
+          hrvValue: healthResult.data?.hrv?.value,
+          oxygenValue: healthResult.data?.oxygenSaturation?.value,
+          rawHeartRate: healthResult.data?.heartRate,
+          rawHrv: healthResult.data?.hrv,
+          rawOxygen: healthResult.data?.oxygenSaturation
+        });
         if (healthResult.success && healthResult.data) {
           // 서버에서 가져온 데이터로 업데이트
           if (healthResult.data.age !== undefined && healthResult.data.age !== null) {
@@ -177,6 +215,60 @@ const Health_ios: React.FC = () => {
               setGender(savedGender);
             }
           }
+          
+          // 3. 건강 데이터 (heartRate, hrv, oxygenSaturation) 복구
+          // 서버에서 받은 데이터 형식: { value: number, date: string } 또는 null
+          const parseHealthValue = (data: any) => {
+            if (!data) return null;
+            // 이미 객체 형태인 경우 (서버에서 { value, date } 형태로 반환)
+            if (typeof data === 'object' && 'value' in data) {
+              return {
+                value: typeof data.value === 'number' ? data.value : parseFloat(data.value) || 0,
+                date: data.date || data.timestamp || new Date().toISOString()
+              };
+            }
+            // 숫자 형태인 경우
+            if (typeof data === 'number') {
+              return {
+                value: data,
+                date: healthResult.data.lastUpdated || new Date().toISOString()
+              };
+            }
+            // 문자열 형태인 경우
+            const numValue = parseFloat(data);
+            if (!isNaN(numValue)) {
+              return {
+                value: numValue,
+                date: healthResult.data.lastUpdated || new Date().toISOString()
+              };
+            }
+            return null;
+          };
+          
+          const parsedHeartRate = parseHealthValue(healthResult.data.heartRate);
+          const parsedHrv = parseHealthValue(healthResult.data.hrv);
+          const parsedOxygen = parseHealthValue(healthResult.data.oxygenSaturation);
+          
+          console.log('🔍 parseHealthValue 결과:', {
+            heartRate: parsedHeartRate,
+            hrv: parsedHrv,
+            oxygenSaturation: parsedOxygen,
+            rawHeartRate: healthResult.data.heartRate,
+            rawHrv: healthResult.data.hrv,
+            rawOxygen: healthResult.data.oxygenSaturation
+          });
+          
+          setHealthData({
+            heartRate: parsedHeartRate,
+            hrv: parsedHrv,
+            oxygenSaturation: parsedOxygen,
+          });
+          
+          console.log('✅ 로그인 시 건강 데이터 복구 완료:', {
+            heartRate: parsedHeartRate ? parsedHeartRate.value : null,
+            hrv: parsedHrv ? parsedHrv.value : null,
+            oxygenSaturation: parsedOxygen ? parsedOxygen.value : null
+          });
         }
       } else {
         // 서버에서 가져오기 실패 시 localStorage에서 가져오기
@@ -187,6 +279,13 @@ const Health_ios: React.FC = () => {
         if (savedAge) setAge(savedAge);
         if (savedBmi) setBmi(savedBmi);
         if (savedGender) setGender(savedGender);
+        
+        // 건강 데이터는 서버에서만 가져오므로 실패 시 null로 설정
+        setHealthData({
+          heartRate: null,
+          hrv: null,
+          oxygenSaturation: null,
+        });
       }
     } catch (error) {
       console.error('사용자 정보 로드 실패:', error);
@@ -217,6 +316,24 @@ const Health_ios: React.FC = () => {
     // 로그인되어 있으면 사용자 정보 로드
     if (authenticated) {
       loadUserInfo();
+      
+      // 초기 로드 시 로그인되어 있으면 건강 데이터 한 번 가져와서 저장
+      // (useEffect에서도 실행되지만, 여기서도 실행하여 확실하게 보장)
+      if (platform === 'ios' && healthDataPlugin) {
+        console.log('📥 초기 로드 - 로그인 상태 확인, 건강 데이터 즉시 수집 시작...');
+        setTimeout(() => {
+          if (isAuthenticated() && healthDataPlugin) {
+            fetchHealthData(healthDataPlugin).then(() => {
+              const now = Date.now();
+              setLastCollectionTime(now);
+              lastCollectionTimeRef.current = now;
+              console.log('✅ 초기 로드에서 데이터 수집 완료');
+            }).catch((err) => {
+              console.error('❌ 초기 로드 후 건강 데이터 수집 실패:', err);
+            });
+          }
+        }, 1500); // 1.5초 후 실행 (사용자 정보 로드 완료 대기)
+      }
     } else {
       // 로그아웃 상태면 모든 사용자 데이터 초기화
       setProfileImage(null);
@@ -224,21 +341,59 @@ const Health_ios: React.FC = () => {
       setAge('');
       setBmi('');
       setGender('0');
+      
+      // 건강 데이터 초기화
+      setHealthData({
+        heartRate: null,
+        hrv: null,
+        oxygenSaturation: null,
+      });
+      
+      // 차트 데이터 초기화
+      setChartData(null);
+      setLastCollectionTime(0);
+      lastCollectionTimeRef.current = 0;
     }
     
     // 로그인 상태 변경 이벤트 리스너 (다른 페이지에서 로그인/로그아웃 시 동기화)
     const handleAuthStateChanged = (event: CustomEvent) => {
+      // 로그아웃 진행 중이면 무시
+      if (logoutInProgressRef.current) {
+        console.log('🔍 Health 페이지 - 로그아웃 진행 중, 이벤트 무시');
+        setShowSignIn(false); // 모달 강제로 닫기
+        return;
+      }
       // 로그인 성공 직후에는 상태를 변경하지 않음
       if (loginSuccessRef.current) {
         console.log('🔍 Health 페이지 - 로그인 성공 직후, 이벤트 무시');
         return;
       }
       const authenticated = event.detail?.authenticated ?? isAuthenticated();
+      // 이미 로그인 상태이고 authenticated가 true면 업데이트하지 않음
+      if (isLoggedIn && authenticated) {
+        console.log('🔍 Health 페이지 - 이미 로그인 상태, 이벤트 무시');
+        return;
+      }
+      // 로그아웃 상태로 변경되면 모달 닫기
+      if (!authenticated) {
+        setShowSignIn(false);
+      }
       setIsLoggedIn(authenticated);
+      setIsSetupComplete(authenticated); // 로그인 상태에 따라 설정 완료도 업데이트
       console.log(`🔍 Health 페이지 - 로그인 상태 변경 이벤트: ${authenticated}`);
       
       // 로그인 시 사용자 정보 로드, 로그아웃 시 초기화
       if (authenticated) {
+        // 다른 아이디로 로그인 시 이전 데이터 초기화
+        setHealthData({
+          heartRate: null,
+          hrv: null,
+          oxygenSaturation: null,
+        });
+        setChartData(null);
+        setLastCollectionTime(0);
+        lastCollectionTimeRef.current = 0;
+        
         loadUserInfo();
       } else {
         setProfileImage(null);
@@ -246,42 +401,125 @@ const Health_ios: React.FC = () => {
         setAge('');
         setBmi('');
         setGender('0');
+        
+        // 건강 데이터 초기화
+        setHealthData({
+          heartRate: null,
+          hrv: null,
+          oxygenSaturation: null,
+        });
+        
+        // 차트 데이터 초기화
+        setChartData(null);
+        setLastCollectionTime(0);
+        lastCollectionTimeRef.current = 0;
       }
     };
     
     // localStorage storage 이벤트 리스너 (다른 탭에서 로그인/로그아웃 시 동기화)
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'auth_token' || e.key === 'user_no') {
+        // 로그아웃 진행 중이면 무시
+        if (logoutInProgressRef.current) {
+          console.log('🔍 Health 페이지 - 로그아웃 진행 중, storage 이벤트 무시');
+          setShowSignIn(false); // 모달 강제로 닫기
+          return;
+        }
         // 로그인 성공 직후에는 상태를 변경하지 않음
         if (loginSuccessRef.current) {
           console.log('🔍 Health 페이지 - 로그인 성공 직후, storage 이벤트 무시');
           return;
         }
-        const authenticated = isAuthenticated();
-        setIsLoggedIn(authenticated);
-        console.log(`🔍 Health 페이지 - localStorage 변경 감지, 로그인 상태: ${authenticated}`);
-        
-        // 로그인 시 사용자 정보 로드, 로그아웃 시 초기화
-        if (authenticated) {
-          loadUserInfo();
-        } else {
-          setProfileImage(null);
-          setUserId('');
-          setAge('');
-          setBmi('');
-          setGender('0');
-        }
+        // 약간의 지연 후 확인 (토큰 저장 완료 대기)
+        setTimeout(() => {
+          const authenticated = isAuthenticated();
+          // 이미 로그인 상태이고 authenticated가 true면 업데이트하지 않음
+          if (isLoggedIn && authenticated) {
+            console.log('🔍 Health 페이지 - 이미 로그인 상태, storage 이벤트 무시');
+            return;
+          }
+          // 로그아웃 상태로 변경되면 모달 닫기
+          if (!authenticated) {
+            setShowSignIn(false);
+          }
+          setIsLoggedIn(authenticated);
+          setIsSetupComplete(authenticated); // 로그인 상태에 따라 설정 완료도 업데이트
+          console.log(`🔍 Health 페이지 - localStorage 변경 감지, 로그인 상태: ${authenticated}`);
+          
+          // 로그인 시 사용자 정보 로드, 로그아웃 시 초기화
+          if (authenticated) {
+            // 다른 아이디로 로그인 시 이전 데이터 초기화
+            setHealthData({
+              heartRate: null,
+              hrv: null,
+              oxygenSaturation: null,
+            });
+            setChartData(null);
+            setLastCollectionTime(0);
+            lastCollectionTimeRef.current = 0;
+            
+            loadUserInfo();
+            
+            // 로그인 성공 시 건강 데이터 한 번 가져와서 저장 (storage 이벤트에서)
+            if (platform === 'ios' && healthDataPlugin) {
+              console.log('📥 localStorage 변경 이벤트 - 건강 데이터 즉시 수집 시작...');
+              setTimeout(() => {
+                fetchHealthData(healthDataPlugin).catch((err) => {
+                  console.error('❌ storage 이벤트 후 건강 데이터 수집 실패:', err);
+                });
+              }, 1500); // 1.5초 후 실행
+            }
+          } else {
+            setProfileImage(null);
+            setUserId('');
+            setAge('');
+            setBmi('');
+            setGender('0');
+            
+            // 건강 데이터 초기화
+            setHealthData({
+              heartRate: null,
+              hrv: null,
+              oxygenSaturation: null,
+            });
+            
+            // 차트 데이터 초기화
+            setChartData(null);
+            setLastCollectionTime(0);
+            lastCollectionTimeRef.current = 0;
+          }
+        }, 300);
       }
     };
     
     // 페이지 포커스 시 상태 확인 및 사용자 정보 새로고침
     const handleFocus = () => {
+      // 로그아웃 진행 중이면 무시
+      if (logoutInProgressRef.current) {
+        console.log('🔍 Health 페이지 - 로그아웃 진행 중, 포커스 이벤트 무시');
+        setShowSignIn(false); // 모달 강제로 닫기
+        return;
+      }
       // 로그인 성공 직후에는 상태를 변경하지 않음
       if (loginSuccessRef.current) {
         console.log('🔍 Health 페이지 - 로그인 성공 직후, 포커스 이벤트 무시');
         return;
       }
       const authenticated = isAuthenticated();
+      // 이미 같은 상태면 업데이트하지 않음 (불필요한 리렌더링 방지)
+      if (isLoggedIn === authenticated) {
+        console.log(`🔍 Health 페이지 - 포커스 이벤트, 로그인 상태 변경 없음: ${authenticated}`);
+        // 로그인되어 있으면 사용자 정보만 새로고침
+        if (authenticated) {
+          console.log('🔄 Health 페이지 - 포커스 시 사용자 정보 새로고침');
+          loadUserInfo();
+        }
+        return;
+      }
+      // 로그아웃 상태로 변경되면 모달 닫기
+      if (!authenticated) {
+        setShowSignIn(false);
+      }
       setIsLoggedIn(authenticated);
       console.log(`🔍 Health 페이지 - 포커스 이벤트, 로그인 상태: ${authenticated}`);
       
@@ -289,6 +527,17 @@ const Health_ios: React.FC = () => {
       if (authenticated) {
         console.log('🔄 Health 페이지 - 포커스 시 사용자 정보 새로고침');
         loadUserInfo();
+        
+        // 포커스 시 건강 데이터 한 번 가져와서 저장 (다른 페이지에서 로그인했을 수 있음)
+        if (platform === 'ios' && healthDataPlugin && !isLoggedIn) {
+          // 이전에 로그인하지 않았다가 지금 로그인한 경우에만 실행
+          console.log('📥 포커스 이벤트 - 건강 데이터 즉시 수집 시작...');
+          setTimeout(() => {
+            fetchHealthData(healthDataPlugin).catch((err) => {
+              console.error('❌ 포커스 이벤트 후 건강 데이터 수집 실패:', err);
+            });
+          }, 1500);
+        }
       }
     };
     
@@ -305,8 +554,8 @@ const Health_ios: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    // 초기 설정 완료 여부 확인
-    const checkSetupComplete = async () => {
+    // 회원가입 시 이미 나이, BMI, 성별을 입력하므로 초기 설정은 항상 완료로 간주
+    const loadUserData = async () => {
       try {
         const { getUserNo } = await import('../services/AuthService');
         const userNo = getUserNo();
@@ -315,60 +564,33 @@ const Health_ios: React.FC = () => {
         const savedAge = userNo ? localStorage.getItem(`userAge_${userNo}`) : localStorage.getItem('userAge');
         const savedBmi = userNo ? localStorage.getItem(`userBmi_${userNo}`) : localStorage.getItem('userBmi');
         const savedGender = userNo ? localStorage.getItem(`userGender_${userNo}`) : localStorage.getItem('userGender');
-        const setupComplete = localStorage.getItem('healthSetupComplete');
         const hasPermission = localStorage.getItem('healthKitPermission') === 'true';
         
-        // 성별은 '0' 또는 '1'이면 유효 (빈 문자열이나 null이 아니면)
-        const hasValidGender = savedGender !== null && savedGender !== '';
-        const hasValidAge = savedAge !== null && savedAge !== '';
-        const hasValidBmi = savedBmi !== null && savedBmi !== '';
-        
-        if (setupComplete === 'true' && hasValidAge && hasValidBmi && hasValidGender && hasPermission) {
-          setIsSetupComplete(true);
-          setSetupStep('complete');
-          if (savedAge) setAge(savedAge);
-          if (savedBmi) setBmi(savedBmi);
-          if (savedGender) setGender(savedGender);
-          setHasHealthKitPermission(hasPermission);
+        // 저장된 정보가 있으면 불러오기
+        if (savedAge) setAge(savedAge);
+        if (savedBmi) setBmi(savedBmi);
+        if (savedGender) {
+          setGender(savedGender);
         } else {
-          // 저장된 정보가 있으면 불러오기
-          if (savedAge) setAge(savedAge);
-          if (savedBmi) setBmi(savedBmi);
-          // 성별이 없으면 기본값 '0' 설정 및 저장
-          if (savedGender) {
-            setGender(savedGender);
-          } else {
-            setGender('0');
-            const userNo = await import('../services/AuthService').then(m => m.getUserNo());
-            if (userNo) {
-              localStorage.setItem(`userGender_${userNo}`, '0');
-            } else {
-              localStorage.setItem('userGender', '0');
-            }
-          }
-          if (hasPermission) setHasHealthKitPermission(true);
-          
-          // 설정 단계 결정 (성별은 기본값 '0'이 있으므로 항상 유효)
-          const finalGender = savedGender || '0';
-          if (hasValidAge && hasValidBmi) {
-            if (hasPermission) {
-              // 나이, BMI, 성별, 권한 모두 있으면 설정 완료
-              localStorage.setItem('healthSetupComplete', 'true');
-              setIsSetupComplete(true);
-              setSetupStep('complete');
-            } else {
-              setSetupStep('permission');
-            }
-          } else {
-            setSetupStep('info');
-          }
+          setGender('0');
         }
+        
+        if (hasPermission) {
+          setHasHealthKitPermission(true);
+        }
+        
+        // 초기 설정은 항상 완료로 간주 (회원가입 시 이미 입력함)
+        setIsSetupComplete(true);
+        setSetupStep('complete');
       } catch (err) {
-        console.log('초기 설정 확인 실패:', err);
+        console.log('사용자 데이터 로드 실패:', err);
+        // 에러 발생 시에도 설정 완료로 간주
+        setIsSetupComplete(true);
+        setSetupStep('complete');
       }
     };
     
-    checkSetupComplete();
+    loadUserData();
     
     // HealthData 플러그인을 비동기로 로드 (UI 렌더링을 막지 않음)
     const loadHealthData = async () => {
@@ -380,11 +602,9 @@ const Health_ios: React.FC = () => {
         const { HealthData } = await import('../plugins/healthdata');
         setHealthDataPlugin(HealthData);
         
-        // iOS가 아니면 설정 완료로 표시
-        if (currentPlatform !== 'ios') {
-          setIsSetupComplete(true);
-          setSetupStep('complete');
-        }
+        // 모든 플랫폼에서 설정 완료로 표시 (회원가입 시 이미 입력함)
+        setIsSetupComplete(true);
+        setSetupStep('complete');
       } catch (err) {
         console.log('HealthData 플러그인 로드 실패:', err);
       }
@@ -416,26 +636,52 @@ const Health_ios: React.FC = () => {
 
   // 10분마다 자동으로 최신 데이터 가져오기 (iOS는 HealthKit, 안드로이드는 서버에서)
   useEffect(() => {
+    // 로그인하지 않았으면 interval 시작하지 않음
+    if (!isLoggedIn) {
+        console.log('⏸️ 로그인하지 않아서 10분 주기 데이터 수집 중지');
+      return;
+    }
+    
     // iOS는 HealthKit 플러그인 사용
-    if (platform === 'ios' && healthDataPlugin) {
-      // 초기 로드 후 첫 데이터 가져오기
-      const initialTimeout = setTimeout(() => {
-        fetchHealthData(healthDataPlugin);
-        const now = Date.now();
-        setLastCollectionTime(now);
-        lastCollectionTimeRef.current = now;
-      }, 1000); // 1초 후 첫 데이터 가져오기
+    if (platform === 'ios') {
+      // 플러그인이 준비될 때까지 기다리는 함수
+      const waitForPluginAndFetch = (retryCount = 0) => {
+        if (healthDataPlugin && isLoggedIn) {
+          console.log('📥 로그인 상태 확인 - 첫 데이터 가져오기 시작...');
+          fetchHealthData(healthDataPlugin).then(() => {
+            const now = Date.now();
+            setLastCollectionTime(now);
+            lastCollectionTimeRef.current = now;
+            console.log('✅ 로그인 후 첫 데이터 수집 완료');
+          }).catch((err) => {
+            console.error('❌ 로그인 후 첫 데이터 수집 실패:', err);
+          });
+        } else if (retryCount < 10) {
+          // 플러그인이 아직 준비되지 않았으면 재시도 (최대 10번, 5초)
+          console.log(`⏳ HealthData 플러그인 대기 중... (재시도 ${retryCount + 1}/10)`);
+          setTimeout(() => waitForPluginAndFetch(retryCount + 1), 500);
+        } else {
+          console.warn('⚠️ HealthData 플러그인을 찾을 수 없습니다.');
+        }
+      };
       
-      // 10분마다 자동으로 데이터 가져오기
+      // 즉시 시도
+      const initialTimeout = setTimeout(() => waitForPluginAndFetch(), 500);
+      
+      // 1분마다 자동으로 데이터 가져오기 (테스트용)
       const interval = setInterval(() => {
-        console.log('⏰ 10분 주기 - HealthData 가져오기 시작...');
-        fetchHealthData(healthDataPlugin);
-        const now = Date.now();
-        setLastCollectionTime(now);
-        lastCollectionTimeRef.current = now;
+        if (isLoggedIn) {
+          console.log('⏰ 10분 주기 - HealthData 가져오기 시작...');
+          fetchHealthData(healthDataPlugin);
+          const now = Date.now();
+          setLastCollectionTime(now);
+          lastCollectionTimeRef.current = now;
+        } else {
+          console.log('⏸️ 로그아웃 상태 - 10분 주기 데이터 수집 건너뜀');
+        }
       }, 10 * 60 * 1000); // 10분 = 600000ms
       
-      console.log('✅ 10분마다 HealthData 자동 수집 시작');
+      console.log('✅ 10분마다 HealthData 자동 수집 시작 (로그인 상태)');
 
       // 앱이 포그라운드로 돌아올 때 데이터 수집 확인
       const handleAppStateChange = async (state: { isActive: boolean }) => {
@@ -471,6 +717,7 @@ const Health_ios: React.FC = () => {
         if (listener) {
           listener.remove();
         }
+        console.log('🛑 10분 주기 데이터 수집 중지');
       };
     }
     
@@ -478,22 +725,29 @@ const Health_ios: React.FC = () => {
     if (platform === 'android') {
       // UI가 먼저 렌더링되도록 지연 후 데이터 가져오기 (ANR 방지)
       const initialTimeout = setTimeout(() => {
-        fetchHealthDataFromServer();
-        const now = Date.now();
-        setLastCollectionTime(now);
-        lastCollectionTimeRef.current = now;
+        if (isLoggedIn) {
+          console.log('📥 로그인 상태 확인 - 첫 데이터 가져오기 시작 (Android)...');
+          fetchHealthDataFromServer();
+          const now = Date.now();
+          setLastCollectionTime(now);
+          lastCollectionTimeRef.current = now;
+        }
       }, 500); // 500ms 지연으로 UI 먼저 렌더링
       
-      // 10분마다 자동으로 데이터 가져오기
+      // 1분마다 자동으로 데이터 가져오기 (테스트용)
       const interval = setInterval(() => {
-        console.log('⏰ 10분 주기 - 서버에서 HealthData 가져오기 시작...');
-        fetchHealthDataFromServer();
-        const now = Date.now();
-        setLastCollectionTime(now);
-        lastCollectionTimeRef.current = now;
-      }, 10 * 60 * 1000); // 10분 = 600000ms
+        if (isLoggedIn) {
+          console.log('⏰ 10분 주기 - 서버에서 HealthData 가져오기 시작...');
+          fetchHealthDataFromServer();
+          const now = Date.now();
+          setLastCollectionTime(now);
+          lastCollectionTimeRef.current = now;
+        } else {
+          console.log('⏸️ 로그아웃 상태 - 10분 주기 데이터 수집 건너뜀 (Android)');
+        }
+      }, 1 * 60 * 1000); // 1분 = 60000ms (테스트용)
       
-      console.log('✅ 10분마다 HealthData 자동 수집 시작 (Android)');
+      console.log('✅ 10분마다 HealthData 자동 수집 시작 (Android, 로그인 상태)');
 
       // 앱이 포그라운드로 돌아올 때 데이터 수집 확인
       const handleAppStateChange = async (state: { isActive: boolean }) => {
@@ -531,7 +785,7 @@ const Health_ios: React.FC = () => {
         }
       };
     }
-  }, [healthDataPlugin, platform]); // lastCollectionTime 제거 - useRef로 관리
+  }, [healthDataPlugin, platform, isLoggedIn]); // isLoggedIn 추가하여 로그인 상태 변경 시 interval 재시작
 
 
   // 백그라운드 모니터링은 네이티브 코드에서만 처리합니다
@@ -546,14 +800,18 @@ const Health_ios: React.FC = () => {
     
     console.log('HealthData 가져오기 시작...');
     
+    // 권한 확인 및 요청
+    let needsPermissionRequest = false;
+    
     try {
       const [heartRate, hrv, oxygenSaturation] = await Promise.all([
         HealthData.getLatestHeartRate()
           .catch((err: any) => {
             console.error('심박수 가져오기 실패:', err);
             const errorMsg = err?.message || err?.toString() || String(err);
-            if (errorMsg.includes('authorization') || errorMsg.includes('권한')) {
-              alert('HealthKit 권한이 필요합니다. 설정 > Health > 데이터 액세스 및 기기에서 권한을 허용해주세요.');
+            if (errorMsg.includes('authorization') || errorMsg.includes('권한') || errorMsg.includes('Authorization not determined')) {
+              console.log('⚠️ HealthKit 권한이 필요합니다.');
+              needsPermissionRequest = true;
             } else if (errorMsg.includes('not found') || errorMsg.includes('No') || errorMsg.includes('없음')) {
               console.log('심박수 데이터가 없습니다.');
             } else {
@@ -565,8 +823,9 @@ const Health_ios: React.FC = () => {
           .catch((err: any) => {
             console.error('HRV 가져오기 실패:', err);
             const errorMsg = err?.message || err?.toString() || String(err);
-            if (errorMsg.includes('authorization') || errorMsg.includes('권한')) {
-              // 권한 에러는 한 번만 표시
+            if (errorMsg.includes('authorization') || errorMsg.includes('권한') || errorMsg.includes('Authorization not determined')) {
+              console.log('⚠️ HealthKit 권한이 필요합니다 (HRV).');
+              needsPermissionRequest = true;
             } else if (errorMsg.includes('not found') || errorMsg.includes('No') || errorMsg.includes('없음')) {
               console.log('HRV 데이터가 없습니다.');
             } else {
@@ -578,8 +837,9 @@ const Health_ios: React.FC = () => {
           .catch((err: any) => {
             console.error('혈중산소포화도 가져오기 실패:', err);
             const errorMsg = err?.message || err?.toString() || String(err);
-            if (errorMsg.includes('authorization') || errorMsg.includes('권한')) {
-              // 권한 에러는 한 번만 표시
+            if (errorMsg.includes('authorization') || errorMsg.includes('권한') || errorMsg.includes('Authorization not determined')) {
+              console.log('⚠️ HealthKit 권한이 필요합니다 (O2).');
+              needsPermissionRequest = true;
             } else if (errorMsg.includes('not found') || errorMsg.includes('No') || errorMsg.includes('없음')) {
               console.log('혈중산소포화도 데이터가 없습니다.');
             } else {
@@ -588,6 +848,20 @@ const Health_ios: React.FC = () => {
             return null;
           }),
       ]);
+      
+      // 권한이 필요하면 자동으로 권한 요청
+      if (needsPermissionRequest && platform === 'ios' && healthDataPlugin) {
+        console.log('🔐 HealthKit 권한이 필요합니다. 자동으로 권한 요청을 시작합니다...');
+        const permissionResult = await handlePermissionRequest();
+        if (permissionResult) {
+          console.log('✅ HealthKit 권한 획득 성공, 데이터 수집을 다시 시도합니다...');
+          // 권한 획득 후 다시 데이터 수집 시도
+          return fetchHealthData(HealthData);
+        } else {
+          console.log('⚠️ HealthKit 권한 요청이 거부되었거나 실패했습니다.');
+          return;
+        }
+      }
 
       // 빈 딕셔너리를 null로 변환
       const normalizeData = (data: any) => {
@@ -1267,16 +1541,7 @@ const Health_ios: React.FC = () => {
     }
   };
 
-  // 나이/BMI/성별 입력 완료 후 다음 단계로
-  const handleInfoStepComplete = () => {
-    if (age && bmi && gender) {
-      setSetupStep('permission');
-    } else {
-      alert('나이, BMI, 성별을 모두 입력해주세요.');
-    }
-  };
-
-  // HealthKit 권한 요청 완료 후 다음 단계로
+  // HealthKit 권한 요청
   const handlePermissionRequest = async () => {
     if (!healthDataPlugin || platform !== 'ios') {
       alert('iOS에서만 HealthKit을 사용할 수 있습니다.');
@@ -1337,14 +1602,46 @@ const Health_ios: React.FC = () => {
 
 
 
-  // 웹에서 예시 데이터 사용
-  const displayHealthData = platform === 'web' ? {
-    heartRate: { value: 72, date: new Date().toISOString() },
-    hrv: { value: 45.5, date: new Date().toISOString() },
-    oxygenSaturation: { value: 98.5, date: new Date().toISOString() }
-  } : healthData;
+  // 웹에서 예시 데이터 사용 (로그인된 경우에만)
+  // healthData가 null이거나 undefined일 수 있으므로 안전하게 처리
+  const displayHealthData = React.useMemo(() => {
+    try {
+      if (platform === 'web' && isLoggedIn) {
+        return {
+          heartRate: { value: 72, date: new Date().toISOString() },
+          hrv: { value: 45.5, date: new Date().toISOString() },
+          oxygenSaturation: { value: 98.5, date: new Date().toISOString() }
+        };
+      }
+      
+      // healthData가 있고 값이 있는 경우에만 반환
+      if (healthData && (healthData.heartRate || healthData.hrv || healthData.oxygenSaturation)) {
+        console.log('📊 displayHealthData - healthData 사용:', {
+          heartRate: healthData.heartRate?.value,
+          hrv: healthData.hrv?.value,
+          oxygenSaturation: healthData.oxygenSaturation?.value
+        });
+        return healthData;
+      }
+      
+      // healthData가 없거나 모든 값이 null인 경우
+      console.log('📊 displayHealthData - healthData 없음, null 반환');
+      return {
+        heartRate: null,
+        hrv: null,
+        oxygenSaturation: null,
+      };
+    } catch (error) {
+      console.error('displayHealthData 계산 중 에러:', error);
+      return {
+        heartRate: null,
+        hrv: null,
+        oxygenSaturation: null,
+      };
+    }
+  }, [platform, isLoggedIn, healthData]);
 
-  const isExampleData = platform === 'web';
+  const isExampleData = platform === 'web' && isLoggedIn;
 
   return (
     <IonPage className="health-ios-page">
@@ -1421,6 +1718,10 @@ const Health_ios: React.FC = () => {
                 // 모달 닫기
                 setShowSignIn(false);
                 
+                // 즉시 로그인 상태 업데이트
+                setIsLoggedIn(true);
+                setIsSetupComplete(true); // 설정 완료로 표시 (회원가입 시 이미 입력함)
+                
                 // 약간의 지연 후 사용자 정보 모달 표시 (토큰이 완전히 저장된 후)
                 setTimeout(() => {
                   // localStorage에서 직접 토큰 확인
@@ -1434,22 +1735,77 @@ const Health_ios: React.FC = () => {
                   if (authenticated && token) {
                     // 함수형 업데이트로 확실하게 true 유지
                     setIsLoggedIn(() => true);
+                    setIsSetupComplete(true);
                     loadUserInfo();
                     setShowUserInfo(true);
                     console.log('✅ Health 페이지 - 사용자 정보 모달 표시');
                     
-                    // 2초 후 플래그 해제 (이제 다른 이벤트가 상태를 업데이트해도 됨)
+                    // 로그인 성공 시 건강 데이터 한 번 가져와서 저장 (즉시 실행)
+                    const tryFetchHealthData = () => {
+                      if (platform === 'ios' && healthDataPlugin) {
+                        console.log('📥 로그인 성공 - 건강 데이터 즉시 수집 시작...');
+                        fetchHealthData(healthDataPlugin).then(() => {
+                          const now = Date.now();
+                          setLastCollectionTime(now);
+                          lastCollectionTimeRef.current = now;
+                          console.log('✅ 로그인 성공 콜백에서 데이터 수집 완료');
+                        }).catch((err) => {
+                          console.error('❌ 로그인 후 건강 데이터 수집 실패:', err);
+                        });
+                      } else if (platform === 'ios' && !healthDataPlugin) {
+                        // 플러그인이 아직 준비되지 않았으면 잠시 후 재시도
+                        console.log('⏳ HealthData 플러그인 대기 중...');
+                        setTimeout(tryFetchHealthData, 500);
+                      }
+                    };
+                    
+                    // 즉시 시도
+                    setTimeout(tryFetchHealthData, 1000);
+                    
+                    // 5초 후 플래그 해제 (충분한 시간 확보)
                     setTimeout(() => {
                       loginSuccessRef.current = false;
                       console.log('✅ Health 페이지 - 로그인 성공 플래그 해제');
-                    }, 2000);
+                    }, 5000);
                   } else {
                     console.warn('⚠️ Health 페이지 - 토큰이 없음, 상태 재설정');
                     console.warn(`⚠️ Health 페이지 - token: ${token ? '있음' : '없음'}, authenticated: ${authenticated}`);
-                    setIsLoggedIn(false);
-                    loginSuccessRef.current = false;
+                    // 토큰이 없어도 잠시 대기 후 재확인
+                    setTimeout(() => {
+                      const retryAuth = isAuthenticated();
+                      if (retryAuth) {
+                        setIsLoggedIn(true);
+                        setIsSetupComplete(true);
+                        loadUserInfo();
+                        setShowUserInfo(true);
+                        
+                        // 로그인 성공 시 건강 데이터 한 번 가져와서 저장 (재시도)
+                        const tryFetchHealthDataRetry = () => {
+                          if (platform === 'ios' && healthDataPlugin) {
+                            console.log('📥 로그인 성공 (재시도) - 건강 데이터 즉시 수집 시작...');
+                            fetchHealthData(healthDataPlugin).then(() => {
+                              const now = Date.now();
+                              setLastCollectionTime(now);
+                              lastCollectionTimeRef.current = now;
+                              console.log('✅ 로그인 재시도에서 데이터 수집 완료');
+                            }).catch((err) => {
+                              console.error('❌ 로그인 후 건강 데이터 수집 실패:', err);
+                            });
+                          } else if (platform === 'ios' && !healthDataPlugin) {
+                            console.log('⏳ HealthData 플러그인 대기 중 (재시도)...');
+                            setTimeout(tryFetchHealthDataRetry, 500);
+                          }
+                        };
+                        setTimeout(tryFetchHealthDataRetry, 1000);
+                        
+                        loginSuccessRef.current = false;
+                      } else {
+                        setIsLoggedIn(false);
+                        loginSuccessRef.current = false;
+                      }
+                    }, 500);
                   }
-                }, 100); // 100ms로 단축 (localStorage는 동기적이므로)
+                }, 200); // 200ms로 약간 증가
               }}
             />
           </div>
@@ -1478,6 +1834,7 @@ const Health_ios: React.FC = () => {
               onSuccess={() => {
                 // User 페이지와 동일: 즉시 true로 설정 (토큰은 이미 저장됨)
                 setIsLoggedIn(true);
+                setIsSetupComplete(true); // 설정 완료로 표시 (회원가입 시 이미 입력함)
                 setShowSignUp(false);
                 console.log('✅ Health 페이지 - 회원가입 성공, 상태 업데이트 완료');
                 
@@ -1489,7 +1846,18 @@ const Health_ios: React.FC = () => {
                     setIsLoggedIn(false);
                   } else {
                     setIsLoggedIn(true);
+                    setIsSetupComplete(true);
                     console.log('✅ Health 페이지 - 토큰 확인 완료');
+                    
+                    // 회원가입 성공 시 건강 데이터 한 번 가져와서 저장
+                    if (platform === 'ios' && healthDataPlugin) {
+                      console.log('📥 회원가입 성공 - 건강 데이터 즉시 수집 시작...');
+                      setTimeout(() => {
+                        fetchHealthData(healthDataPlugin).catch((err) => {
+                          console.error('❌ 회원가입 후 건강 데이터 수집 실패:', err);
+                        });
+                      }, 1000); // 1초 후 실행
+                    }
                   }
                 }, 100);
               }}
@@ -1519,14 +1887,22 @@ const Health_ios: React.FC = () => {
           }}
           >
             <div className="user-info-modal" style={{
-              background: 'linear-gradient(135deg, #ffffff 0%, #f5f7fa 100%)',
+              background: isDarkMode 
+                ? 'linear-gradient(135deg, #3A3B45 0%, #323340 50%, #2E2F3A 100%)' 
+                : 'linear-gradient(135deg, #ffffff 0%, #f5f7fa 100%)',
               borderRadius: '24px',
               padding: '0',
               width: '85%',
               maxWidth: '340px',
-              boxShadow: '0 24px 80px rgba(0, 0, 0, 0.25)',
+              maxHeight: '90vh',
+              boxShadow: isDarkMode 
+                ? '0 24px 80px rgba(0, 0, 0, 0.6)' 
+                : '0 24px 80px rgba(0, 0, 0, 0.25)',
               position: 'relative',
-              overflow: 'hidden'
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              border: isDarkMode ? '1px solid rgba(124, 136, 169, 0.3)' : 'none'
             }}
             onClick={(e) => e.stopPropagation()}
             >
@@ -1700,129 +2076,98 @@ const Health_ios: React.FC = () => {
               
               {/* 본문 영역 */}
               <div style={{
-                padding: '18px 20px 20px 20px',
-                marginTop: '-25px',
+                padding: '24px 20px 0 20px',
+                marginTop: '-20px',
                 position: 'relative',
-                zIndex: 2
+                zIndex: 2,
+                flex: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                overflowY: 'auto'
               }}>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      style={{ display: 'none' }}
-                      id="profile-image-input"
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        const input = e.target as HTMLInputElement;
+                <input
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  id="profile-image-input"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    const input = e.target as HTMLInputElement;
+                    
+                    if (file) {
+                      const reader = new FileReader();
+                      reader.onload = async (event) => {
+                        const result = event.target?.result as string;
+                        setProfileImage(result);
                         
-                        if (file) {
-                          // 이미지 미리보기
-                          const reader = new FileReader();
-                          reader.onload = async (event) => {
-                            const result = event.target?.result as string;
-                            setProfileImage(result);
-                            
-                            // 서버에 업로드
-                            try {
-                              const { getAuthHeaders, getUserNo } = await import('../services/AuthService');
-                              const userNo = getUserNo();
-                              if (!userNo) {
-                                console.error('사용자 번호를 가져올 수 없습니다.');
-                                return;
-                              }
-                              
-                              const baseUrl = getServerUrl();
-                              const formData = new FormData();
-                              formData.append('image', file, file.name);
-                              
-                              const authHeaders = getAuthHeaders();
-                              // FormData를 사용할 때는 Content-Type을 설정하지 않음 (브라우저가 자동 설정)
-                              // Authorization 헤더만 유지
-                              const headers: HeadersInit = {};
-                              const authHeaderValue = (authHeaders as any)['Authorization'];
-                              if (authHeaderValue) {
-                                (headers as any)['Authorization'] = authHeaderValue;
-                              }
-                              
-                              console.log('📤 업로드 요청:', {
-                                url: `${baseUrl}/auth/profile-image`,
-                                fileName: file.name,
-                                fileSize: file.size,
-                                fileType: file.type
-                              });
-                              
-                              const response = await fetch(`${baseUrl}/auth/profile-image`, {
-                                method: 'POST',
-                                headers: headers,
-                                body: formData
-                              });
-                              
-                              if (response.ok) {
-                                const uploadResult = await response.json();
-                                console.log('📤 업로드 응답:', uploadResult);
-                                
-                                if (uploadResult.profile_image_url) {
-                                  // 상대 경로인 경우 서버 URL 추가
-                                  let imageUrl = uploadResult.profile_image_url.startsWith('http') 
-                                    ? uploadResult.profile_image_url 
-                                    : `${baseUrl}${uploadResult.profile_image_url}`;
-                                  
-                                  // 캐시 버스터 추가 (이미지 갱신을 위해)
-                                  const separator = imageUrl.includes('?') ? '&' : '?';
-                                  imageUrl = `${imageUrl}${separator}t=${Date.now()}`;
-                                  
-                                  console.log('🖼️ 설정할 이미지 URL:', imageUrl);
-                                  
-                                  // 상태 업데이트
-                                  setProfileImage(imageUrl);
-                                  
-                                  // 사용자별로 localStorage에 저장
-                                  localStorage.setItem(`profile_image_${userNo}`, imageUrl);
-                                  
-                                  // 서버에서 최신 정보 다시 불러오기
-                                  await loadUserInfo();
-                                  
-                                  console.log(`✅ 프로필 이미지 업로드 성공 (user_no: ${userNo})`);
-                                } else {
-                                  console.warn('⚠️ profile_image_url이 응답에 없습니다.');
-                                }
-                              } else {
-                                const errorData = await response.json().catch(() => ({}));
-                                console.error('프로필 이미지 업로드 실패:', errorData);
-                                // 업로드 실패 시 미리보기 제거
-                                setProfileImage(null);
-                              }
-                            } catch (error) {
-                              console.error('프로필 이미지 업로드 실패:', error);
-                              // 업로드 실패 시 미리보기 제거
-                              setProfileImage(null);
-                            }
-                            
-                            // input 초기화하여 같은 파일을 다시 선택해도 onChange가 트리거되도록 함
-                            if (input) {
-                              input.value = '';
-                            }
-                          };
-                          reader.readAsDataURL(file);
-                        } else {
-                          // 파일이 선택되지 않았을 때도 input 초기화
-                          if (input) {
-                            input.value = '';
+                        try {
+                          const { getAuthHeaders, getUserNo } = await import('../services/AuthService');
+                          const userNo = getUserNo();
+                          if (!userNo) {
+                            console.error('사용자 번호를 가져올 수 없습니다.');
+                            return;
                           }
+                          
+                          const baseUrl = getServerUrl();
+                          const formData = new FormData();
+                          formData.append('image', file, file.name);
+                          
+                          const headers: HeadersInit = {};
+                          const authHeaderValue = (getAuthHeaders() as any)['Authorization'];
+                          if (authHeaderValue) {
+                            (headers as any)['Authorization'] = authHeaderValue;
+                          }
+                          
+                          const response = await fetch(`${baseUrl}/auth/profile-image`, {
+                            method: 'POST',
+                            headers: headers,
+                            body: formData
+                          });
+                          
+                          if (response.ok) {
+                            const uploadResult = await response.json();
+                            if (uploadResult.profile_image_url) {
+                              let imageUrl = uploadResult.profile_image_url.startsWith('http') 
+                                ? uploadResult.profile_image_url 
+                                : `${baseUrl}${uploadResult.profile_image_url}`;
+                              const separator = imageUrl.includes('?') ? '&' : '?';
+                              imageUrl = `${imageUrl}${separator}t=${Date.now()}`;
+                              setProfileImage(imageUrl);
+                              localStorage.setItem(`profile_image_${userNo}`, imageUrl);
+                              await loadUserInfo();
+                            }
+                          } else {
+                            setProfileImage(null);
+                          }
+                        } catch (error) {
+                          console.error('프로필 이미지 업로드 실패:', error);
+                          setProfileImage(null);
                         }
-                      }}
-                    />
+                        
+                        if (input) {
+                          input.value = '';
+                        }
+                      };
+                      reader.readAsDataURL(file);
+                    } else {
+                      if (input) {
+                        input.value = '';
+                      }
+                    }
+                  }}
+                />
                 
                 {/* 사용자 ID */}
                 {userId && (
                   <div style={{
                     textAlign: 'center',
-                    marginBottom: '20px',
-                    marginTop: '45px'
+                    marginBottom: '32px',
+                    marginTop: '40px'
                   }}>
                     <IonText style={{ 
                       fontSize: '1rem', 
                       fontWeight: '600', 
-                      color: '#2d3748',
+                      color: isDarkMode ? '#F0F4F8' : '#2d3748',
                       letterSpacing: '-0.2px'
                     }}>
                       {userId}
@@ -1832,30 +2177,34 @@ const Health_ios: React.FC = () => {
                 
                 {/* 정보 카드 */}
                 <div style={{
-                  background: 'white',
+                  background: isDarkMode ? '#2E2F3A' : 'white',
                   borderRadius: '16px',
-                  padding: '16px',
-                  marginBottom: '20px',
-                  boxShadow: '0 2px 12px rgba(0, 0, 0, 0.06)',
-                  border: '1px solid rgba(0, 0, 0, 0.05)'
+                  padding: '20px',
+                  marginBottom: '32px',
+                  boxShadow: isDarkMode ? '0 2px 12px rgba(0, 0, 0, 0.4)' : '0 2px 12px rgba(0, 0, 0, 0.06)',
+                  border: isDarkMode ? '1px solid rgba(124, 136, 169, 0.3)' : '1px solid rgba(0, 0, 0, 0.05)'
                 }}>
+                  {/* 나이/BMI 그리드 */}
                   <div style={{ 
                     display: 'grid', 
                     gridTemplateColumns: '1fr 1fr',
-                    gap: '12px',
-                    marginBottom: '12px'
+                    gap: '16px',
+                    marginBottom: '16px'
                   }}>
+                    {/* 나이 */}
                     <div style={{
-                      padding: '12px',
-                      background: 'linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%)',
+                      padding: '16px',
+                      background: isDarkMode 
+                        ? 'linear-gradient(135deg, #323340 0%, #2E2F3A 100%)' 
+                        : 'linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%)',
                       borderRadius: '10px',
-                      border: '1px solid rgba(0, 0, 0, 0.05)'
+                      border: isDarkMode ? '1px solid rgba(124, 136, 169, 0.3)' : '1px solid rgba(0, 0, 0, 0.05)'
                     }}>
                       <IonLabel style={{ 
-                        color: '#718096', 
+                        color: isDarkMode ? '#A0A5B8' : '#718096', 
                         fontWeight: '600', 
                         fontSize: '0.7rem',
-                        marginBottom: '6px', 
+                        marginBottom: '8px', 
                         display: 'block',
                         textTransform: 'uppercase',
                         letterSpacing: '0.5px'
@@ -1863,7 +2212,7 @@ const Health_ios: React.FC = () => {
                         나이
                       </IonLabel>
                       <IonText style={{ 
-                        color: '#2d3748', 
+                        color: isDarkMode ? '#F0F4F8' : '#2d3748', 
                         fontSize: '1.2rem', 
                         fontWeight: '700', 
                         display: 'block' 
@@ -1872,17 +2221,20 @@ const Health_ios: React.FC = () => {
                       </IonText>
                     </div>
                     
+                    {/* BMI */}
                     <div style={{
-                      padding: '12px',
-                      background: 'linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%)',
+                      padding: '16px',
+                      background: isDarkMode 
+                        ? 'linear-gradient(135deg, #323340 0%, #2E2F3A 100%)' 
+                        : 'linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%)',
                       borderRadius: '10px',
-                      border: '1px solid rgba(0, 0, 0, 0.05)'
+                      border: isDarkMode ? '1px solid rgba(124, 136, 169, 0.3)' : '1px solid rgba(0, 0, 0, 0.05)'
                     }}>
                       <IonLabel style={{ 
-                        color: '#718096', 
+                        color: isDarkMode ? '#A0A5B8' : '#718096', 
                         fontWeight: '600', 
                         fontSize: '0.7rem',
-                        marginBottom: '6px', 
+                        marginBottom: '8px', 
                         display: 'block',
                         textTransform: 'uppercase',
                         letterSpacing: '0.5px'
@@ -1890,7 +2242,7 @@ const Health_ios: React.FC = () => {
                         BMI
                       </IonLabel>
                       <IonText style={{ 
-                        color: '#2d3748', 
+                        color: isDarkMode ? '#F0F4F8' : '#2d3748', 
                         fontSize: '1.2rem', 
                         fontWeight: '700', 
                         display: 'block' 
@@ -1900,17 +2252,21 @@ const Health_ios: React.FC = () => {
                     </div>
                   </div>
                   
+                  {/* 성별 */}
                   <div style={{
-                    padding: '12px',
-                    background: 'linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%)',
+                    padding: '16px',
+                    marginTop: '16px',
+                    background: isDarkMode 
+                      ? 'linear-gradient(135deg, #323340 0%, #2E2F3A 100%)' 
+                      : 'linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%)',
                     borderRadius: '10px',
-                    border: '1px solid rgba(0, 0, 0, 0.05)'
+                    border: isDarkMode ? '1px solid rgba(124, 136, 169, 0.3)' : '1px solid rgba(0, 0, 0, 0.05)'
                   }}>
                     <IonLabel style={{ 
-                      color: '#718096', 
+                      color: isDarkMode ? '#A0A5B8' : '#718096', 
                       fontWeight: '600', 
                       fontSize: '0.7rem',
-                      marginBottom: '6px', 
+                      marginBottom: '8px', 
                       display: 'block',
                       textTransform: 'uppercase',
                       letterSpacing: '0.5px'
@@ -1918,7 +2274,7 @@ const Health_ios: React.FC = () => {
                       성별
                     </IonLabel>
                     <IonText style={{ 
-                      color: '#2d3748', 
+                      color: isDarkMode ? '#F0F4F8' : '#2d3748', 
                       fontSize: '1.2rem', 
                       fontWeight: '700', 
                       display: 'block' 
@@ -1932,28 +2288,81 @@ const Health_ios: React.FC = () => {
                 <IonButton 
                   expand="block" 
                   onClick={async () => {
-                    const { getUserNo } = await import('../services/AuthService');
+                    // 로그아웃 진행 중 플래그 설정
+                    logoutInProgressRef.current = true;
+                    
+                    const { getUserNo, getAuthHeaders } = await import('../services/AuthService');
                     const userNo = getUserNo();
+                    
+                    // 인터벌 정리 (명시적으로 정리)
+                    if (collectionIntervalRef.current) {
+                      clearInterval(collectionIntervalRef.current);
+                      collectionIntervalRef.current = null;
+                    }
+                    
+                    // 로그아웃 전에 수면 모드 종료 시도
+                    try {
+                      const baseUrl = getServerUrl();
+                      const authHeaders = getAuthHeaders();
+                      const headers = {
+                        ...authHeaders,
+                        'Content-Type': 'application/json',
+                      };
+                      const response = await fetch(`${baseUrl}/sleep-mode/stop`, {
+                        method: 'POST',
+                        headers: headers,
+                      });
+                      if (response.ok) {
+                        console.log('✅ 로그아웃 시 수면 모드 종료 완료');
+                      } else {
+                        console.warn('⚠️ 로그아웃 시 수면 모드 종료 실패 (무시)');
+                      }
+                    } catch (error) {
+                      // 수면 모드 종료 실패해도 로그아웃은 진행
+                      console.warn('⚠️ 로그아웃 시 수면 모드 종료 중 오류 (무시):', error);
+                    }
                     
                     logout();
                     setIsLoggedIn(false);
                     setShowUserInfo(false);
+                    setShowSignIn(false); // 로그인 모달 명시적으로 닫기
                     setProfileImage(null);
                     setUserId('');
                     setAge('');
                     setBmi('');
                     setGender('0');
                     
-                    // 현재 사용자의 데이터만 삭제
+                    // 건강 데이터 초기화
+                    setHealthData({
+                      heartRate: null,
+                      hrv: null,
+                      oxygenSaturation: null,
+                    });
+                    
+                    // 차트 데이터 초기화
+                    setChartData(null);
+                    setLastCollectionTime(0);
+                    lastCollectionTimeRef.current = 0;
+                    
                     if (userNo) {
                       localStorage.removeItem(`profile_image_${userNo}`);
                       localStorage.removeItem(`userAge_${userNo}`);
                       localStorage.removeItem(`userBmi_${userNo}`);
                       localStorage.removeItem(`userGender_${userNo}`);
+                      localStorage.removeItem(`night_chart_data`);
                     }
+                    
+                    console.log('✅ 로그아웃 완료 - 모든 상태 초기화');
+                    
+                    // 5초 후 로그아웃 진행 중 플래그 리셋
+                    setTimeout(() => {
+                      logoutInProgressRef.current = false;
+                      console.log('✅ 로그아웃 진행 중 플래그 리셋 완료');
+                    }, 5000);
                   }}
                   style={{ 
-                    marginTop: '8px',
+                    marginTop: '0',
+                    marginBottom: '32px',
                     '--background': 'linear-gradient(135deg, #b8d8e0 0%, #a0c8d4 100%)',
                     '--background-hover': 'linear-gradient(135deg, #a8d0d8 0%, #98c0cc 100%)',
                     '--border-radius': '16px',
@@ -1966,280 +2375,109 @@ const Health_ios: React.FC = () => {
                 >
                   로그아웃
                 </IonButton>
+                {/* 하단 여백을 위한 빈 div */}
+                <div style={{ height: '32px', flexShrink: 0 }} />
               </div>
             </div>
           </div>
         )}
 
-        {/* 초기 설정 화면 - iOS만 */}
-        {!isSetupComplete && platform === 'ios' && (
-          <>
-            <IonText className="setup-title">
-              <h2>초기 설정</h2>
-            </IonText>
-
-            {/* 단계 1: 나이, BMI 입력 */}
-            {setupStep === 'info' && (
-              <IonCard>
-                <IonCardHeader>
-                  <IonCardTitle>1단계: 기본 정보 입력</IonCardTitle>
-                </IonCardHeader>
-                <IonCardContent>
-                  <IonText color="medium">
-                    <p>나이, BMI, 성별을 입력해주세요.</p>
-                  </IonText>
-                  <IonItem>
-                    <IonLabel position="stacked">나이</IonLabel>
-                    <IonInput
-                      type="number"
-                      value={age}
-                      placeholder="나이를 입력하세요"
-                      onIonInput={async (e) => {
-                        const value = e.detail.value!;
-                        setAge(value);
-                        try {
-                          const { getUserNo } = await import('../services/AuthService');
-                          const userNo = getUserNo();
-                          if (userNo) {
-                            localStorage.setItem(`userAge_${userNo}`, value || '');
-                          } else {
-                            localStorage.setItem('userAge', value || '');
-                          }
-                          if (platform === 'ios' && healthDataPlugin) {
-                            try {
-                              await healthDataPlugin.saveUserInfo({
-                                age: value || '',
-                                bmi: bmi || '',
-                                gender: gender || '0'
-                              });
-                            } catch (err) {
-                              console.log('나이 UserDefaults 저장 실패:', err);
-                            }
-                          }
-                        } catch (err) {
-                          console.log('나이 저장 실패:', err);
-                        }
-                      }}
-                    />
-                  </IonItem>
-                  <IonItem>
-                    <IonLabel position="stacked">BMI</IonLabel>
-                    <IonInput
-                      type="number"
-                      value={bmi}
-                      placeholder="BMI를 입력하세요"
-                      onIonInput={async (e) => {
-                        const value = e.detail.value!;
-                        setBmi(value);
-                        try {
-                          const { getUserNo } = await import('../services/AuthService');
-                          const userNo = getUserNo();
-                          if (userNo) {
-                            localStorage.setItem(`userBmi_${userNo}`, value || '');
-                          } else {
-                            localStorage.setItem('userBmi', value || '');
-                          }
-                          if (platform === 'ios' && healthDataPlugin) {
-                            try {
-                              await healthDataPlugin.saveUserInfo({
-                                age: age || '',
-                                bmi: value || '',
-                                gender: gender || '0'
-                              });
-                            } catch (err) {
-                              console.log('BMI UserDefaults 저장 실패:', err);
-                            }
-                          }
-                        } catch (err) {
-                          console.log('BMI 저장 실패:', err);
-                        }
-                      }}
-                    />
-                  </IonItem>
-                  <IonItem>
-                    <IonLabel position="stacked">성별</IonLabel>
-                    <IonSelect
-                      value={gender}
-                      placeholder="성별을 선택하세요"
-                      onIonChange={async (e) => {
-                        const value = e.detail.value;
-                        setGender(value);
-                        try {
-                          const { getUserNo } = await import('../services/AuthService');
-                          const userNo = getUserNo();
-                          if (userNo) {
-                            localStorage.setItem(`userGender_${userNo}`, value || '0');
-                          } else {
-                            localStorage.setItem('userGender', value || '0');
-                          }
-                          if (platform === 'ios' && healthDataPlugin) {
-                            try {
-                              await healthDataPlugin.saveUserInfo({
-                                age: age || '',
-                                bmi: bmi || '',
-                                gender: value || '0'
-                              });
-                            } catch (err) {
-                              console.log('성별 UserDefaults 저장 실패:', err);
-                            }
-                          }
-                        } catch (err) {
-                          console.log('성별 저장 실패:', err);
-                        }
-                      }}
-                    >
-                      <IonSelectOption value="0">여성</IonSelectOption>
-                      <IonSelectOption value="1">남성</IonSelectOption>
-                    </IonSelect>
-                  </IonItem>
-                  <IonButton
-                    expand="block"
-                    color="primary"
-                    onClick={handleInfoStepComplete}
-                    style={{ marginTop: '20px' }}
-                  >
-                    다음 단계
-                  </IonButton>
-                </IonCardContent>
-              </IonCard>
-            )}
-
-            {/* 단계 2: HealthKit 권한 요청 */}
-            {setupStep === 'permission' && (
-              <IonCard>
-                <IonCardHeader>
-                  <IonCardTitle>2단계: HealthKit 권한 요청</IonCardTitle>
-                </IonCardHeader>
-                <IonCardContent>
-                  <IonText color="medium">
-                    <p>HealthKit 데이터를 사용하기 위해 권한이 필요합니다.</p>
-                  </IonText>
-                  {healthDataPlugin ? (
-                    <IonButton
-                      expand="block"
-                      color="primary"
-                      onClick={async () => {
-                        const success = await handlePermissionRequest();
-                        // 권한 요청 완료 후 설정 완료 처리 및 데이터 가져오기
-                        if (success) {
-                          localStorage.setItem('healthSetupComplete', 'true');
-                          setIsSetupComplete(true);
-                          setSetupStep('complete');
-                          // 권한 승인 후 바로 데이터 가져오기
-                          setTimeout(() => {
-                            fetchHealthData(healthDataPlugin);
-                          }, 500);
-                        }
-                      }}
-                      style={{ marginTop: '20px' }}
-                    >
-                      HealthKit 권한 요청
-                    </IonButton>
-                  ) : null}
-                </IonCardContent>
-              </IonCard>
-            )}
-          </>
-        )}
-
-        {/* 메인 화면 (설정 완료 후 또는 Android/Web) */}
-        {(isSetupComplete || platform !== 'ios') && (
-          <div className="container">
-            
-            {/* HealthKit 데이터 표시 - 다양한 레이아웃 */}
-            <div className="health-data-section">
-              {isExampleData && (
-                <div style={{ textAlign: 'center', marginBottom: '12px' }}>
-                  <IonText color="medium" style={{ fontSize: '13px', fontStyle: 'italic' }}>
-                    ※ 웹에서는 예시 데이터가 표시됩니다
-                  </IonText>
-                </div>
-              )}
-              {/* HRV와 산소포화도 - 가로 배치 */}
-              <div className="health-data-secondary-row">
-                {/* 심박변이 */}
-                <IonCard className="hrv-card">
-                  <IonCardContent>
-                    <div className="health-data-label-small">심박변이</div>
-                    {displayHealthData.hrv ? (
-                      <>
-                        <div className="health-data-value-small">{displayHealthData.hrv.value.toFixed(2)}<span className="health-data-unit-small">ms</span></div>
-                        <div className="health-data-date-small">{formatDate(displayHealthData.hrv.date)}</div>
-                      </>
-                    ) : (
-                      <div className="health-data-empty-small">데이터 없음</div>
-                    )}
-                  </IonCardContent>
-                </IonCard>
-
-                {/* 혈중산소포화도 */}
-                <IonCard className="oxygen-card">
-                  <IonCardContent>
-                    <div className="health-data-label-small">산소포화도</div>
-                    {displayHealthData.oxygenSaturation ? (
-                      <>
-                        <div className="health-data-value-small">{displayHealthData.oxygenSaturation.value.toFixed(1)}<span className="health-data-unit-small">%</span></div>
-                        <div className="health-data-date-small">{formatDate(displayHealthData.oxygenSaturation.date)}</div>
-                      </>
-                    ) : (
-                      <div className="health-data-empty-small">데이터 없음</div>
-                    )}
-                  </IonCardContent>
-                </IonCard>
-              </div>
-
-              {/* 심박수 - 큰 숫자 중심, 헤더 없음 */}
-              <IonCard className="health-data-main-card heart-rate-main">
-                <IonCardContent>
-                  <div className="health-data-label-large">심박수</div>
-                  {displayHealthData.heartRate ? (
-                    <>
-                      <div className="health-data-value-wrapper-large">
-                        <div className="health-data-value-large">{displayHealthData.heartRate.value.toFixed(0)}</div>
-                        <div className="health-data-unit-large">bpm</div>
-                      </div>
-                      <div className="health-data-date-large" style={{ fontSize: '13px', marginTop: '8px' }}>
-                        마지막 업데이트: {new Date(displayHealthData.heartRate.date).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
-                      </div>
-                    </>
-                  ) : (
-                    <div className="health-data-empty-large">데이터 없음</div>
-                  )}
-                  
-                  {/* 심박수 차트 */}
-                  {chartData ? (
-                    <div style={{ marginTop: '12px' }}>
-                      <HeartRateChart data={chartData.heartRateData} />
-                    </div>
-                  ) : (
-                    <div style={{ padding: '20px', textAlign: 'center', marginTop: '12px' }}>
-                      <IonText color="medium">
-                        <p>데이터가 없습니다. 10분마다 자동으로 데이터가 수집됩니다.</p>
-                      </IonText>
-                    </div>
-                  )}
-                </IonCardContent>
-              </IonCard>
-            </div>
-          </div>
-        )}
-
-        {/* 온도 차트 */}
+        {/* 메인 화면 - 카드는 항상 표시, 데이터는 로그인 시에만 */}
         <div className="container">
-        <IonCard className="temperature-chart-card">
-          <IonCardContent>
-            <div className="temperature-chart-title">하룻밤 온도 변화</div>
-            {chartData ? (
-              <TemperatureChart data={chartData.temperatureData} />
-            ) : (
-              <div style={{ padding: '20px', textAlign: 'center' }}>
-                <IonText color="medium">
-                  <p>데이터가 없습니다. 10분마다 자동으로 데이터가 수집됩니다.</p>
+          
+          {/* HealthKit 데이터 표시 - 다양한 레이아웃 */}
+          <div className="health-data-section">
+            {isExampleData && (
+              <div style={{ textAlign: 'center', marginBottom: '12px' }}>
+                <IonText color="medium" style={{ fontSize: '13px', fontStyle: 'italic' }}>
+                  ※ 웹에서는 예시 데이터가 표시됩니다
                 </IonText>
               </div>
             )}
-          </IonCardContent>
-        </IonCard>
+            {/* HRV와 산소포화도 - 가로 배치 */}
+            <div className="health-data-secondary-row">
+              {/* 심박변이 */}
+              <IonCard className="hrv-card">
+                <IonCardContent>
+                  <div className="health-data-label-small">심박변이</div>
+                  {isLoggedIn && displayHealthData.hrv && typeof displayHealthData.hrv.value === 'number' ? (
+                    <>
+                      <div className="health-data-value-small">{displayHealthData.hrv.value.toFixed(2)}<span className="health-data-unit-small">ms</span></div>
+                      <div className="health-data-date-small">{formatDate(displayHealthData.hrv.date)}</div>
+                    </>
+                  ) : (
+                    <div className="health-data-empty-small">{isLoggedIn ? '데이터 없음' : '로그인이 필요합니다'}</div>
+                  )}
+                </IonCardContent>
+              </IonCard>
+
+              {/* 혈중산소포화도 */}
+              <IonCard className="oxygen-card">
+                <IonCardContent>
+                  <div className="health-data-label-small">산소포화도</div>
+                  {isLoggedIn && displayHealthData.oxygenSaturation && typeof displayHealthData.oxygenSaturation.value === 'number' ? (
+                    <>
+                      <div className="health-data-value-small">{displayHealthData.oxygenSaturation.value.toFixed(1)}<span className="health-data-unit-small">%</span></div>
+                      <div className="health-data-date-small">{formatDate(displayHealthData.oxygenSaturation.date)}</div>
+                    </>
+                  ) : (
+                    <div className="health-data-empty-small">{isLoggedIn ? '데이터 없음' : '로그인이 필요합니다'}</div>
+                  )}
+                </IonCardContent>
+              </IonCard>
+            </div>
+
+            {/* 심박수 - 큰 숫자 중심, 헤더 없음 */}
+            <IonCard className="health-data-main-card heart-rate-main">
+              <IonCardContent>
+                <div className="health-data-label-large">심박수</div>
+                {isLoggedIn && displayHealthData.heartRate && typeof displayHealthData.heartRate.value === 'number' ? (
+                  <>
+                    <div className="health-data-value-wrapper-large">
+                      <div className="health-data-value-large">{displayHealthData.heartRate.value.toFixed(0)}</div>
+                      <div className="health-data-unit-large">bpm</div>
+                    </div>
+                    <div className="health-data-date-large" style={{ fontSize: '13px', marginTop: '8px' }}>
+                      마지막 업데이트: {new Date(displayHealthData.heartRate.date).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                  </>
+                ) : (
+                  <div className="health-data-empty-large">{isLoggedIn ? '데이터 없음' : '로그인이 필요합니다'}</div>
+                )}
+                
+                {/* 심박수 차트 */}
+                {isLoggedIn && chartData ? (
+                  <div style={{ marginTop: '12px' }}>
+                    <HeartRateChart data={chartData.heartRateData} />
+                  </div>
+                ) : (
+                  <div style={{ padding: '20px', textAlign: 'center', marginTop: '12px' }}>
+                    <IonText color="medium">
+                      <p>{isLoggedIn ? '데이터가 없습니다. 10분마다 자동으로 데이터가 수집됩니다.' : '로그인이 필요합니다.'}</p>
+                    </IonText>
+                  </div>
+                )}
+              </IonCardContent>
+            </IonCard>
+          </div>
+        </div>
+
+        {/* 온도 차트 - 카드는 항상 표시, 데이터는 로그인 시에만 */}
+        <div className="container">
+          <IonCard className="temperature-chart-card">
+            <IonCardContent>
+              <div className="temperature-chart-title">하룻밤 온도 변화</div>
+              {isLoggedIn && chartData ? (
+                <TemperatureChart data={chartData.temperatureData} />
+              ) : (
+                <div style={{ padding: '20px', textAlign: 'center' }}>
+                  <IonText color="medium">
+                    <p>{isLoggedIn ? '데이터가 없습니다. 10분마다 자동으로 데이터가 수집됩니다.' : '로그인이 필요합니다.'}</p>
+                  </IonText>
+                </div>
+              )}
+            </IonCardContent>
+          </IonCard>
         </div>
 
       </IonContent>

@@ -56,6 +56,7 @@ const User: React.FC = () => {
   const [currentUserId, setCurrentUserId] = useState<string | undefined>(undefined);
   const loginSuccessRef = useRef<boolean>(false); // 로그인 성공 플래그
   const loadUserInfoRef = useRef<(() => Promise<void>) | null>(null); // 사용자 정보 로드 함수 참조
+  const logoutInProgressRef = useRef<boolean>(false); // 로그아웃 진행 중 플래그
 
   const requestNotificationPermission = async () => {
     try {
@@ -266,6 +267,17 @@ const User: React.FC = () => {
     // 앱 시작 시 로그인 모달 표시 이벤트 리스너
     const handleShowLoginModal = () => {
       console.log('🔍 User 페이지 - 로그인 모달 표시 이벤트 수신');
+      // 로그아웃 진행 중이면 무시
+      if (logoutInProgressRef.current) {
+        console.log('🔍 User 페이지 - 로그아웃 진행 중, 로그인 모달 표시 무시');
+        setShowSignIn(false); // 모달 강제로 닫기
+        return;
+      }
+      // 이미 모달이 열려있으면 무시 (중복 방지)
+      if (showSignIn) {
+        console.log('🔍 User 페이지 - 이미 로그인 모달이 열려있음, 무시');
+        return;
+      }
       if (!isAuthenticated() || getUserNo() === null) {
         setShowSignIn(true);
       }
@@ -278,7 +290,21 @@ const User: React.FC = () => {
         console.log('🔍 User 페이지 - 로그인 성공 직후, 이벤트 무시');
         return;
       }
+      // 로그아웃 진행 중이면 상태만 업데이트하고 모달은 표시하지 않음
+      if (logoutInProgressRef.current) {
+        const authenticated = event.detail?.authenticated ?? isAuthenticated();
+        setIsLoggedIn(authenticated);
+        setShowSignIn(false); // 로그아웃 중에는 모달 강제로 닫기
+        console.log(`🔍 User 페이지 - 로그아웃 진행 중, 상태만 업데이트: ${authenticated}`);
+        return;
+      }
+      
+      // 로그아웃 상태로 변경되었고 모달이 열려있으면 닫기
       const authenticated = event.detail?.authenticated ?? isAuthenticated();
+      if (!authenticated && showSignIn) {
+        setShowSignIn(false);
+        console.log('🔍 User 페이지 - 로그아웃 상태로 변경, 모달 닫기');
+      }
       setIsLoggedIn(authenticated);
       console.log(`🔍 User 페이지 - 로그인 상태 변경 이벤트: ${authenticated}`);
       
@@ -300,7 +326,21 @@ const User: React.FC = () => {
           console.log('🔍 User 페이지 - 로그인 성공 직후, storage 이벤트 무시');
           return;
         }
+        // 로그아웃 진행 중이면 상태만 업데이트하고 모달은 표시하지 않음
+        if (logoutInProgressRef.current) {
+          const authenticated = isAuthenticated();
+          setIsLoggedIn(authenticated);
+          setShowSignIn(false); // 로그아웃 중에는 모달 강제로 닫기
+          console.log(`🔍 User 페이지 - 로그아웃 진행 중, storage 이벤트 무시`);
+          return;
+        }
+        
+        // 로그아웃 상태로 변경되었고 모달이 열려있으면 닫기
         const authenticated = isAuthenticated();
+        if (!authenticated && showSignIn) {
+          setShowSignIn(false);
+          console.log('🔍 User 페이지 - 로그아웃 상태로 변경 (storage), 모달 닫기');
+        }
         setIsLoggedIn(authenticated);
         console.log(`🔍 User 페이지 - localStorage 변경 감지, 로그인 상태: ${authenticated}`);
         
@@ -322,9 +362,22 @@ const User: React.FC = () => {
         console.log('🔍 User 페이지 - 로그인 성공 직후, 포커스 이벤트 무시');
         return;
       }
+      // 로그아웃 진행 중이면 무시
+      if (logoutInProgressRef.current) {
+        console.log('🔍 User 페이지 - 로그아웃 진행 중, 포커스 이벤트 무시');
+        setShowSignIn(false); // 모달 강제로 닫기
+        return;
+      }
       const authenticated = isAuthenticated();
       setIsLoggedIn(authenticated);
       console.log(`🔍 User 페이지 - 포커스 이벤트, 로그인 상태: ${authenticated}`);
+      
+      // 로그아웃 상태이고 모달이 열려있으면 닫기
+      if (!authenticated && showSignIn) {
+        setShowSignIn(false);
+        console.log('🔍 User 페이지 - 로그아웃 상태 (포커스), 모달 닫기');
+        return;
+      }
       
       // 로그인되어 있으면 사용자 정보 다시 로드 (다른 페이지에서 변경했을 수 있음)
       if (authenticated) {
@@ -815,7 +868,12 @@ const User: React.FC = () => {
     }, 2000);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // 로그아웃 진행 중 플래그 설정 (가장 먼저 설정)
+    logoutInProgressRef.current = true;
+    setShowSignIn(false); // 로그인 모달 닫기
+    console.log('🔍 User 페이지 - 로그아웃 시작, 플래그 설정');
+    
     // 로그아웃 전에 현재 사용자의 localStorage 데이터 삭제
     const currentUserNo = getUserNo();
     if (currentUserNo) {
@@ -824,12 +882,44 @@ const User: React.FC = () => {
       localStorage.removeItem(`userGender_${currentUserNo}`);
     }
     
+    // 로그아웃 전에 수면 모드 종료 시도
+    try {
+      const { getServerUrl } = await import('../services/ServerConfig');
+      const { getAuthHeaders } = await import('../services/AuthService');
+      const baseUrl = getServerUrl();
+      const authHeaders = getAuthHeaders();
+      const headers = {
+        ...authHeaders,
+        'Content-Type': 'application/json',
+      };
+      const response = await fetch(`${baseUrl}/sleep-mode/stop`, {
+        method: 'POST',
+        headers: headers,
+      });
+      if (response.ok) {
+        console.log('✅ 로그아웃 시 수면 모드 종료 완료');
+      } else {
+        console.warn('⚠️ 로그아웃 시 수면 모드 종료 실패 (무시)');
+      }
+    } catch (error) {
+      // 수면 모드 종료 실패해도 로그아웃은 진행
+      console.warn('⚠️ 로그아웃 시 수면 모드 종료 중 오류 (무시):', error);
+    }
+    
+    // 로그아웃 실행 (이벤트 발생)
     logout();
     setIsLoggedIn(false);
+    
     // 로그아웃 시 모든 사용자 정보 초기화
     setAge('');
     setBmi('');
     setGender('0');
+    
+    // 5초 후 플래그 해제 (이제 다른 이벤트가 상태를 업데이트해도 됨)
+    setTimeout(() => {
+      logoutInProgressRef.current = false;
+      console.log('✅ User 페이지 - 로그아웃 완료 플래그 해제');
+    }, 5000);
   };
 
   const handleSignUpSuccess = () => {
@@ -985,7 +1075,15 @@ const User: React.FC = () => {
             justifyContent: 'center',
             backgroundColor: 'rgba(0, 0, 0, 0.5)'
           }}>
-            <SignIn onClose={() => setShowSignIn(false)} onSuccess={handleLoginSuccess} />
+            <SignIn 
+              onClose={() => {
+                // 로그아웃 진행 중이면 모달을 닫지 않음 (이미 닫혀있어야 함)
+                if (!logoutInProgressRef.current) {
+                  setShowSignIn(false);
+                }
+              }} 
+              onSuccess={handleLoginSuccess} 
+            />
           </div>
         )}
 

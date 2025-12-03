@@ -3,12 +3,15 @@
 12시간 TTL을 가진 JSON 파일 기반 캐시로 온도 임계값을 저장
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
 import logging
 import json
 import os
 import threading
+
+# 한국 시간대 (KST, UTC+9) 전역 정의
+KST = timezone(timedelta(hours=9))
 try:
     import fcntl  # Unix/Linux/Mac
 except ImportError:
@@ -112,7 +115,7 @@ if _temperature_threshold_cache:
     for user_no, cache_data in list(_temperature_threshold_cache.items()):
         try:
             expires_at = datetime.fromisoformat(cache_data["expires_at"])
-            if datetime.now() > expires_at:
+            if datetime.now(KST) > expires_at:
                 expired_users.append(user_no)
         except (KeyError, ValueError):
             expired_users.append(user_no)
@@ -152,15 +155,16 @@ def save_temperature_threshold(target_temperature: float, user_no: Optional[int]
     min_temp = target_temperature - 1.0
     max_temp = target_temperature + 1.0
     
-    # 12시간 후 만료
-    expires_at = datetime.now() + timedelta(hours=12)
+    # 12시간 후 만료 (한국 시간 사용)
+    now_kst = datetime.now(KST)
+    expires_at = now_kst + timedelta(hours=12)
     
     # 캐시 데이터 생성
     cache_data = {
         "min_temp": min_temp,
         "max_temp": max_temp,
         "target_temperature": target_temperature,
-        "created_at": datetime.now().isoformat(),
+        "created_at": now_kst.isoformat(),
         "expires_at": expires_at.isoformat()
     }
     
@@ -210,7 +214,7 @@ def get_temperature_threshold(user_no: Optional[int] = None) -> Optional[Dict[st
     # 만료 시간 확인
     try:
         expires_at = datetime.fromisoformat(cache_data["expires_at"])
-        if datetime.now() > expires_at:
+        if datetime.now(KST) > expires_at:
             # 만료된 경우 캐시 삭제 (메모리 + 파일)
             del _temperature_threshold_cache[user_no]
             _save_cache_to_file(_temperature_threshold_cache)
@@ -244,7 +248,7 @@ def check_and_cleanup_expired_cache():
     for user_no, cache_data in list(_temperature_threshold_cache.items()):
         try:
             expires_at = datetime.fromisoformat(cache_data["expires_at"])
-            if datetime.now() > expires_at:
+            if datetime.now(KST) > expires_at:
                 expired_users.append(user_no)
         except (KeyError, ValueError):
             expired_users.append(user_no)

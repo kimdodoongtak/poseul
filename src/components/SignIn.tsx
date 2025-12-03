@@ -10,7 +10,7 @@ import {
   IonSpinner,
 } from '@ionic/react';
 import { arrowForwardOutline, closeOutline } from 'ionicons/icons';
-import { login, getIotDeviceStatus, isAuthenticated, getToken } from '../services/AuthService';
+import { login, getIotDeviceStatus, isAuthenticated, getToken, getUserNo } from '../services/AuthService';
 import SignUp from './SignUp';
 import './SignIn.css';
 
@@ -57,13 +57,30 @@ const SignIn: React.FC<SignInProps> = ({ onClose, onSuccess }) => {
       
       console.log('✅ SignIn - 토큰 저장 확인 완료');
       
-      // 3. 로그인 성공 콜백 호출 (토큰 저장 확인 후)
+      // 3. 면책사항 동의 사용자별로 저장 (기존 공통 면책사항이 있으면 마이그레이션)
+      const userNo = getUserNo();
+      if (userNo !== null) {
+        const oldDisclaimerAccepted = localStorage.getItem('disclaimer_accepted');
+        const userDisclaimerAccepted = localStorage.getItem(`disclaimer_accepted_${userNo}`);
+        
+        if (oldDisclaimerAccepted && !userDisclaimerAccepted) {
+          // 기존 공통 면책사항이 있고 사용자별 면책사항이 없으면 마이그레이션
+          localStorage.setItem(`disclaimer_accepted_${userNo}`, 'true');
+          console.log(`✅ 면책사항 동의 사용자별로 저장 (user_no: ${userNo}, 기존 공통 동의 마이그레이션)`);
+        } else if (!userDisclaimerAccepted) {
+          // 사용자별 면책사항이 없으면 새로 저장 (로그인 전에 동의한 경우)
+          localStorage.setItem(`disclaimer_accepted_${userNo}`, 'true');
+          console.log(`✅ 면책사항 동의 사용자별로 저장 (user_no: ${userNo})`);
+        }
+      }
+      
+      // 4. 로그인 성공 콜백 호출 (토큰 저장 확인 후)
       if (onSuccess) {
         console.log('✅ SignIn - onSuccess 호출');
         onSuccess();
       }
       
-      // 4. IoT 등록 정보 불러오기 (비동기, 실패해도 무시)
+      // 5. IoT 등록 정보 불러오기 (비동기, 실패해도 무시)
       setTimeout(async () => {
         try {
           console.log('🔵 SignIn - IoT 등록 정보 불러오기 시작');
@@ -117,7 +134,7 @@ const SignIn: React.FC<SignInProps> = ({ onClose, onSuccess }) => {
         }
       }, 100);
       
-      // 5. 모달 닫기 (onSuccess가 완전히 처리되도록 충분한 지연)
+      // 6. 모달 닫기 (onSuccess가 완전히 처리되도록 충분한 지연)
       setTimeout(() => {
         onClose();
         setId('');
@@ -141,7 +158,7 @@ const SignIn: React.FC<SignInProps> = ({ onClose, onSuccess }) => {
         </div>
 
         <IonText className="sign-in-subtitle">
-          포술 앱에 오신 것을 환영합니다. 건강 데이터를 관리하고 IoT 기기를 제어할 수 있습니다.
+          포슬 앱에 오신 것을 환영합니다. 건강 데이터를 관리하고 IoT 기기를 제어할 수 있습니다.
         </IonText>
 
         {error && (
