@@ -541,15 +541,37 @@ const Health_ios: React.FC = () => {
       }
     };
     
+    // showLoginModal 이벤트 리스너 (App.tsx에서 전달)
+    const handleShowLoginModal = async () => {
+      console.log('🔍 Health 페이지 - 로그인 모달 표시 이벤트 수신');
+      // 로그아웃 진행 중이면 무시
+      if (logoutInProgressRef.current) {
+        console.log('🔍 Health 페이지 - 로그아웃 진행 중, 로그인 모달 표시 무시');
+        setShowSignIn(false); // 모달 강제로 닫기
+        return;
+      }
+      // 이미 모달이 열려있으면 무시 (중복 방지)
+      if (showSignIn) {
+        console.log('🔍 Health 페이지 - 이미 로그인 모달이 열려있음, 무시');
+        return;
+      }
+      const { getUserNo } = await import('../services/AuthService');
+      if (!isAuthenticated() || getUserNo() === null) {
+        setShowSignIn(true);
+      }
+    };
+    
     window.addEventListener('authStateChanged', handleAuthStateChanged as EventListener);
     window.addEventListener('storage', handleStorageChange);
     window.addEventListener('focus', handleFocus);
+    window.addEventListener('showLoginModal', handleShowLoginModal);
     
     // cleanup 함수
     return () => {
       window.removeEventListener('authStateChanged', handleAuthStateChanged as EventListener);
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('showLoginModal', handleShowLoginModal);
     };
   }, []);
 
@@ -1030,6 +1052,14 @@ const Health_ios: React.FC = () => {
 
   // DB에서 차트 데이터 로드
   const loadChartDataFromDB = async () => {
+    // 로그인 체크
+    const { isAuthenticated } = await import('../services/AuthService');
+    if (!isAuthenticated()) {
+      console.log('📊 DB에서 차트 데이터 로드 - 로그인 필요');
+      loadChartData(); // 빈 데이터로 설정
+      return;
+    }
+    
     try {
       console.log('📊 DB에서 차트 데이터 로드 시작...');
       const baseUrl = getServerUrl();
@@ -1075,9 +1105,13 @@ const Health_ios: React.FC = () => {
             });
             console.log(`✅ 심박수 데이터 ${heartRateData.count}개 로드 완료`);
           }
+        } else if (heartRateResponse.status === 401) {
+          // 인증 실패 시 조용히 무시
+          console.log('심박수 데이터 로드 - 인증 필요');
         }
       } catch (error) {
-        console.error('심박수 데이터 로드 실패:', error);
+        // 네트워크 오류 등은 조용히 무시
+        console.log('심박수 데이터 로드 실패:', error);
       }
       
       // 2. 온도 데이터 가져오기 (test_script_logs)
@@ -1103,9 +1137,13 @@ const Health_ios: React.FC = () => {
             });
             console.log(`✅ 온도 데이터 ${tempData.count}개 로드 완료`);
           }
+        } else if (tempResponse.status === 401) {
+          // 인증 실패 시 조용히 무시
+          console.log('온도 데이터 로드 - 인증 필요');
         }
       } catch (error) {
-        console.error('온도 데이터 로드 실패:', error);
+        // 네트워크 오류 등은 조용히 무시
+        console.log('온도 데이터 로드 실패:', error);
       }
       
       // 3. DB 데이터가 있으면 DB 데이터 사용, 없으면 빈 데이터 표시

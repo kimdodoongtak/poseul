@@ -80,10 +80,10 @@ class IotService {
     companion object {
         // 서버 URL 설정
         // 에뮬레이터: 10.0.2.2 (Android 에뮬레이터에서 호스트 PC를 가리킴)
-        // 실제 기기: 컴퓨터의 IP 주소를 사용 (예: 192.168.0.143)
+        // 실제 기기: 컴퓨터의 IP 주소를 사용 (현재: 192.168.68.76)
         // IP 주소 변경 방법:
         // 1. build.gradle의 defaultConfig에서 SERVER_URL 수정
-        // 2. 또는 여기서 직접 수정 (예: "http://192.168.0.143:5000")
+        // 2. 또는 여기서 직접 수정 (예: "http://192.168.68.76:3000")
         private const val SERVER_URL = BuildConfig.SERVER_URL
         private const val AIR_CONDITIONER_STATE_ENDPOINT = "/air_conditioner/state"
         private const val AIR_CONDITIONER_CONTROL_ENDPOINT = "/air_conditioner/control"

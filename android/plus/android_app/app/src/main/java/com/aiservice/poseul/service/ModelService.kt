@@ -15,7 +15,7 @@ class ModelService {
     
     companion object {
         // 서버 URL은 build.gradle의 BuildConfig에서 가져옴
-        // 에뮬레이터: 10.0.2.2, 실제 기기: 컴퓨터 IP 주소 (현재: 192.168.0.143)
+        // 에뮬레이터: 10.0.2.2, 실제 기기: 컴퓨터 IP 주소 (현재: 192.168.68.76)
         private const val SERVER_URL = BuildConfig.SERVER_URL
         private const val PREDICT_ENDPOINT = "/predict"
         private const val HEALTH_ENDPOINT = "/health"

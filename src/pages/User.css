@@ -555,6 +555,7 @@ body.dark .user-page ion-card-content {
 body.dark .user-page ion-item {
   background: #2E2F3A !important;
   background-color: #2E2F3A !important;
+  --background: #2E2F3A !important;
   color: #F0F4F8 !important;
   border-color: rgba(124, 136, 169, 0.5) !important;
   backdrop-filter: none !important;
@@ -563,17 +564,20 @@ body.dark .user-page ion-item {
 body.dark .user-page ion-item:focus-within {
   background: #323340 !important;
   background-color: #323340 !important;
+  --background: #323340 !important;
   border-color: rgba(124, 136, 169, 0.6) !important;
 }
 
 body.dark .user-page ion-item::part(native) {
   background: #2E2F3A !important;
   background-color: #2E2F3A !important;
+  --background: #2E2F3A !important;
 }
 
 body.dark .user-page ion-item:focus-within::part(native) {
   background: #323340 !important;
   background-color: #323340 !important;
+  --background: #323340 !important;
 }
 
 body.dark .user-page ion-item ion-label {
@@ -581,23 +585,49 @@ body.dark .user-page ion-item ion-label {
 }
 
 body.dark .user-page ion-item ion-input {
-  --background: #2E2F3A !important;
-  background: #2E2F3A !important;
-  background-color: #2E2F3A !important;
+  --background: transparent !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  --color: #F0F4F8 !important;
   color: #F0F4F8 !important;
 }
 
 body.dark .user-page ion-item ion-input::part(native) {
-  background: #2E2F3A !important;
-  background-color: #2E2F3A !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  --background: transparent !important;
+  --color: #F0F4F8 !important;
   color: #F0F4F8 !important;
 }
 
-body.dark .user-page ion-item ion-select {
-  --background: #2E2F3A !important;
-  background: #2E2F3A !important;
-  background-color: #2E2F3A !important;
+body.dark .user-page ion-item ion-input::part(wrapper) {
+  background: transparent !important;
+  background-color: transparent !important;
+  --background: transparent !important;
+}
+
+body.dark .user-page ion-item ion-input input {
   color: #F0F4F8 !important;
+  --color: #F0F4F8 !important;
+}
+
+body.dark .user-page ion-item ion-input input::placeholder {
+  color: #A0A5B8 !important;
+  opacity: 0.6;
+}
+
+body.dark .user-page ion-item ion-select {
+  --background: transparent !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  --color: #F0F4F8 !important;
+  color: #F0F4F8 !important;
+}
+
+body.dark .user-page ion-item ion-select::part(wrapper) {
+  background: transparent !important;
+  background-color: transparent !important;
+  --background: transparent !important;
 }
 
 body.dark .user-page ion-item ion-select::part(icon) {
@@ -606,16 +636,75 @@ body.dark .user-page ion-item ion-select::part(icon) {
 
 body.dark .user-page ion-item ion-select::part(text) {
   color: #F0F4F8 !important;
+  --color: #F0F4F8 !important;
 }
 
 body.dark .user-page ion-item ion-select::part(container) {
-  background: #2E2F3A !important;
-  background-color: #2E2F3A !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  --background: transparent !important;
+}
+
+body.dark .user-page ion-item ion-select .select-text {
+  color: #F0F4F8 !important;
+}
+
+body.dark .user-page ion-item ion-select .select-placeholder {
+  color: #A0A5B8 !important;
+  opacity: 0.6;
 }
 
 body.dark .user-page ion-input::placeholder {
   color: #A0A5B8 !important;
   opacity: 0.6;
+}
+
+body.dark .user-page ion-item ion-input input[type="number"],
+body.dark .user-page ion-item ion-input input[type="text"] {
+  color: #F0F4F8 !important;
+}
+
+body.dark .user-page ion-item ion-input input[type="number"]::placeholder,
+body.dark .user-page ion-item ion-input input[type="text"]::placeholder {
+  color: #A0A5B8 !important;
+  opacity: 0.6;
+}
+
+/* 다크모드에서 입력 필드 내부 텍스트 강제 스타일링 */
+body.dark .user-page ion-item .native-input,
+body.dark .user-page ion-item .native-input-wrapper input,
+body.dark .user-page ion-item input {
+  color: #F0F4F8 !important;
+  --color: #F0F4F8 !important;
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+body.dark .user-page ion-item .native-input::placeholder,
+body.dark .user-page ion-item .native-input-wrapper input::placeholder,
+body.dark .user-page ion-item input::placeholder {
+  color: #A0A5B8 !important;
+  opacity: 0.6;
+}
+
+/* 다크모드에서 Select 텍스트 강제 스타일링 */
+body.dark .user-page ion-item .select-text,
+body.dark .user-page ion-item .select-icon,
+body.dark .user-page ion-item .select-placeholder {
+  color: #F0F4F8 !important;
+}
+
+body.dark .user-page ion-item .select-placeholder {
+  color: #A0A5B8 !important;
+  opacity: 0.6;
+}
+
+/* 다크모드에서 입력 필드 내부 모든 요소 배경 투명하게 */
+body.dark .user-page ion-item .native-input-wrapper,
+body.dark .user-page ion-item .input-wrapper,
+body.dark .user-page ion-item .item-inner {
+  background: transparent !important;
+  background-color: transparent !important;
 }
 
 body.dark .user-page ion-select::part(placeholder) {

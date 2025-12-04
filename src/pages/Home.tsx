@@ -19,7 +19,7 @@ import {
 } from '@ionic/react';
 import { ModelService, HealthDataService, IotService } from '../services';
 import { getServerUrl } from '../services/ServerConfig';
-import { getAuthHeaders } from '../services/AuthService';
+import { getAuthHeaders, isAuthenticated } from '../services/AuthService';
 import './Home.css';
 
 const Home: React.FC = () => {
@@ -83,6 +83,11 @@ const Home: React.FC = () => {
 
   // 수면 모드 상태 조회
   const fetchSleepModeStatus = async () => {
+    // 로그인 체크
+    if (!isAuthenticated()) {
+      return; // 로그인하지 않았으면 조용히 무시
+    }
+    
     try {
       const baseUrl = getServerUrl();
       const response = await fetch(`${baseUrl}/sleep-mode/status`, {
@@ -97,9 +102,13 @@ const Home: React.FC = () => {
             minutes: data.remaining_minutes % 60
           });
         }
+      } else if (response.status === 401) {
+        // 인증 실패 시 조용히 무시
+        console.log('수면 모드 상태 조회 - 인증 필요');
       }
     } catch (error) {
-      console.error('수면 모드 상태 조회 실패:', error);
+      // 네트워크 오류 등은 조용히 무시
+      console.log('수면 모드 상태 조회 실패:', error);
     }
   };
 

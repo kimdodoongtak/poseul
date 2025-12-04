@@ -358,7 +358,16 @@ const SignUp: React.FC<SignUpProps> = ({ onClose, onSuccess }) => {
       }, 1000);
     } catch (err: any) {
       console.error('회원가입 실패:', err);
-      setError(err.message || '회원가입에 실패했습니다.');
+      // 에러 메시지 추출
+      let errorMessage = '회원가입에 실패했습니다.';
+      if (err?.message) {
+        errorMessage = err.message;
+      } else if (typeof err === 'string') {
+        errorMessage = err;
+      } else if (err?.toString && err.toString() !== '[object Object]') {
+        errorMessage = err.toString();
+      }
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
       setIotLoading(false); // IoT 로딩 상태도 초기화

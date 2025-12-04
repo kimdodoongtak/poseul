@@ -953,7 +953,7 @@ ion-item ion-input {
 .health-ios-page .health-data-secondary-row::after {
   content: '';
   position: absolute;
-  top: -173px;
+  top: -160px;
   right: -143px; /* padding(20px) + offset(-145px) = -125px */
   width: 350px;
   height: 350px;

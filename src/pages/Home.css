@@ -140,7 +140,7 @@
 .home-page .container::after {
   content: '';
   position: absolute;
-  top: 136px; /* padding(16px) + offset(-150px) = -134px */
+  top: 125px; /* padding(16px) + offset(-150px) = -134px */
   right: 90px; /* padding(16px) + offset(-145px) = -129px */
   width: 300px;
   height: 300px;

@@ -6,8 +6,8 @@
 const SERVER_URL_KEY = 'server_url';
 
 // 하드코딩된 서버 IP 목록 (우선 사용)
-// 현재 네트워크: 172.15.5.x 대역 (현재 컴퓨터 IP: 172.15.5.58)
-const HARDCODED_SERVER_IPS = ['172.15.5.58', '192.168.0.143', '172.30.1.68', '192.168.68.75', '192.168.68.77', '192.168.68.72', '172.15.5.72', '192.168.219.125'];
+// 현재 네트워크: 192.168.68.x 대역 (현재 컴퓨터 IP: 192.168.68.76)
+const HARDCODED_SERVER_IPS = ['192.168.68.76', '172.29.88.134', '172.15.5.58', '192.168.0.143', '172.30.1.68', '192.168.68.75', '192.168.68.77', '192.168.68.72', '172.15.5.72', '192.168.219.125'];
 const HARDCODED_SERVER_URL = `http://${HARDCODED_SERVER_IPS[0]}:3000`; // 첫 번째를 기본값으로 사용
 
 // 동기 버전 (기본값 반환용)
@@ -138,7 +138,7 @@ export async function autoDetectServerUrl(): Promise<string> {
         try {
           const response = await fetch('http://localhost:3000/health', {
             method: 'GET',
-            signal: AbortSignal.timeout(2000)
+            signal: AbortSignal.timeout(10000) // 10초로 증가
           });
           if (response.ok) {
             const data = await response.json();
@@ -159,7 +159,7 @@ export async function autoDetectServerUrl(): Promise<string> {
       try {
         const response = await fetch('http://localhost:3000/health', {
           method: 'GET',
-          signal: AbortSignal.timeout(2000)
+          signal: AbortSignal.timeout(10000) // 10초로 증가
         });
         if (response.ok) {
           const serverUrl = 'http://localhost:3000';
@@ -186,7 +186,7 @@ export async function autoDetectServerUrl(): Promise<string> {
     console.log(`🎯 우선 시도: ${firstUrl}`);
     const response = await fetch(`${firstUrl}/health`, {
       method: 'GET',
-      signal: AbortSignal.timeout(5000) // 5초로 증가 (서버 응답 대기)
+      signal: AbortSignal.timeout(10000) // 10초로 증가 (iOS 네트워크 지연 대응)
     });
     if (response.ok) {
       const data = await response.json();
@@ -332,8 +332,8 @@ export async function autoDetectServerUrl(): Promise<string> {
       HARDCODED_SERVER_IPS.forEach(ip => {
         ipCandidates.push(`http://${ip}:3000`);
       });
-      // 현재 네트워크 IP 최우선 시도 (172.15.5.58 - 현재 컴퓨터 IP)
-      ipCandidates.push('http://172.15.5.58:3000');
+      // 현재 네트워크 IP 최우선 시도 (192.168.68.76 - 현재 컴퓨터 IP)
+      ipCandidates.push('http://192.168.68.76:3000');
       // 192.168.0.x 대역 시도 (현재 네트워크)
       for (const ip of [1, 100, 143, 200, 254]) {
         const url = `http://192.168.0.${ip}:3000`;
@@ -392,8 +392,8 @@ export async function autoDetectServerUrl(): Promise<string> {
       HARDCODED_SERVER_IPS.forEach(ip => {
         ipCandidates.push(`http://${ip}:3000`);
       });
-      // 현재 네트워크 IP 최우선 시도 (172.15.5.58 - 현재 컴퓨터 IP)
-      ipCandidates.push('http://172.15.5.58:3000');
+      // 현재 네트워크 IP 최우선 시도 (192.168.68.76 - 현재 컴퓨터 IP)
+      ipCandidates.push('http://192.168.68.76:3000');
       // 192.168.0.x 대역 시도 (현재 네트워크)
       for (const ip of [1, 100, 143, 200, 254]) {
         const url = `http://192.168.0.${ip}:3000`;
@@ -443,8 +443,8 @@ export async function autoDetectServerUrl(): Promise<string> {
       HARDCODED_SERVER_IPS.forEach(ip => {
         ipCandidates.push(`http://${ip}:3000`);
       });
-      // 웹에서도 현재 네트워크 IP 최우선 시도 (192.168.0.143 - 현재 컴퓨터 IP)
-      ipCandidates.push('http://192.168.0.143:3000');
+      // 웹에서도 현재 네트워크 IP 최우선 시도 (192.168.68.76 - 현재 컴퓨터 IP)
+      ipCandidates.push('http://192.168.68.76:3000');
       // 192.168.0.x 대역 시도 (현재 네트워크)
       for (const ip of [1, 100, 143, 200, 254]) {
         const url = `http://192.168.0.${ip}:3000`;
@@ -500,7 +500,7 @@ export async function autoDetectServerUrl(): Promise<string> {
         }
         const response = await fetch(`${url}/health`, {
           method: 'GET',
-          signal: AbortSignal.timeout(5000) // 5초로 증가 (서버 응답이 느릴 수 있음)
+          signal: AbortSignal.timeout(10000) // 10초로 증가 (iOS 네트워크 지연 대응)
         });
         if (response.ok) {
           const data = await response.json();

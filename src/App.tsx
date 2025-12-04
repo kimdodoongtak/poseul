@@ -189,6 +189,13 @@ const AppContent: React.FC = () => {
   }, [history, splashCompleted]);
   
   const handleDisclaimerAccept = () => {
+    // 로그아웃 진행 중이면 무시
+    if (logoutInProgressRef.current) {
+      console.log('🔍 App - 로그아웃 진행 중, 면책사항 수락 무시');
+      setShowDisclaimer(false);
+      return;
+    }
+    
     // 면책사항 수락 후 로그인 체크
     const authenticated = isAuthenticated();
     const userNo = getUserNo();
@@ -206,6 +213,11 @@ const AppContent: React.FC = () => {
     setShowDisclaimer(false);
     
     if (!authenticated || userNo === null) {
+      // 로그아웃 진행 중이면 로그인 모달 표시하지 않음
+      if (logoutInProgressRef.current) {
+        console.log('🔍 App - 로그아웃 진행 중, 로그인 모달 표시 안 함');
+        return;
+      }
       // 로그인 안 되어 있으면 User 페이지로 이동하여 로그인 모달 표시
       setTimeout(() => {
         history.push('/user');

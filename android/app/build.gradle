@@ -13,9 +13,9 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         
         // 서버 URL 설정 (에뮬레이터: 10.0.2.2, 실제 기기: 컴퓨터 IP 주소)
-        // 실제 기기 사용 시: http://172.15.5.72:3000 (현재 Wi-Fi IP)
+        // 실제 기기 사용 시: http://192.168.68.76:3000 (현재 Wi-Fi IP)
         // 에뮬레이터 사용 시: http://10.0.2.2:3000
-        buildConfigField "String", "SERVER_URL", '"http://172.15.5.72:3000"'
+        buildConfigField "String", "SERVER_URL", '"http://192.168.68.76:3000"'
         
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

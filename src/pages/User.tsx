@@ -650,13 +650,16 @@ const User: React.FC = () => {
   };
 
   const fetchFeedbackCount = async () => {
+    // 로그인 체크
+    if (!isAuthenticated()) {
+      return; // 로그인하지 않았으면 조용히 무시
+    }
+    
     try {
       const apiBaseUrl = getServerUrl();
       const response = await fetch(`${apiBaseUrl}/feedback/count`, {
         method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: getAuthHeaders(),
       });
 
       if (response.ok) {
@@ -664,11 +667,15 @@ const User: React.FC = () => {
         const count = result.count || 0;
         setFeedbackCount(count);
         setIsFeedbackDisabled(count >= 7);
+      } else if (response.status === 401) {
+        // 인증 실패 시 조용히 무시
+        console.log('피드백 카운트 조회 - 인증 필요');
       } else {
-        console.error('피드백 카운트 조회 실패:', response.status);
+        console.log('피드백 카운트 조회 실패:', response.status);
       }
     } catch (err) {
-      console.error('피드백 카운트 조회 중 오류:', err);
+      // 네트워크 오류 등은 조용히 무시
+      console.log('피드백 카운트 조회 중 오류:', err);
     }
   };
 
