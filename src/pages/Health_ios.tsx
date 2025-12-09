@@ -1928,6 +1928,35 @@ const Health_ios: React.FC = () => {
                 setShowSignUp(false);
                 console.log('✅ Health 페이지 - 회원가입 성공, 상태 업데이트 완료');
                 
+                // 회원가입 시 입력한 나이/BMI/성별을 localStorage에서 로드
+                const { getUserNo } = require('../services/AuthService');
+                const userNo = getUserNo();
+                let loadedAge = '';
+                let loadedBmi = '';
+                let loadedGender = '0';
+                
+                if (userNo) {
+                  const savedAge = localStorage.getItem(`userAge_${userNo}`);
+                  const savedBmi = localStorage.getItem(`userBmi_${userNo}`);
+                  const savedGender = localStorage.getItem(`userGender_${userNo}`);
+                  
+                  if (savedAge) {
+                    loadedAge = savedAge;
+                    setAge(savedAge);
+                    console.log(`✅ 회원가입 후 나이 로드: ${savedAge}`);
+                  }
+                  if (savedBmi) {
+                    loadedBmi = savedBmi;
+                    setBmi(savedBmi);
+                    console.log(`✅ 회원가입 후 BMI 로드: ${savedBmi}`);
+                  }
+                  if (savedGender) {
+                    loadedGender = savedGender;
+                    setGender(savedGender);
+                    console.log(`✅ 회원가입 후 성별 로드: ${savedGender}`);
+                  }
+                }
+                
                 // 실제 토큰 확인 (안전장치)
                 setTimeout(() => {
                   const authenticated = isAuthenticated();
@@ -1940,10 +1969,33 @@ const Health_ios: React.FC = () => {
                     console.log('✅ Health 페이지 - 토큰 확인 완료');
                     
                     // 회원가입 성공 시 건강 데이터 한 번 가져와서 저장 (재시도 로직 포함)
+                    // 나이/BMI/성별이 state에 반영될 때까지 대기
                     const tryFetchHealthDataAfterSignUp = async (retryCount = 0) => {
                       if (platform === 'ios') {
                         if (healthDataPlugin) {
-                          console.log('📥 회원가입 성공 - 건강 데이터 즉시 수집 시작...');
+                          // 나이/BMI/성별이 로드되었는지 확인
+                          const currentAge = age || loadedAge;
+                          const currentBmi = bmi || loadedBmi;
+                          const currentGender = gender || loadedGender;
+                          
+                          // 나이/BMI/성별이 없으면 잠시 대기 후 재시도
+                          if (!currentAge || !currentBmi || !currentGender) {
+                            if (retryCount < 5) {
+                              console.log(`⏳ 나이/BMI/성별 로드 대기 중... (재시도 ${retryCount + 1}/5)`);
+                              setTimeout(() => {
+                                tryFetchHealthDataAfterSignUp(retryCount + 1);
+                              }, 500);
+                              return;
+                            } else {
+                              console.warn('⚠️ 나이/BMI/성별을 로드할 수 없습니다. 기본값으로 진행합니다.');
+                            }
+                          }
+                          
+                          console.log('📥 회원가입 성공 - 건강 데이터 즉시 수집 시작...', {
+                            age: currentAge,
+                            bmi: currentBmi,
+                            gender: currentGender
+                          });
                           try {
                             await fetchHealthData(healthDataPlugin);
                             const now = Date.now();
@@ -1972,10 +2024,10 @@ const Health_ios: React.FC = () => {
                       }
                     };
                     
-                    // 1초 후 실행 (토큰 저장 완료 대기)
+                    // 1.5초 후 실행 (토큰 저장 및 state 업데이트 완료 대기)
                     setTimeout(() => {
                       tryFetchHealthDataAfterSignUp(0);
-                    }, 1000);
+                    }, 1500);
                   }
                 }, 100);
               }}
