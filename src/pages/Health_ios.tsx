@@ -1887,15 +1887,43 @@ const Health_ios: React.FC = () => {
                     setIsSetupComplete(true);
                     console.log('✅ Health 페이지 - 토큰 확인 완료');
                     
-                    // 회원가입 성공 시 건강 데이터 한 번 가져와서 저장
-                    if (platform === 'ios' && healthDataPlugin) {
-                      console.log('📥 회원가입 성공 - 건강 데이터 즉시 수집 시작...');
-                      setTimeout(() => {
-                        fetchHealthData(healthDataPlugin).catch((err) => {
-                          console.error('❌ 회원가입 후 건강 데이터 수집 실패:', err);
-                        });
-                      }, 1000); // 1초 후 실행
-                    }
+                    // 회원가입 성공 시 건강 데이터 한 번 가져와서 저장 (재시도 로직 포함)
+                    const tryFetchHealthDataAfterSignUp = async (retryCount = 0) => {
+                      if (platform === 'ios') {
+                        if (healthDataPlugin) {
+                          console.log('📥 회원가입 성공 - 건강 데이터 즉시 수집 시작...');
+                          try {
+                            await fetchHealthData(healthDataPlugin);
+                            const now = Date.now();
+                            setLastCollectionTime(now);
+                            lastCollectionTimeRef.current = now;
+                            console.log('✅ 회원가입 후 건강 데이터 수집 완료');
+                          } catch (err) {
+                            console.error('❌ 회원가입 후 건강 데이터 수집 실패:', err);
+                            // 재시도 (최대 5번)
+                            if (retryCount < 5) {
+                              console.log(`🔄 회원가입 후 건강 데이터 수집 재시도 (${retryCount + 1}/5)...`);
+                              setTimeout(() => {
+                                tryFetchHealthDataAfterSignUp(retryCount + 1);
+                              }, 2000); // 2초 후 재시도
+                            }
+                          }
+                        } else if (retryCount < 10) {
+                          // 플러그인이 아직 로드되지 않았으면 재시도
+                          console.log(`⏳ HealthData 플러그인 대기 중... (${retryCount + 1}/10)`);
+                          setTimeout(() => {
+                            tryFetchHealthDataAfterSignUp(retryCount + 1);
+                          }, 500); // 0.5초 후 재시도
+                        } else {
+                          console.warn('⚠️ HealthData 플러그인을 찾을 수 없습니다.');
+                        }
+                      }
+                    };
+                    
+                    // 1초 후 실행 (토큰 저장 완료 대기)
+                    setTimeout(() => {
+                      tryFetchHealthDataAfterSignUp(0);
+                    }, 1000);
                   }
                 }, 100);
               }}

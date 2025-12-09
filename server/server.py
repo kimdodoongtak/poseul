@@ -150,7 +150,50 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30 * 24 * 60  # 30일
 
 # 비밀번호 해싱
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# bcrypt 버전 호환성 문제 해결을 위해 명시적으로 설정
+try:
+    import bcrypt
+    # bcrypt 버전 확인
+    try:
+        bcrypt_version = bcrypt.__version__
+        logger.info(f"✅ bcrypt 버전: {bcrypt_version}")
+    except AttributeError:
+        # __version__이 없으면 __about__ 확인
+        try:
+            bcrypt_version = bcrypt.__about__.__version__
+            logger.info(f"✅ bcrypt 버전: {bcrypt_version}")
+        except AttributeError:
+            logger.warning("⚠️ bcrypt 버전을 확인할 수 없습니다. 최신 버전으로 업데이트가 필요할 수 있습니다.")
+            bcrypt_version = "unknown"
+except ImportError:
+    logger.error("❌ bcrypt 모듈을 찾을 수 없습니다.")
+    bcrypt_version = "not installed"
+
+# passlib의 bcrypt 백엔드를 명시적으로 설정하여 호환성 문제 해결
+# bcrypt 5.0.0과 passlib 1.7.4의 호환성 문제로 인해 기본 설정 사용
+try:
+    # bcrypt 버전이 5.0.0 이상이면 경고 및 직접 bcrypt 사용
+    if bcrypt_version != "unknown" and bcrypt_version != "not installed":
+        try:
+            # 버전 문자열 파싱 (간단한 방법)
+            version_parts = bcrypt_version.split('.')
+            major_version = int(version_parts[0]) if version_parts[0].isdigit() else 0
+            if major_version >= 5:
+                logger.warning(f"⚠️ bcrypt {bcrypt_version}는 passlib과 호환성 문제가 있습니다. 직접 bcrypt 사용으로 전환합니다.")
+                # bcrypt를 직접 사용하도록 설정
+                pwd_context = None  # 나중에 직접 bcrypt 사용
+            else:
+                pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+                logger.info("✅ passlib bcrypt 백엔드 설정 완료 (기본 설정)")
+        except:
+            pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+            logger.info("✅ passlib bcrypt 백엔드 설정 완료 (기본 설정)")
+    else:
+        pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+        logger.info("✅ passlib bcrypt 백엔드 설정 완료 (기본 설정)")
+except Exception as e:
+    logger.warning(f"⚠️ passlib bcrypt 백엔드 설정 실패, 기본 설정 사용: {e}")
+    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # HTTP Bearer 토큰
 security = HTTPBearer()
@@ -159,21 +202,60 @@ security = HTTPBearer()
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """비밀번호 검증"""
+    global pwd_context
     # hashed_password가 문자열이 아닌 경우 문자열로 변환
     if not isinstance(hashed_password, str):
         hashed_password = str(hashed_password)
     # 빈 문자열이면 False 반환
     if not hashed_password or not hashed_password.strip():
         return False
+    
+    # plain_password가 72바이트를 초과하면 잘라내기 (bcrypt 제한)
+    if isinstance(plain_password, str):
+        plain_password_bytes = plain_password.encode('utf-8')
+        if len(plain_password_bytes) > 72:
+            logger.warning(f"⚠️ 비밀번호가 72바이트를 초과하여 잘라냅니다. 원본 길이: {len(plain_password_bytes)}")
+            plain_password = plain_password_bytes[:72].decode('utf-8', errors='ignore')
+    
+    # bcrypt를 직접 사용하여 검증 (passlib 호환성 문제 해결)
     try:
-        return pwd_context.verify(plain_password, hashed_password)
-    except (ValueError, TypeError) as e:
-        logger.error(f"❌ 비밀번호 검증 오류: {str(e)}, 타입: {type(hashed_password)}, 값: {hashed_password[:20] if hashed_password else 'None'}")
-        return False
+        import bcrypt
+        # bcrypt를 직접 사용하여 검증
+        password_bytes = plain_password.encode('utf-8')
+        hash_bytes = hashed_password.encode('utf-8')
+        return bcrypt.checkpw(password_bytes, hash_bytes)
+    except Exception as bcrypt_error:
+        logger.warning(f"⚠️ 직접 bcrypt 검증 실패, passlib 사용: {bcrypt_error}")
+        # passlib을 사용하여 검증 (fallback)
+        try:
+            if pwd_context is None:
+                # pwd_context가 None이면 다시 초기화
+                pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+            return pwd_context.verify(plain_password, hashed_password)
+        except (ValueError, TypeError, Exception) as e:
+            logger.error(f"❌ 비밀번호 검증 오류: {str(e)}, 타입: {type(hashed_password)}, 값: {hashed_password[:20] if hashed_password else 'None'}")
+            import traceback
+            logger.error(f"❌ 비밀번호 검증 오류 상세:\n{traceback.format_exc()}")
+            return False
 
 def get_password_hash(password: str) -> str:
     """비밀번호 해싱"""
-    return pwd_context.hash(password)
+    global pwd_context
+    # bcrypt를 직접 사용하여 해싱 (passlib 호환성 문제 해결)
+    try:
+        import bcrypt
+        password_bytes = password.encode('utf-8')
+        # bcrypt를 직접 사용하여 해싱
+        salt = bcrypt.gensalt(rounds=12)
+        hash_bytes = bcrypt.hashpw(password_bytes, salt)
+        return hash_bytes.decode('utf-8')
+    except Exception as bcrypt_error:
+        logger.warning(f"⚠️ 직접 bcrypt 해싱 실패, passlib 사용: {bcrypt_error}")
+        # passlib을 사용하여 해싱 (fallback)
+        if pwd_context is None:
+            # pwd_context가 None이면 다시 초기화
+            pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+        return pwd_context.hash(password)
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     """JWT 토큰 생성"""
@@ -1124,6 +1206,10 @@ class LoginRequest(BaseModel):
     id: str  # 이메일 또는 사용자 아이디
     password: str
 
+class ResetPasswordRequest(BaseModel):
+    id: str  # 사용자 아이디
+    new_password: str  # 새 비밀번호
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
@@ -1518,7 +1604,9 @@ async def login(data: LoginRequest, request: Request):
             
             # 비밀번호 검증 (DB에서 가져온 값을 문자열로 변환)
             stored_password = str(user.password) if user.password is not None else ""
-            logger.debug(f"🔍 로그인 시도 - 사용자: {data.id}, 저장된 비밀번호 타입: {type(user.password)}, 길이: {len(stored_password) if stored_password else 0}")
+            logger.info(f"🔍 로그인 시도 - 사용자: {data.id}, 저장된 비밀번호 타입: {type(user.password)}, 길이: {len(stored_password) if stored_password else 0}")
+            logger.info(f"🔍 로그인 시도 - 입력 비밀번호 길이: {len(data.password) if data.password else 0}")
+            logger.info(f"🔍 로그인 시도 - 저장된 해시 시작: {stored_password[:20] if stored_password else 'None'}")
             
             if not stored_password or not stored_password.strip():
                 logger.error(f"❌ 저장된 비밀번호가 비어있음: {data.id}")
@@ -1527,7 +1615,12 @@ async def login(data: LoginRequest, request: Request):
                     detail="아이디 또는 비밀번호가 올바르지 않습니다."
                 )
             
-            if not verify_password(data.password, stored_password):
+            # 비밀번호 검증
+            verification_result = verify_password(data.password, stored_password)
+            logger.info(f"🔍 비밀번호 검증 결과: {verification_result}")
+            
+            if not verification_result:
+                logger.error(f"❌ 비밀번호 검증 실패 - 사용자: {data.id}, 입력 비밀번호: {data.password[:3]}***")
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="아이디 또는 비밀번호가 올바르지 않습니다."
@@ -1697,6 +1790,52 @@ async def login(data: LoginRequest, request: Request):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"로그인 실패: {str(e)}"
+        )
+
+@app.post("/auth/reset-password")
+async def reset_password(data: ResetPasswordRequest):
+    """
+    비밀번호 재설정 API (개발/테스트용 - 프로덕션에서는 이메일 인증 추가 필요)
+    """
+    try:
+        with engine.connect() as conn:
+            # 사용자 조회
+            query = text("""
+                SELECT no, id FROM login WHERE id = :id
+            """)
+            result = conn.execute(query, {"id": data.id})
+            user = result.fetchone()
+            
+            if not user:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="사용자를 찾을 수 없습니다."
+                )
+            
+            # 새 비밀번호 해싱
+            hashed_password = get_password_hash(data.new_password)
+            
+            # 비밀번호 업데이트
+            update_query = text("""
+                UPDATE login SET password = :password WHERE no = :no
+            """)
+            conn.execute(update_query, {"no": user.no, "password": hashed_password})
+            conn.commit()
+            
+            logger.info(f"✅ 비밀번호 재설정 완료: {data.id} (no: {user.no})")
+            
+            return {
+                "success": True,
+                "message": "비밀번호가 재설정되었습니다."
+            }
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 비밀번호 재설정 실패: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"비밀번호 재설정 실패: {str(e)}"
         )
 
 @app.get("/auth/me")

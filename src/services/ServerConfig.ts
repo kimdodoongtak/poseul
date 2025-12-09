@@ -24,11 +24,31 @@ let cachedServerUrl: string | null = null;
  * 우선순위: Railway URL > 웹 환경에서는 localhost > 하드코딩된 IP > 캐시 > localStorage > 환경 변수 > 기본값
  */
 export function getServerUrl(): string {
-  // Railway URL이 설정되어 있으면 최우선 사용 (HTTPS)
+  // Railway URL이 설정되어 있으면 무조건 최우선 사용 (HTTPS)
+  // localStorage나 캐시를 확인하기 전에 먼저 확인
   if (RAILWAY_URL) {
     const railwayUrl = RAILWAY_URL.startsWith('http') ? RAILWAY_URL : `https://${RAILWAY_URL}`;
+    
+    // localStorage에 Railway URL이 아닌 다른 URL이 저장되어 있으면 강제 제거
+    if (typeof window !== 'undefined') {
+      const savedUrl = localStorage.getItem(SERVER_URL_KEY);
+      if (savedUrl && !savedUrl.includes('railway.app')) {
+        console.log('🗑️ [getServerUrl] Railway URL이 설정되어 있는데 다른 URL이 저장됨, 강제 제거:', savedUrl);
+        localStorage.removeItem(SERVER_URL_KEY);
+        // 캐시도 클리어
+        cachedServerUrl = null;
+      }
+      // Railway URL을 localStorage에 저장하여 다음부터 바로 사용
+      if (!savedUrl || !savedUrl.includes('railway.app')) {
+        localStorage.setItem(SERVER_URL_KEY, railwayUrl);
+      }
+    }
+    
     cachedServerUrl = railwayUrl;
+    console.log(`🚂 [getServerUrl] Railway URL 사용: ${railwayUrl}`);
     return railwayUrl;
+  } else {
+    console.log('⚠️ [getServerUrl] Railway URL이 설정되지 않았습니다.');
   }
   
   // 웹 환경에서는 localhost 우선 사용
@@ -54,8 +74,8 @@ export function getServerUrl(): string {
     return HARDCODED_SERVER_URL;
   }
   
-  // 캐시된 URL이 있으면 사용 (단, 10.0.2.2는 제외)
-  if (cachedServerUrl && !cachedServerUrl.includes('10.0.2.2')) {
+  // 캐시된 URL이 있으면 사용 (단, 10.0.2.2는 제외, Railway URL도 제외)
+  if (cachedServerUrl && !cachedServerUrl.includes('10.0.2.2') && !cachedServerUrl.includes('railway.app')) {
     // iOS에서 localhost인 경우 빈 문자열 반환하여 자동 감지 유도
     if (cachedServerUrl.includes('localhost') && typeof window !== 'undefined') {
       try {
@@ -73,10 +93,10 @@ export function getServerUrl(): string {
     return cachedServerUrl;
   }
   
-  // localStorage에서 가져오기 (10.0.2.2는 제외)
+  // localStorage에서 가져오기 (10.0.2.2는 제외, Railway URL이 아닌 경우만)
   if (typeof window !== 'undefined') {
     const savedUrl = localStorage.getItem(SERVER_URL_KEY);
-    if (savedUrl && !savedUrl.includes('10.0.2.2')) {
+    if (savedUrl && !savedUrl.includes('10.0.2.2') && !savedUrl.includes('railway.app')) {
       // iOS에서 localhost인 경우 제외
       if (savedUrl.includes('localhost')) {
         try {
@@ -144,8 +164,21 @@ export function getServerUrl(): string {
  */
 export async function autoDetectServerUrl(): Promise<string> {
   // Railway URL이 설정되어 있으면 최우선 시도 (HTTPS)
+  // Railway URL이 있으면 로컬 IP를 시도하지 않고 Railway만 사용
+  console.log(`🔍 [autoDetectServerUrl] Railway URL 확인: ${RAILWAY_URL || 'null'}`);
   if (RAILWAY_URL) {
     const railwayUrl = RAILWAY_URL.startsWith('http') ? RAILWAY_URL : `https://${RAILWAY_URL}`;
+    console.log(`🚂 [autoDetectServerUrl] Railway 서버 우선 시도: ${railwayUrl}`);
+    
+    // localStorage에 로컬 IP가 저장되어 있으면 제거
+    if (typeof window !== 'undefined') {
+      const savedUrl = localStorage.getItem(SERVER_URL_KEY);
+      if (savedUrl && !savedUrl.includes('railway.app')) {
+        console.log('🗑️ [autoDetectServerUrl] Railway URL 사용 시 로컬 IP 제거:', savedUrl);
+        localStorage.removeItem(SERVER_URL_KEY);
+      }
+    }
+    
     try {
       const response = await fetch(`${railwayUrl}/health`, {
         method: 'GET',
@@ -158,12 +191,28 @@ export async function autoDetectServerUrl(): Promise<string> {
           localStorage.setItem(SERVER_URL_KEY, serverUrl);
         }
         cachedServerUrl = serverUrl;
-        console.log('✅ Railway 서버 연결 성공:', serverUrl);
+        console.log('✅ [autoDetectServerUrl] Railway 서버 연결 성공:', serverUrl);
         return serverUrl;
+      } else {
+        console.log(`⚠️ [autoDetectServerUrl] Railway 서버 응답 실패 (${response.status}), Railway URL 강제 사용`);
+        // Railway URL이 설정되어 있으면 실패해도 Railway URL 반환 (로컬 IP 시도 안 함)
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(SERVER_URL_KEY, railwayUrl);
+        }
+        cachedServerUrl = railwayUrl;
+        return railwayUrl;
       }
-    } catch (error) {
-      console.log('⚠️ Railway 서버 연결 실패, 다른 IP 시도...', error);
+    } catch (error: any) {
+      console.log('⚠️ [autoDetectServerUrl] Railway 서버 연결 실패, Railway URL 강제 사용:', error?.message || error);
+      // Railway URL이 설정되어 있으면 실패해도 Railway URL 반환 (로컬 IP 시도 안 함)
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(SERVER_URL_KEY, railwayUrl);
+      }
+      cachedServerUrl = railwayUrl;
+      return railwayUrl;
     }
+  } else {
+    console.log('⚠️ [autoDetectServerUrl] Railway URL이 설정되지 않았습니다.');
   }
   
   // 웹 환경에서는 localhost 우선 시도
@@ -213,6 +262,19 @@ export async function autoDetectServerUrl(): Promise<string> {
   }
   
   // 0. 하드코딩된 서버 URL 목록 확인 (병렬로 시도, 첫 번째 IP 우선)
+  // 주의: Railway URL이 있으면 이미 위에서 처리되었으므로 여기서는 하드코딩된 IP만 시도
+  // Railway URL이 설정되어 있으면 로컬 IP를 시도하지 않음
+  if (RAILWAY_URL) {
+    const railwayUrl = RAILWAY_URL.startsWith('http') ? RAILWAY_URL : `https://${RAILWAY_URL}`;
+    console.log(`🚂 [autoDetectServerUrl] Railway URL이 설정되어 있어 로컬 IP 시도 건너뜀, Railway URL 반환: ${railwayUrl}`);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(SERVER_URL_KEY, railwayUrl);
+    }
+    cachedServerUrl = railwayUrl;
+    return railwayUrl;
+  }
+  
+  console.log(`⚠️ [autoDetectServerUrl] Railway URL 없음, 하드코딩된 IP 목록 시도 시작`);
   const hardcodedUrls = HARDCODED_SERVER_IPS.map(ip => `http://${ip}:3000`);
   console.log(`🔍 하드코딩된 서버 IP 목록 확인 중: ${HARDCODED_SERVER_IPS.join(', ')}`);
   
@@ -276,46 +338,54 @@ export async function autoDetectServerUrl(): Promise<string> {
   if (typeof window !== 'undefined') {
     const savedUrl = localStorage.getItem(SERVER_URL_KEY);
     if (savedUrl) {
-      // 현재 하드코딩된 첫 번째 IP와 다르면 제거 (IP가 변경되었을 수 있음)
-      const currentFirstIp = HARDCODED_SERVER_IPS[0];
-      if (savedUrl.includes(currentFirstIp) === false && savedUrl.match(/192\.168\.68\.\d+/)) {
-        console.log(`⚠️ 저장된 URL이 현재 IP(${currentFirstIp})와 다름, 자동 감지 시작:`, savedUrl);
+      // Railway URL이 설정되어 있는데 localStorage에 다른 URL이 저장되어 있으면 제거
+      if (RAILWAY_URL && !savedUrl.includes('railway.app')) {
+        console.log('🗑️ [iOS] Railway URL이 설정되어 있는데 다른 URL이 저장됨, 제거:', savedUrl);
         localStorage.removeItem(SERVER_URL_KEY);
         cachedServerUrl = null;
-      }
-      // 잘못된 IP 대역이면 즉시 제거하고 자동 감지 시작
-      // 10.0.2.2는 에뮬레이터용이므로 실제 기기에서는 작동하지 않음
-      else if (savedUrl.includes('192.168.68.74') || savedUrl.includes('192.168.68.76') || savedUrl.includes('192.168.68.77') || savedUrl.includes('192.168.0.57') || savedUrl.includes('10.0.2.2')) {
-        console.log('⚠️ 잘못된 URL 감지 (에뮬레이터용 또는 잘못된 IP), 자동 감지 시작:', savedUrl);
-        localStorage.removeItem(SERVER_URL_KEY);
-        cachedServerUrl = null;
-      } else {
-        // 유효한 URL이면 health 체크 후 서버가 알려준 IP로 업데이트
-        try {
-          const response = await fetch(`${savedUrl}/health`, { 
-            method: 'GET',
-            signal: AbortSignal.timeout(1000) // 1초로 단축
-          });
-          if (response.ok) {
-            const data = await response.json();
-            // 서버가 자신의 IP를 알려주면 그것을 사용
-            if (data.server_url) {
-              if (data.server_url !== savedUrl) {
-                localStorage.setItem(SERVER_URL_KEY, data.server_url);
-                cachedServerUrl = data.server_url;
-                console.log('✅ 서버가 알려준 IP로 업데이트:', data.server_url);
-              }
-              return data.server_url;
-            }
-            cachedServerUrl = savedUrl;
-            return savedUrl;
-          }
-        } catch (error) {
-          // 저장된 URL이 실패하면 자동 감지 시도
-          console.log('⚠️ 저장된 URL 실패, 자동 감지 시작:', savedUrl, error);
-          // 실패한 URL을 localStorage에서 제거하여 다음에는 자동 감지부터 시작
+        // Railway URL로 계속 진행하지 않고 자동 감지 계속
+      } else if (!savedUrl.includes('railway.app')) {
+        // 현재 하드코딩된 첫 번째 IP와 다르면 제거 (IP가 변경되었을 수 있음)
+        const currentFirstIp = HARDCODED_SERVER_IPS[0];
+        if (savedUrl.includes(currentFirstIp) === false && savedUrl.match(/192\.168\.68\.\d+/)) {
+          console.log(`⚠️ 저장된 URL이 현재 IP(${currentFirstIp})와 다름, 자동 감지 시작:`, savedUrl);
           localStorage.removeItem(SERVER_URL_KEY);
           cachedServerUrl = null;
+        }
+        // 잘못된 IP 대역이면 즉시 제거하고 자동 감지 시작
+        // 10.0.2.2는 에뮬레이터용이므로 실제 기기에서는 작동하지 않음
+        else if (savedUrl.includes('192.168.68.74') || savedUrl.includes('192.168.68.76') || savedUrl.includes('192.168.68.77') || savedUrl.includes('192.168.0.57') || savedUrl.includes('10.0.2.2')) {
+          console.log('⚠️ 잘못된 URL 감지 (에뮬레이터용 또는 잘못된 IP), 자동 감지 시작:', savedUrl);
+          localStorage.removeItem(SERVER_URL_KEY);
+          cachedServerUrl = null;
+        } else {
+          // 유효한 URL이면 health 체크 후 서버가 알려준 IP로 업데이트
+          try {
+            const response = await fetch(`${savedUrl}/health`, { 
+              method: 'GET',
+              signal: AbortSignal.timeout(1000) // 1초로 단축
+            });
+            if (response.ok) {
+              const data = await response.json();
+              // 서버가 자신의 IP를 알려주면 그것을 사용
+              if (data.server_url) {
+                if (data.server_url !== savedUrl) {
+                  localStorage.setItem(SERVER_URL_KEY, data.server_url);
+                  cachedServerUrl = data.server_url;
+                  console.log('✅ 서버가 알려준 IP로 업데이트:', data.server_url);
+                }
+                return data.server_url;
+              }
+              cachedServerUrl = savedUrl;
+              return savedUrl;
+            }
+          } catch (error) {
+            // 저장된 URL이 실패하면 자동 감지 시도
+            console.log('⚠️ 저장된 URL 실패, 자동 감지 시작:', savedUrl, error);
+            // 실패한 URL을 localStorage에서 제거하여 다음에는 자동 감지부터 시작
+            localStorage.removeItem(SERVER_URL_KEY);
+            cachedServerUrl = null;
+          }
         }
       }
     }
