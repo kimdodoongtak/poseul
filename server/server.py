@@ -172,18 +172,25 @@ except ImportError:
 # passlib의 bcrypt 백엔드를 명시적으로 설정하여 호환성 문제 해결
 # bcrypt 5.0.0과 passlib 1.7.4의 호환성 문제로 인해 기본 설정 사용
 try:
-    # bcrypt 버전이 5.0.0 이상이면 경고
+    # bcrypt 버전이 5.0.0 이상이면 경고 및 직접 bcrypt 사용
     if bcrypt_version != "unknown" and bcrypt_version != "not installed":
         try:
-            from packaging import version
-            if version.parse(bcrypt_version) >= version.parse("5.0.0"):
-                logger.warning(f"⚠️ bcrypt {bcrypt_version}는 passlib과 호환성 문제가 있을 수 있습니다. bcrypt 4.x 사용을 권장합니다.")
+            # 버전 문자열 파싱 (간단한 방법)
+            version_parts = bcrypt_version.split('.')
+            major_version = int(version_parts[0]) if version_parts[0].isdigit() else 0
+            if major_version >= 5:
+                logger.warning(f"⚠️ bcrypt {bcrypt_version}는 passlib과 호환성 문제가 있습니다. 직접 bcrypt 사용으로 전환합니다.")
+                # bcrypt를 직접 사용하도록 설정
+                pwd_context = None  # 나중에 직접 bcrypt 사용
+            else:
+                pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+                logger.info("✅ passlib bcrypt 백엔드 설정 완료 (기본 설정)")
         except:
-            pass
-    
-    # 기본 설정 사용 (bcrypt 5.0.0 호환성 문제 해결)
-    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-    logger.info("✅ passlib bcrypt 백엔드 설정 완료 (기본 설정)")
+            pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+            logger.info("✅ passlib bcrypt 백엔드 설정 완료 (기본 설정)")
+    else:
+        pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+        logger.info("✅ passlib bcrypt 백엔드 설정 완료 (기본 설정)")
 except Exception as e:
     logger.warning(f"⚠️ passlib bcrypt 백엔드 설정 실패, 기본 설정 사용: {e}")
     pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -209,17 +216,46 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
             logger.warning(f"⚠️ 비밀번호가 72바이트를 초과하여 잘라냅니다. 원본 길이: {len(plain_password_bytes)}")
             plain_password = plain_password_bytes[:72].decode('utf-8', errors='ignore')
     
+    # bcrypt를 직접 사용하여 검증 (passlib 호환성 문제 해결)
     try:
-        return pwd_context.verify(plain_password, hashed_password)
-    except (ValueError, TypeError, Exception) as e:
-        logger.error(f"❌ 비밀번호 검증 오류: {str(e)}, 타입: {type(hashed_password)}, 값: {hashed_password[:20] if hashed_password else 'None'}")
-        import traceback
-        logger.error(f"❌ 비밀번호 검증 오류 상세:\n{traceback.format_exc()}")
-        return False
+        import bcrypt
+        # bcrypt를 직접 사용하여 검증
+        password_bytes = plain_password.encode('utf-8')
+        hash_bytes = hashed_password.encode('utf-8')
+        return bcrypt.checkpw(password_bytes, hash_bytes)
+    except Exception as bcrypt_error:
+        logger.warning(f"⚠️ 직접 bcrypt 검증 실패, passlib 사용: {bcrypt_error}")
+        # passlib을 사용하여 검증 (fallback)
+        try:
+            if pwd_context is None:
+                # pwd_context가 None이면 다시 초기화
+                global pwd_context
+                pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+            return pwd_context.verify(plain_password, hashed_password)
+        except (ValueError, TypeError, Exception) as e:
+            logger.error(f"❌ 비밀번호 검증 오류: {str(e)}, 타입: {type(hashed_password)}, 값: {hashed_password[:20] if hashed_password else 'None'}")
+            import traceback
+            logger.error(f"❌ 비밀번호 검증 오류 상세:\n{traceback.format_exc()}")
+            return False
 
 def get_password_hash(password: str) -> str:
     """비밀번호 해싱"""
-    return pwd_context.hash(password)
+    # bcrypt를 직접 사용하여 해싱 (passlib 호환성 문제 해결)
+    try:
+        import bcrypt
+        password_bytes = password.encode('utf-8')
+        # bcrypt를 직접 사용하여 해싱
+        salt = bcrypt.gensalt(rounds=12)
+        hash_bytes = bcrypt.hashpw(password_bytes, salt)
+        return hash_bytes.decode('utf-8')
+    except Exception as bcrypt_error:
+        logger.warning(f"⚠️ 직접 bcrypt 해싱 실패, passlib 사용: {bcrypt_error}")
+        # passlib을 사용하여 해싱 (fallback)
+        if pwd_context is None:
+            # pwd_context가 None이면 다시 초기화
+            global pwd_context
+            pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+        return pwd_context.hash(password)
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     """JWT 토큰 생성"""
