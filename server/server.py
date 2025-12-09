@@ -150,6 +150,25 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30 * 24 * 60  # 30일
 
 # 비밀번호 해싱
+# bcrypt 버전 호환성 문제 해결을 위해 명시적으로 설정
+try:
+    import bcrypt
+    # bcrypt 버전 확인
+    try:
+        bcrypt_version = bcrypt.__version__
+        logger.info(f"✅ bcrypt 버전: {bcrypt_version}")
+    except AttributeError:
+        # __version__이 없으면 __about__ 확인
+        try:
+            bcrypt_version = bcrypt.__about__.__version__
+            logger.info(f"✅ bcrypt 버전: {bcrypt_version}")
+        except AttributeError:
+            logger.warning("⚠️ bcrypt 버전을 확인할 수 없습니다. 최신 버전으로 업데이트가 필요할 수 있습니다.")
+            bcrypt_version = "unknown"
+except ImportError:
+    logger.error("❌ bcrypt 모듈을 찾을 수 없습니다.")
+    bcrypt_version = "not installed"
+
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # HTTP Bearer 토큰
