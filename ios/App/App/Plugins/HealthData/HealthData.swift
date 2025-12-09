@@ -180,9 +180,17 @@ public class HealthData: CAPPlugin, CAPBridgedPlugin {
     }
     
     private func sendToServer(heartRate: Double, hrv: Double, oxygenSaturation: Double) {
-        // UserDefaults에서 서버 URL 읽기 (없으면 기본값 사용)
+        // UserDefaults에서 서버 URL 읽기 (없으면 Railway URL 기본값 사용)
         let userDefaults = UserDefaults.standard
-        var serverURL = userDefaults.string(forKey: "serverURL") ?? "http://192.168.68.77:3000"
+        // Railway URL을 기본값으로 사용 (HTTPS)
+        let defaultServerURL = "https://poseul-production.up.railway.app"
+        var serverURL = userDefaults.string(forKey: "serverURL") ?? defaultServerURL
+        
+        // URL이 http://로 시작하면 https://로 변경 (Railway는 HTTPS 필수)
+        if serverURL.hasPrefix("http://") && !serverURL.contains("localhost") && !serverURL.contains("127.0.0.1") {
+            serverURL = serverURL.replacingOccurrences(of: "http://", with: "https://")
+            print("⚠️ HTTP를 HTTPS로 변경: \(serverURL)")
+        }
         
         // /healthdata 엔드포인트 추가
         if !serverURL.hasSuffix("/healthdata") {
@@ -220,6 +228,15 @@ public class HealthData: CAPPlugin, CAPBridgedPlugin {
         var request = URLRequest(url: URL(string: serverURL)!)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        
+        // JWT 토큰을 UserDefaults에서 읽어서 Authorization 헤더에 추가
+        if let token = userDefaults.string(forKey: "authToken"), !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            print("✅ JWT 토큰 포함하여 전송")
+        } else {
+            print("⚠️ JWT 토큰이 없어 인증 없이 전송 (user_no가 None이 될 수 있음)")
+        }
+        
         request.httpBody = jsonData
         
         let task = URLSession.shared.dataTask(with: request) { data, response, error in
@@ -512,9 +529,15 @@ public class HealthData: CAPPlugin, CAPBridgedPlugin {
             print("✅ 서버 URL 저장됨: \(serverURL)")
         }
         
+        // authToken도 optional로 저장 (백그라운드 전송용)
+        if let authToken = call.getString("authToken") {
+            userDefaults.set(authToken, forKey: "authToken")
+            print("✅ JWT 토큰 저장됨 (백그라운드 전송용)")
+        }
+        
         userDefaults.synchronize()
         
-        print("✅ 사용자 정보 저장됨: age=\(age), bmi=\(bmi), gender=\(call.getString("gender") ?? "없음"), serverURL=\(call.getString("serverURL") ?? "없음")")
+        print("✅ 사용자 정보 저장됨: age=\(age), bmi=\(bmi), gender=\(call.getString("gender") ?? "없음"), serverURL=\(call.getString("serverURL") ?? "없음"), authToken=\(call.getString("authToken") != nil ? "있음" : "없음")")
         call.resolve(["success": true])
     }
     

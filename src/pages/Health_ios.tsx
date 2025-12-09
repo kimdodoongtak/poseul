@@ -1396,20 +1396,24 @@ const Health_ios: React.FC = () => {
           const result = await response.json();
           console.log('✅ 서버 응답:', result);
           
-          // iOS에서 서버 URL을 UserDefaults에도 저장 (백그라운드 작업용)
+          // iOS에서 서버 URL과 토큰을 UserDefaults에도 저장 (백그라운드 작업용)
           if (platform === 'ios' && healthDataPlugin) {
             try {
               // baseUrl에서 /healthdata 제거
               const baseUrl = serverURL.replace('/healthdata', '');
+              // 토큰 가져오기
+              const { getToken } = await import('../services/AuthService');
+              const token = getToken();
               await healthDataPlugin.saveUserInfo({
                 age: age || '',
                 bmi: bmi || '',
                 gender: gender || '0',
-                serverURL: baseUrl // 서버 URL도 함께 저장
+                serverURL: baseUrl, // 서버 URL도 함께 저장
+                authToken: token || undefined // JWT 토큰도 저장 (백그라운드 전송용)
               });
-              console.log('✅ 서버 URL을 UserDefaults에 저장 완료:', baseUrl);
+              console.log('✅ 서버 URL과 토큰을 UserDefaults에 저장 완료:', baseUrl, token ? '토큰 있음' : '토큰 없음');
             } catch (err) {
-              console.log('⚠️ UserDefaults에 서버 URL 저장 실패 (무시):', err);
+              console.log('⚠️ UserDefaults에 서버 URL/토큰 저장 실패 (무시):', err);
             }
           }
           
