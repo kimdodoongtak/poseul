@@ -3506,8 +3506,7 @@ def send_device_command_with_pat_token(pat_token: str, device_id: str, command: 
 @app.get("/air_conditioner/state")
 async def get_air_conditioner_state_api(request: Request):
     """에어컨 상태 조회 API (사용자별 PAT 토큰 사용)"""
-    if not AIR_CONDITIONER_AVAILABLE:
-        raise HTTPException(status_code=500, detail="에어컨 모듈을 사용할 수 없습니다.")
+    # PAT 토큰 기반 API는 airconditional 모듈이 없어도 작동합니다
     
     try:
         # 쿼리 파라미터에서 user_id 가져오기 (없으면 기본값)
@@ -3628,8 +3627,7 @@ async def get_air_conditioner_state_api(request: Request):
 @app.post("/air_conditioner/control")
 async def control_air_conditioner_api(data: AirConditionerControlRequest, request: Request):
     """에어컨 제어 API (사용자별 PAT 토큰 사용)"""
-    if not AIR_CONDITIONER_AVAILABLE:
-        raise HTTPException(status_code=500, detail="에어컨 모듈을 사용할 수 없습니다.")
+    # PAT 토큰 기반 API는 airconditional 모듈이 없어도 작동합니다
     
     try:
         # 쿼리 파라미터에서 user_id 가져오기 (없으면 기본값)
