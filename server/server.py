@@ -289,7 +289,6 @@ def get_password_hash(password: str) -> str:
             logger.warning(f"⚠️ Fallback: 비밀번호를 72바이트로 자름: 원본 {original_length}바이트")
             return pwd_context.hash(password)
         raise
->>>>>>> c51963a (errorsolve)
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     """JWT 토큰 생성"""
