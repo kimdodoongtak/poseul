@@ -5035,6 +5035,42 @@ async def save_temperature_feedback(data: TemperatureFeedbackRequest, user_no: i
                     # user_no 컬럼이 없으면 추가
                     check_and_add_user_no_column(conn, "new_skinthreshold")
                     
+                    # feedback 컬럼이 없으면 추가
+                    try:
+                        column_check = text("""
+                            SELECT COLUMN_NAME 
+                            FROM INFORMATION_SCHEMA.COLUMNS 
+                            WHERE TABLE_SCHEMA = 'main' 
+                            AND TABLE_NAME = 'new_skinthreshold'
+                            AND COLUMN_NAME = 'feedback'
+                        """)
+                        has_feedback = conn.execute(column_check).fetchone() is not None
+                        if not has_feedback:
+                            alter_query = text("ALTER TABLE new_skinthreshold ADD COLUMN feedback VARCHAR(1) DEFAULT NULL")
+                            conn.execute(alter_query)
+                            conn.commit()
+                            logger.info("✅ new_skinthreshold 테이블에 feedback 컬럼 추가 완료")
+                    except Exception as e:
+                        logger.warning(f"⚠️ feedback 컬럼 확인/추가 실패: {str(e)}")
+                    
+                    # predicted_skin 컬럼이 없으면 추가
+                    try:
+                        column_check = text("""
+                            SELECT COLUMN_NAME 
+                            FROM INFORMATION_SCHEMA.COLUMNS 
+                            WHERE TABLE_SCHEMA = 'main' 
+                            AND TABLE_NAME = 'new_skinthreshold'
+                            AND COLUMN_NAME = 'predicted_skin'
+                        """)
+                        has_predicted_skin = conn.execute(column_check).fetchone() is not None
+                        if not has_predicted_skin:
+                            alter_query = text("ALTER TABLE new_skinthreshold ADD COLUMN predicted_skin VARCHAR(1) DEFAULT NULL")
+                            conn.execute(alter_query)
+                            conn.commit()
+                            logger.info("✅ new_skinthreshold 테이블에 predicted_skin 컬럼 추가 완료")
+                    except Exception as e:
+                        logger.warning(f"⚠️ predicted_skin 컬럼 확인/추가 실패: {str(e)}")
+                    
                     # 갱신된 임계값 저장 (user_no 포함)
                     insert_new_threshold = text("""
                         INSERT INTO new_skinthreshold (min_skinthreshold, max_skinthreshold, feedback, predicted_skin, user_no)
@@ -5057,7 +5093,7 @@ async def save_temperature_feedback(data: TemperatureFeedbackRequest, user_no: i
             
             # 피드백 저장 후 자동으로 임계값 조정 처리
             try:
-                success, message = feedback_based_adjustment.process_daily_feedback(engine, feedback_code)
+                success, message = feedback_based_adjustment.process_daily_feedback(engine, feedback_code, user_no)
                 if success:
                     logger.info(f"✅ {message}")
                 else:
