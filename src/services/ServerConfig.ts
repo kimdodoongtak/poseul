@@ -24,9 +24,20 @@ let cachedServerUrl: string | null = null;
  * 우선순위: Railway URL > 웹 환경에서는 localhost > 하드코딩된 IP > 캐시 > localStorage > 환경 변수 > 기본값
  */
 export function getServerUrl(): string {
-  // Railway URL이 설정되어 있으면 최우선 사용 (HTTPS)
+  // Railway URL이 설정되어 있으면 무조건 최우선 사용 (HTTPS)
+  // localStorage나 캐시를 확인하기 전에 먼저 확인
   if (RAILWAY_URL) {
     const railwayUrl = RAILWAY_URL.startsWith('http') ? RAILWAY_URL : `https://${RAILWAY_URL}`;
+    
+    // localStorage에 Railway URL이 아닌 다른 URL이 저장되어 있으면 제거
+    if (typeof window !== 'undefined') {
+      const savedUrl = localStorage.getItem(SERVER_URL_KEY);
+      if (savedUrl && !savedUrl.includes('railway.app')) {
+        console.log('🗑️ [getServerUrl] Railway URL이 설정되어 있는데 다른 URL이 저장됨, 제거:', savedUrl);
+        localStorage.removeItem(SERVER_URL_KEY);
+      }
+    }
+    
     cachedServerUrl = railwayUrl;
     console.log(`🚂 [getServerUrl] Railway URL 사용: ${railwayUrl}`);
     return railwayUrl;
@@ -57,8 +68,8 @@ export function getServerUrl(): string {
     return HARDCODED_SERVER_URL;
   }
   
-  // 캐시된 URL이 있으면 사용 (단, 10.0.2.2는 제외)
-  if (cachedServerUrl && !cachedServerUrl.includes('10.0.2.2')) {
+  // 캐시된 URL이 있으면 사용 (단, 10.0.2.2는 제외, Railway URL도 제외)
+  if (cachedServerUrl && !cachedServerUrl.includes('10.0.2.2') && !cachedServerUrl.includes('railway.app')) {
     // iOS에서 localhost인 경우 빈 문자열 반환하여 자동 감지 유도
     if (cachedServerUrl.includes('localhost') && typeof window !== 'undefined') {
       try {
@@ -76,19 +87,10 @@ export function getServerUrl(): string {
     return cachedServerUrl;
   }
   
-  // localStorage에서 가져오기 (10.0.2.2는 제외)
+  // localStorage에서 가져오기 (10.0.2.2는 제외, Railway URL이 아닌 경우만)
   if (typeof window !== 'undefined') {
     const savedUrl = localStorage.getItem(SERVER_URL_KEY);
-    if (savedUrl && !savedUrl.includes('10.0.2.2')) {
-      // Railway URL이 설정되어 있는데 localStorage에 다른 URL이 저장되어 있으면 제거
-      if (RAILWAY_URL && !savedUrl.includes('railway.app')) {
-        console.log('🗑️ [iOS] Railway URL이 설정되어 있는데 다른 URL이 저장됨, 제거:', savedUrl);
-        localStorage.removeItem(SERVER_URL_KEY);
-        cachedServerUrl = null;
-        // Railway URL 반환
-        const railwayUrl = RAILWAY_URL.startsWith('http') ? RAILWAY_URL : `https://${RAILWAY_URL}`;
-        return railwayUrl;
-      }
+    if (savedUrl && !savedUrl.includes('10.0.2.2') && !savedUrl.includes('railway.app')) {
       // iOS에서 localhost인 경우 제외
       if (savedUrl.includes('localhost')) {
         try {
