@@ -816,7 +816,13 @@ const Health_ios: React.FC = () => {
   const fetchHealthData = async (HealthData: any) => {
     if (!HealthData) {
       console.log('HealthData 플러그인이 없습니다.');
-      alert('HealthData 플러그인이 로드되지 않았습니다.');
+      // 플러그인이 없어도 서버에서 기존 데이터를 가져오도록 시도
+      console.log('📱 서버에서 기존 건강 데이터 가져오기 시도...');
+      try {
+        await fetchHealthDataFromServer();
+      } catch (err) {
+        console.error('서버에서 건강 데이터 가져오기 실패:', err);
+      }
       return;
     }
     
@@ -824,6 +830,7 @@ const Health_ios: React.FC = () => {
     
     // 권한 확인 및 요청
     let needsPermissionRequest = false;
+    let pluginNotImplemented = false;
     
     try {
       const [heartRate, hrv, oxygenSaturation] = await Promise.all([
@@ -831,6 +838,15 @@ const Health_ios: React.FC = () => {
           .catch((err: any) => {
             console.error('심박수 가져오기 실패:', err);
             const errorMsg = err?.message || err?.toString() || String(err);
+            const errorCode = err?.code || '';
+            
+            // UNIMPLEMENTED 오류 체크
+            if (errorCode === 'UNIMPLEMENTED' || errorMsg.includes('not implemented') || errorMsg.includes('UNIMPLEMENTED')) {
+              console.error('❌ HealthData 플러그인이 iOS에서 구현되지 않았습니다.');
+              pluginNotImplemented = true;
+              return null;
+            }
+            
             if (errorMsg.includes('authorization') || errorMsg.includes('권한') || errorMsg.includes('Authorization not determined')) {
               console.log('⚠️ HealthKit 권한이 필요합니다.');
               needsPermissionRequest = true;
@@ -845,6 +861,15 @@ const Health_ios: React.FC = () => {
           .catch((err: any) => {
             console.error('HRV 가져오기 실패:', err);
             const errorMsg = err?.message || err?.toString() || String(err);
+            const errorCode = err?.code || '';
+            
+            // UNIMPLEMENTED 오류 체크
+            if (errorCode === 'UNIMPLEMENTED' || errorMsg.includes('not implemented') || errorMsg.includes('UNIMPLEMENTED')) {
+              console.error('❌ HealthData 플러그인이 iOS에서 구현되지 않았습니다.');
+              pluginNotImplemented = true;
+              return null;
+            }
+            
             if (errorMsg.includes('authorization') || errorMsg.includes('권한') || errorMsg.includes('Authorization not determined')) {
               console.log('⚠️ HealthKit 권한이 필요합니다 (HRV).');
               needsPermissionRequest = true;
@@ -859,6 +884,15 @@ const Health_ios: React.FC = () => {
           .catch((err: any) => {
             console.error('혈중산소포화도 가져오기 실패:', err);
             const errorMsg = err?.message || err?.toString() || String(err);
+            const errorCode = err?.code || '';
+            
+            // UNIMPLEMENTED 오류 체크
+            if (errorCode === 'UNIMPLEMENTED' || errorMsg.includes('not implemented') || errorMsg.includes('UNIMPLEMENTED')) {
+              console.error('❌ HealthData 플러그인이 iOS에서 구현되지 않았습니다.');
+              pluginNotImplemented = true;
+              return null;
+            }
+            
             if (errorMsg.includes('authorization') || errorMsg.includes('권한') || errorMsg.includes('Authorization not determined')) {
               console.log('⚠️ HealthKit 권한이 필요합니다 (O2).');
               needsPermissionRequest = true;
@@ -870,6 +904,17 @@ const Health_ios: React.FC = () => {
             return null;
           }),
       ]);
+      
+      // 플러그인이 구현되지 않은 경우 서버에서 기존 데이터 가져오기
+      if (pluginNotImplemented) {
+        console.log('⚠️ HealthData 플러그인이 구현되지 않아 서버에서 기존 데이터를 가져옵니다.');
+        try {
+          await fetchHealthDataFromServer();
+        } catch (err) {
+          console.error('서버에서 건강 데이터 가져오기 실패:', err);
+        }
+        return;
+      }
       
       // 권한이 필요하면 자동으로 권한 요청
       if (needsPermissionRequest && platform === 'ios' && healthDataPlugin) {
