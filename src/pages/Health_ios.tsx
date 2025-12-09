@@ -2347,12 +2347,12 @@ const Health_ios: React.FC = () => {
                 
                 {/* 정보 카드 */}
                 <div style={{
-                  background: isDarkMode ? '#2E2F3A' : 'white',
+                  background: isDarkMode ? '#1A1B23' : 'white',
                   borderRadius: '16px',
                   padding: '20px',
                   marginBottom: '32px',
-                  boxShadow: isDarkMode ? '0 2px 12px rgba(0, 0, 0, 0.4)' : '0 2px 12px rgba(0, 0, 0, 0.06)',
-                  border: isDarkMode ? '1px solid rgba(124, 136, 169, 0.3)' : '1px solid rgba(0, 0, 0, 0.05)'
+                  boxShadow: isDarkMode ? '0 2px 12px rgba(0, 0, 0, 0.6)' : '0 2px 12px rgba(0, 0, 0, 0.06)',
+                  border: isDarkMode ? '1px solid rgba(124, 136, 169, 0.2)' : '1px solid rgba(0, 0, 0, 0.05)'
                 }}>
                   {/* 나이/BMI 그리드 */}
                   <div style={{ 
@@ -2365,10 +2365,10 @@ const Health_ios: React.FC = () => {
                     <div style={{
                       padding: '16px',
                       background: isDarkMode 
-                        ? 'linear-gradient(135deg, #323340 0%, #2E2F3A 100%)' 
+                        ? 'linear-gradient(135deg, #252630 0%, #1F2028 100%)' 
                         : 'linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%)',
                       borderRadius: '10px',
-                      border: isDarkMode ? '1px solid rgba(124, 136, 169, 0.3)' : '1px solid rgba(0, 0, 0, 0.05)'
+                      border: isDarkMode ? '1px solid rgba(124, 136, 169, 0.2)' : '1px solid rgba(0, 0, 0, 0.05)'
                     }}>
                       <IonLabel style={{ 
                         color: isDarkMode ? '#A0A5B8' : '#718096', 
@@ -2395,10 +2395,10 @@ const Health_ios: React.FC = () => {
                     <div style={{
                       padding: '16px',
                       background: isDarkMode 
-                        ? 'linear-gradient(135deg, #323340 0%, #2E2F3A 100%)' 
+                        ? 'linear-gradient(135deg, #252630 0%, #1F2028 100%)' 
                         : 'linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%)',
                       borderRadius: '10px',
-                      border: isDarkMode ? '1px solid rgba(124, 136, 169, 0.3)' : '1px solid rgba(0, 0, 0, 0.05)'
+                      border: isDarkMode ? '1px solid rgba(124, 136, 169, 0.2)' : '1px solid rgba(0, 0, 0, 0.05)'
                     }}>
                       <IonLabel style={{ 
                         color: isDarkMode ? '#A0A5B8' : '#718096', 
@@ -2427,10 +2427,10 @@ const Health_ios: React.FC = () => {
                     padding: '16px',
                     marginTop: '16px',
                     background: isDarkMode 
-                      ? 'linear-gradient(135deg, #323340 0%, #2E2F3A 100%)' 
+                      ? 'linear-gradient(135deg, #252630 0%, #1F2028 100%)' 
                       : 'linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%)',
                     borderRadius: '10px',
-                    border: isDarkMode ? '1px solid rgba(124, 136, 169, 0.3)' : '1px solid rgba(0, 0, 0, 0.05)'
+                    border: isDarkMode ? '1px solid rgba(124, 136, 169, 0.2)' : '1px solid rgba(0, 0, 0, 0.05)'
                   }}>
                     <IonLabel style={{ 
                       color: isDarkMode ? '#A0A5B8' : '#718096', 
