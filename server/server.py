@@ -170,16 +170,20 @@ except ImportError:
     bcrypt_version = "not installed"
 
 # passlib의 bcrypt 백엔드를 명시적으로 설정하여 호환성 문제 해결
+# bcrypt 5.0.0과 passlib 1.7.4의 호환성 문제로 인해 기본 설정 사용
 try:
-    from passlib.hash import bcrypt as bcrypt_handler
-    # bcrypt 백엔드를 명시적으로 설정
-    pwd_context = CryptContext(
-        schemes=["bcrypt"],
-        deprecated="auto",
-        bcrypt__ident="2b",  # bcrypt 버전 2b 사용
-        bcrypt__rounds=12,   # 라운드 수 명시
-    )
-    logger.info("✅ passlib bcrypt 백엔드 설정 완료")
+    # bcrypt 버전이 5.0.0 이상이면 경고
+    if bcrypt_version != "unknown" and bcrypt_version != "not installed":
+        try:
+            from packaging import version
+            if version.parse(bcrypt_version) >= version.parse("5.0.0"):
+                logger.warning(f"⚠️ bcrypt {bcrypt_version}는 passlib과 호환성 문제가 있을 수 있습니다. bcrypt 4.x 사용을 권장합니다.")
+        except:
+            pass
+    
+    # 기본 설정 사용 (bcrypt 5.0.0 호환성 문제 해결)
+    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+    logger.info("✅ passlib bcrypt 백엔드 설정 완료 (기본 설정)")
 except Exception as e:
     logger.warning(f"⚠️ passlib bcrypt 백엔드 설정 실패, 기본 설정 사용: {e}")
     pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
