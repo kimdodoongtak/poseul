@@ -202,6 +202,7 @@ security = HTTPBearer()
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """비밀번호 검증"""
+    global pwd_context
     # hashed_password가 문자열이 아닌 경우 문자열로 변환
     if not isinstance(hashed_password, str):
         hashed_password = str(hashed_password)
@@ -229,7 +230,6 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         try:
             if pwd_context is None:
                 # pwd_context가 None이면 다시 초기화
-                global pwd_context
                 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
             return pwd_context.verify(plain_password, hashed_password)
         except (ValueError, TypeError, Exception) as e:
@@ -240,6 +240,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 def get_password_hash(password: str) -> str:
     """비밀번호 해싱"""
+    global pwd_context
     # bcrypt를 직접 사용하여 해싱 (passlib 호환성 문제 해결)
     try:
         import bcrypt
@@ -253,7 +254,6 @@ def get_password_hash(password: str) -> str:
         # passlib을 사용하여 해싱 (fallback)
         if pwd_context is None:
             # pwd_context가 None이면 다시 초기화
-            global pwd_context
             pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
         return pwd_context.hash(password)
 
