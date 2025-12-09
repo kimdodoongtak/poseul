@@ -3053,7 +3053,7 @@ async def receive_health_data(data: HealthData, user_no: Optional[int] = Depends
                     if sleep_mode_active and sleep_mode_state.get("end_time"):
                         from datetime import datetime
                         end_time = datetime.fromisoformat(sleep_mode_state["end_time"])
-                        if datetime.now() >= end_time:
+                        if datetime.now(KST) >= end_time:
                             # 수면 모드 자동 종료
                             sleep_mode_states[user_no] = {
                                 "active": False,
@@ -4833,14 +4833,14 @@ async def get_sleep_mode_status(user_no: int = Depends(verify_token)):
         # 수면 모드가 활성화되어 있고 종료 시간이 지났으면 자동으로 비활성화
         if sleep_mode_state["active"] and sleep_mode_state["end_time"]:
             end_time = datetime.fromisoformat(sleep_mode_state["end_time"])
-            if datetime.now() >= end_time:
+            if datetime.now(KST) >= end_time:
                 sleep_mode_state["active"] = False
                 sleep_mode_states[user_no] = sleep_mode_state
                 logger.info(f"😴 수면 모드 자동 종료 (설정된 시간 경과, user_no: {user_no})")
         
         if sleep_mode_state["active"]:
             end_time = datetime.fromisoformat(sleep_mode_state["end_time"])
-            remaining_seconds = (end_time - datetime.now()).total_seconds()
+            remaining_seconds = (end_time - datetime.now(KST)).total_seconds()
             remaining_hours = remaining_seconds / 3600.0
             
             return {
@@ -5254,7 +5254,7 @@ async def update_thresholds_api(data: ThresholdUpdateRequest, user_no: int = Dep
             # 종료 시간 확인
             if sleep_mode_active and sleep_mode_state.get("end_time"):
                 end_time = datetime.fromisoformat(sleep_mode_state["end_time"])
-                if datetime.now() >= end_time:
+                if datetime.now(KST) >= end_time:
                     # 수면 모드 자동 종료
                     sleep_mode_states[user_no] = {
                         "active": False,
@@ -5999,7 +5999,7 @@ def adjust_air_conditioner_wrapper():
             # 종료 시간 확인
             if state.get("end_time"):
                 end_time = datetime.fromisoformat(state["end_time"])
-                if datetime.now() >= end_time:
+                if datetime.now(KST) >= end_time:
                     # 수면 모드 자동 종료
                     sleep_mode_states[user_no] = {
                         "active": False,
