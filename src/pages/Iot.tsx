@@ -162,6 +162,14 @@ const Iot: React.FC = () => {
       // 연결 실패 시 자동 감지 재시도
       if (errorMessage.includes('서버') || errorMessage.includes('timeout') || errorMessage.includes('연결')) {
         console.log('🔄 연결 실패 - 서버 URL 자동 감지 재시도...');
+        
+        // Railway URL이 실패했으면 localStorage에서 제거하여 로컬 서버 우선 사용
+        const currentUrl = getIotServiceBaseUrl();
+        if (currentUrl && currentUrl.includes('railway')) {
+          console.log('⚠️ Railway 서버 실패 감지, 로컬 서버로 전환 시도...');
+          localStorage.removeItem('server_url');
+        }
+        
         try {
           const serverUrl = await autoDetectServerUrl();
           if (!serverUrl || serverUrl === '') {
@@ -172,7 +180,7 @@ const Iot: React.FC = () => {
           // 재시도
           setTimeout(() => {
             loadStatus();
-          }, 1000);
+          }, 500); // 1초에서 500ms로 단축
         } catch (detectError: any) {
           console.error('❌ 서버 URL 자동 감지 실패:', detectError);
           setError(detectError.message || '서버를 찾을 수 없습니다. 서버가 실행 중인지 확인해주세요.');

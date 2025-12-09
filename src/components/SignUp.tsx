@@ -109,10 +109,11 @@ const SignUp: React.FC<SignUpProps> = ({ onClose, onSuccess }) => {
       setIotLoadingMessage('PAT 토큰 검증 중...');
       
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30초로 설정 (LG API 응답 대기)
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15초로 단축 (서버 응답 대기)
       
       let response: Response;
       try {
+        console.log(`📤 IoT 등록 요청: ${baseUrl}/iot/auto-register`);
         response = await fetch(`${baseUrl}/iot/auto-register`, {
           method: 'POST',
           headers: {
@@ -124,8 +125,10 @@ const SignUp: React.FC<SignUpProps> = ({ onClose, onSuccess }) => {
           }),
           signal: controller.signal,
         });
+        console.log(`📥 IoT 등록 응답 상태: ${response.status}`);
       } catch (fetchError: any) {
         clearTimeout(timeoutId);
+        console.error('❌ IoT 등록 요청 실패:', fetchError);
         if (fetchError.name === 'AbortError') {
           throw new Error('IoT 등록 요청 시간이 초과되었습니다. 네트워크 연결을 확인하거나 나중에 다시 시도해주세요.');
         } else if (fetchError.message?.includes('Failed to fetch') || fetchError.message?.includes('NetworkError')) {
@@ -196,6 +199,13 @@ const SignUp: React.FC<SignUpProps> = ({ onClose, onSuccess }) => {
 
       if (password.length < 4) {
         setError('비밀번호는 최소 4자 이상이어야 합니다.');
+        return;
+      }
+
+      // 비밀번호가 72바이트를 초과하면 경고 (UTF-8 인코딩 고려하여 대략 20자 정도)
+      const passwordBytes = new TextEncoder().encode(password);
+      if (passwordBytes.length > 72) {
+        setError('비밀번호가 너무 깁니다. (최대 72바이트, 약 20자)');
         return;
       }
 

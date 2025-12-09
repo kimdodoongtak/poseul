@@ -170,7 +170,14 @@ class IotService {
       console.error('Request URL:', `${this.baseUrl}/air_conditioner/state`);
       // 네트워크 에러인지 확인
       if (error.name === 'AbortError') {
-        throw new Error(`서버 응답 시간 초과 (10초). 서버가 실행 중인지 확인해주세요. (URL: ${this.baseUrl})`);
+        // Railway 서버 타임아웃 시 로컬 서버로 자동 전환 안내
+        const errorMsg = `서버 응답 시간 초과 (10초). 서버가 실행 중인지 확인해주세요. (URL: ${this.baseUrl})`;
+        console.error('❌ 서버 타임아웃:', errorMsg);
+        // Railway URL이면 로컬 서버로 전환 제안
+        if (this.baseUrl.includes('railway')) {
+          console.warn('⚠️ Railway 서버 응답 없음. 로컬 서버 사용을 권장합니다.');
+        }
+        throw new Error(errorMsg);
       } else if (error.message?.includes('Failed to fetch') || error.message?.includes('Mixed Content') || !error.message) {
         const errorMsg = error?.message || error?.toString() || '알 수 없는 네트워크 오류';
         throw new Error(`서버에 연결할 수 없습니다. (${errorMsg}) 서버가 실행 중인지 확인해주세요. (URL: ${this.baseUrl})`);

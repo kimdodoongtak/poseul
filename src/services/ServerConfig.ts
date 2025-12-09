@@ -12,8 +12,8 @@ const RAILWAY_URL = typeof import.meta !== 'undefined' && import.meta.env?.VITE_
   : 'poseul-production.up.railway.app'; // Railway URL (기본값)
 
 // 하드코딩된 서버 IP 목록 (우선 사용)
-// 현재 네트워크: 192.168.68.x 대역 (현재 컴퓨터 IP: 192.168.68.66)
-const HARDCODED_SERVER_IPS = ['192.168.68.66', '172.29.88.134', '172.15.5.58', '192.168.0.143', '172.30.1.68', '192.168.68.75', '192.168.68.76', '192.168.68.77', '192.168.68.72', '172.15.5.72', '192.168.219.125'];
+// 현재 네트워크: 192.168.0.x 대역 (현재 컴퓨터 IP: 192.168.0.143)
+const HARDCODED_SERVER_IPS = ['192.168.0.143', '192.168.68.66', '172.29.88.134', '172.15.5.58', '172.30.1.68', '192.168.68.75', '192.168.68.76', '192.168.68.77', '192.168.68.72', '172.15.5.72', '192.168.219.125'];
 const HARDCODED_SERVER_URL = `http://${HARDCODED_SERVER_IPS[0]}:3000`; // 첫 번째를 기본값으로 사용
 
 // 동기 버전 (기본값 반환용)
@@ -21,11 +21,34 @@ let cachedServerUrl: string | null = null;
 
 /**
  * 서버 URL 가져오기 (동기 버전 - 빠른 접근용)
- * 우선순위: Railway URL > 웹 환경에서는 localhost > 하드코딩된 IP > 캐시 > localStorage > 환경 변수 > 기본값
+ * 우선순위: 
+ * - 네이티브 앱: Railway URL > 하드코딩된 IP > 캐시 > localStorage
+ * - 웹 환경: localhost > Railway URL > 캐시 > localStorage
  */
 export function getServerUrl(): string {
+<<<<<<< Updated upstream
   // Railway URL이 설정되어 있으면 무조건 최우선 사용 (HTTPS)
   // localStorage나 캐시를 확인하기 전에 먼저 확인
+=======
+  // 웹 환경에서는 localhost 우선 사용 (개발 편의성)
+  if (typeof window !== 'undefined') {
+    try {
+      if (!(window as any).Capacitor || !(window as any).Capacitor.isNativePlatform()) {
+        // 웹 브라우저 환경 - localhost 우선
+        const webUrl = 'http://localhost:3000';
+        cachedServerUrl = webUrl;
+        return webUrl;
+      }
+    } catch (e) {
+      // Capacitor 접근 실패 시 웹으로 간주
+      const webUrl = 'http://localhost:3000';
+      cachedServerUrl = webUrl;
+      return webUrl;
+    }
+  }
+  
+  // 네이티브 앱에서는 Railway URL 우선 사용 (배포 환경)
+>>>>>>> Stashed changes
   if (RAILWAY_URL) {
     const railwayUrl = RAILWAY_URL.startsWith('http') ? RAILWAY_URL : `https://${RAILWAY_URL}`;
     
@@ -164,8 +187,12 @@ export function getServerUrl(): string {
  */
 export async function autoDetectServerUrl(): Promise<string> {
   // Railway URL이 설정되어 있으면 최우선 시도 (HTTPS)
+<<<<<<< Updated upstream
   // Railway URL이 있으면 로컬 IP를 시도하지 않고 Railway만 사용
   console.log(`🔍 [autoDetectServerUrl] Railway URL 확인: ${RAILWAY_URL || 'null'}`);
+=======
+  // 단, 빠르게 실패하면 로컬 서버로 전환
+>>>>>>> Stashed changes
   if (RAILWAY_URL) {
     const railwayUrl = RAILWAY_URL.startsWith('http') ? RAILWAY_URL : `https://${RAILWAY_URL}`;
     console.log(`🚂 [autoDetectServerUrl] Railway 서버 우선 시도: ${railwayUrl}`);
@@ -182,7 +209,7 @@ export async function autoDetectServerUrl(): Promise<string> {
     try {
       const response = await fetch(`${railwayUrl}/health`, {
         method: 'GET',
-        signal: AbortSignal.timeout(10000)
+        signal: AbortSignal.timeout(5000) // 5초로 단축 (빠른 실패)
       });
       if (response.ok) {
         const data = await response.json();
@@ -202,6 +229,7 @@ export async function autoDetectServerUrl(): Promise<string> {
         cachedServerUrl = railwayUrl;
         return railwayUrl;
       }
+<<<<<<< Updated upstream
     } catch (error: any) {
       console.log('⚠️ [autoDetectServerUrl] Railway 서버 연결 실패, Railway URL 강제 사용:', error?.message || error);
       // Railway URL이 설정되어 있으면 실패해도 Railway URL 반환 (로컬 IP 시도 안 함)
@@ -210,6 +238,18 @@ export async function autoDetectServerUrl(): Promise<string> {
       }
       cachedServerUrl = railwayUrl;
       return railwayUrl;
+=======
+    } catch (error) {
+      console.log('⚠️ Railway 서버 연결 실패 (5초 타임아웃), 로컬 서버로 전환...', error);
+      // Railway 실패 시 localStorage에서 제거하여 로컬 서버 사용 유도
+      if (typeof window !== 'undefined') {
+        const savedUrl = localStorage.getItem(SERVER_URL_KEY);
+        if (savedUrl && savedUrl.includes('railway')) {
+          localStorage.removeItem(SERVER_URL_KEY);
+          cachedServerUrl = null;
+        }
+      }
+>>>>>>> Stashed changes
     }
   } else {
     console.log('⚠️ [autoDetectServerUrl] Railway URL이 설정되지 않았습니다.');

@@ -40,10 +40,11 @@ export async function register(data: RegisterData): Promise<AuthResponse> {
   }
   
   try {
-    // 타임아웃 설정 (10초)
+    // 타임아웃 설정 (15초로 증가 - 서버 응답 대기)
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
     
+    console.log(`📤 회원가입 요청: ${baseUrl}/auth/register`);
     const response = await fetch(`${baseUrl}/auth/register`, {
       method: 'POST',
       headers: {
@@ -54,6 +55,7 @@ export async function register(data: RegisterData): Promise<AuthResponse> {
     });
 
     clearTimeout(timeoutId);
+    console.log(`📥 회원가입 응답 상태: ${response.status}`);
 
     if (!response.ok) {
       let errorMessage = '회원가입에 실패했습니다.';
