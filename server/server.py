@@ -5102,26 +5102,28 @@ async def get_feedback_count(user_no: int = Depends(verify_token)):
         return {"success": False, "message": f"피드백 횟수 조회 실패: {str(e)}"}
 
 @app.post("/feedback/reset")
-async def reset_feedback_period():
+async def reset_feedback_period(user_no: int = Depends(verify_token)):
     """
-    피드백 기반 조정 기간 재시작 API
+    피드백 기반 조정 기간 재시작 API (사용자별 분리)
     (피드백 횟수 리셋, 다시 7번까지 가능)
     """
     try:
-        success, message = feedback_based_adjustment.reset_feedback_period(engine)
+        success, message = feedback_based_adjustment.reset_feedback_period(engine, user_no)
         
         if success:
+            logger.info(f"✅ 피드백 기간 재시작 성공 (user_no={user_no})")
             return {
                 "success": True,
                 "message": message
             }
         else:
+            logger.warning(f"⚠️ 피드백 기간 재시작 실패 (user_no={user_no}): {message}")
             return {
                 "success": False,
                 "message": message
             }
     except Exception as e:
-        logger.error(f"❌ 피드백 기간 재시작 실패: {str(e)}")
+        logger.error(f"❌ 피드백 기간 재시작 실패 (user_no={user_no}): {str(e)}")
         return {
             "success": False,
             "message": f"피드백 기간 재시작 실패: {str(e)}"
