@@ -165,10 +165,20 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     # 빈 문자열이면 False 반환
     if not hashed_password or not hashed_password.strip():
         return False
+    
+    # plain_password가 72바이트를 초과하면 잘라내기 (bcrypt 제한)
+    if isinstance(plain_password, str):
+        plain_password_bytes = plain_password.encode('utf-8')
+        if len(plain_password_bytes) > 72:
+            logger.warning(f"⚠️ 비밀번호가 72바이트를 초과하여 잘라냅니다. 원본 길이: {len(plain_password_bytes)}")
+            plain_password = plain_password_bytes[:72].decode('utf-8', errors='ignore')
+    
     try:
         return pwd_context.verify(plain_password, hashed_password)
-    except (ValueError, TypeError) as e:
+    except (ValueError, TypeError, Exception) as e:
         logger.error(f"❌ 비밀번호 검증 오류: {str(e)}, 타입: {type(hashed_password)}, 값: {hashed_password[:20] if hashed_password else 'None'}")
+        import traceback
+        logger.error(f"❌ 비밀번호 검증 오류 상세:\n{traceback.format_exc()}")
         return False
 
 def get_password_hash(password: str) -> str:
