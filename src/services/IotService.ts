@@ -75,9 +75,9 @@ class IotService {
       
       console.log(`IoT 상태 조회 요청: ${this.baseUrl}/air_conditioner/state`);
       
-      // 타임아웃 설정 (15초로 증가하여 Railway 서버 지연 대응)
+      // 타임아웃 설정 (20초로 증가하여 Railway 서버 지연 대응)
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      const timeoutId = setTimeout(() => controller.abort(), 20000);
       
       // 현재 로그인한 사용자의 user_id 가져오기
       let user_id = 'default';
@@ -171,7 +171,7 @@ class IotService {
       // 네트워크 에러인지 확인
       if (error.name === 'AbortError') {
         // Railway 서버 타임아웃 시 로컬 서버로 자동 전환 안내
-        const errorMsg = `서버 응답 시간 초과 (15초). 서버가 실행 중인지 확인해주세요. (URL: ${this.baseUrl})`;
+        const errorMsg = `서버 응답 시간 초과 (20초). 서버가 실행 중인지 확인해주세요. (URL: ${this.baseUrl})`;
         console.error('❌ 서버 타임아웃:', errorMsg);
         // Railway URL이면 로컬 서버로 전환 제안
         if (this.baseUrl.includes('railway')) {
@@ -215,9 +215,9 @@ class IotService {
 
       console.log(`IoT 제어 요청: ${this.baseUrl}/air_conditioner/control`, serverRequest);
       
-      // 타임아웃 설정 (15초로 증가하여 Railway 서버 지연 대응)
+      // 타임아웃 설정 (20초로 증가하여 Railway 서버 지연 대응)
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      const timeoutId = setTimeout(() => controller.abort(), 20000);
       
       // 현재 로그인한 사용자의 user_id 가져오기
       let user_id = 'default';

@@ -210,9 +210,7 @@ export async function autoDetectServerUrl(): Promise<string> {
         }
         // 로컬 서버로 계속 진행
       }
-<<<<<<< HEAD
     } catch (error: any) {
-    } catch (error) {
       console.log('⚠️ Railway 서버 연결 실패 (5초 타임아웃), 로컬 서버로 전환...', error);
       // Railway 실패 시 localStorage에서 제거하여 로컬 서버 사용 유도
       if (typeof window !== 'undefined') {
