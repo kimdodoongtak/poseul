@@ -202,23 +202,8 @@ security = HTTPBearer()
 # ==================== 인증 유틸리티 함수 ====================
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
     """비밀번호 검증"""
     global pwd_context
-=======
-=======
->>>>>>> Stashed changes
-    """
-    비밀번호 검증 (SHA-256 + bcrypt 방식, 기존 방식과 호환)
-    
-    새 방식: SHA-256으로 먼저 해시한 후 bcrypt
-    기존 방식: 원본 비밀번호를 직접 bcrypt (호환성 유지)
-    """
-<<<<<<< Updated upstream
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
     # hashed_password가 문자열이 아닌 경우 문자열로 변환
     if not isinstance(hashed_password, str):
         hashed_password = str(hashed_password)
@@ -226,8 +211,6 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     if not hashed_password or not hashed_password.strip():
         return False
     
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
     # plain_password가 72바이트를 초과하면 잘라내기 (bcrypt 제한)
     if isinstance(plain_password, str):
         plain_password_bytes = plain_password.encode('utf-8')
@@ -274,69 +257,6 @@ def get_password_hash(password: str) -> str:
             # pwd_context가 None이면 다시 초기화
             pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
         return pwd_context.hash(password)
-=======
-    try:
-=======
-    try:
->>>>>>> Stashed changes
-        # 새 방식: SHA-256으로 먼저 해시한 후 bcrypt 검증
-        password_bytes = plain_password.encode('utf-8')
-        password_hash = hashlib.sha256(password_bytes).hexdigest()
-        
-        if pwd_context.verify(password_hash, hashed_password):
-            return True
-        
-        # 기존 방식: 원본 비밀번호를 직접 bcrypt 검증 (호환성)
-        # (기존에 가입한 사용자들의 비밀번호 검증을 위해)
-        if pwd_context.verify(plain_password, hashed_password):
-            return True
-        
-        return False
-    except (ValueError, TypeError) as e:
-        logger.error(f"❌ 비밀번호 검증 오류: {str(e)}, 타입: {type(hashed_password)}, 값: {hashed_password[:20] if hashed_password else 'None'}")
-        return False
-
-def get_password_hash(password: str) -> str:
-    """
-    비밀번호 해싱 (bcrypt는 72바이트 제한이 있으므로 SHA-256으로 먼저 해시)
-    
-    이 방법을 사용하면:
-    - 어떤 길이의 비밀번호든 사용 가능 (제한 없음)
-    - SHA-256 해시는 항상 32바이트로 고정되어 bcrypt 제한 내에 안전하게 들어감
-    - 보안성 유지 (SHA-256 + bcrypt의 이중 해싱)
-    """
-    if not isinstance(password, str):
-        password = str(password)
-    
-    # 원본 비밀번호 바이트 길이 확인 (로깅용)
-    password_bytes = password.encode('utf-8')
-    original_length = len(password_bytes)
-    
-    # 비밀번호를 먼저 SHA-256으로 해시 (항상 32바이트로 고정)
-    # 이렇게 하면 어떤 길이의 비밀번호든 bcrypt 제한 내에서 처리 가능
-    password_hash = hashlib.sha256(password_bytes).hexdigest()
-    
-    # SHA-256 해시 결과를 bcrypt로 다시 해싱
-    # hexdigest()는 64자 문자열이지만, 이를 바이트로 변환하면 32바이트
-    # 또는 hexdigest() 문자열 자체를 사용 (64자 = 64바이트, 여전히 72바이트 제한 내)
-    try:
-        # hexdigest() 문자열을 직접 사용 (64바이트, 72바이트 제한 내)
-        return pwd_context.hash(password_hash)
-    except Exception as e:
-        # 만약 여전히 문제가 발생하면 (거의 없을 것), 원본 비밀번호를 자르는 방식으로 fallback
-        logger.error(f"❌ 비밀번호 해싱 실패: {str(e)}")
-        if original_length > 72:
-            truncated_bytes = password_bytes[:72]
-            while truncated_bytes and (truncated_bytes[-1] & 0xC0) == 0x80:
-                truncated_bytes = truncated_bytes[:-1]
-            password = truncated_bytes.decode('utf-8', errors='ignore')
-            logger.warning(f"⚠️ Fallback: 비밀번호를 72바이트로 자름: 원본 {original_length}바이트")
-            return pwd_context.hash(password)
-        raise
-<<<<<<< Updated upstream
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     """JWT 토큰 생성"""
