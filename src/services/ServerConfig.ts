@@ -213,6 +213,7 @@ export async function autoDetectServerUrl(): Promise<string> {
   }
   
   // 0. 하드코딩된 서버 URL 목록 확인 (병렬로 시도, 첫 번째 IP 우선)
+  // 주의: Railway URL이 있으면 이미 위에서 처리되었으므로 여기서는 하드코딩된 IP만 시도
   const hardcodedUrls = HARDCODED_SERVER_IPS.map(ip => `http://${ip}:3000`);
   console.log(`🔍 하드코딩된 서버 IP 목록 확인 중: ${HARDCODED_SERVER_IPS.join(', ')}`);
   
