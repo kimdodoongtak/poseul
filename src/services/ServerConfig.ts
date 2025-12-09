@@ -156,9 +156,10 @@ export function getServerUrl(): string {
  */
 export async function autoDetectServerUrl(): Promise<string> {
   // Railway URL이 설정되어 있으면 최우선 시도 (HTTPS)
+  console.log(`🔍 [autoDetectServerUrl] Railway URL 확인: ${RAILWAY_URL || 'null'}`);
   if (RAILWAY_URL) {
     const railwayUrl = RAILWAY_URL.startsWith('http') ? RAILWAY_URL : `https://${RAILWAY_URL}`;
-    console.log(`🚂 [iOS] Railway 서버 우선 시도: ${railwayUrl}`);
+    console.log(`🚂 [autoDetectServerUrl] Railway 서버 우선 시도: ${railwayUrl}`);
     try {
       const response = await fetch(`${railwayUrl}/health`, {
         method: 'GET',
@@ -171,16 +172,16 @@ export async function autoDetectServerUrl(): Promise<string> {
           localStorage.setItem(SERVER_URL_KEY, serverUrl);
         }
         cachedServerUrl = serverUrl;
-        console.log('✅ [iOS] Railway 서버 연결 성공:', serverUrl);
+        console.log('✅ [autoDetectServerUrl] Railway 서버 연결 성공:', serverUrl);
         return serverUrl;
       } else {
-        console.log(`⚠️ [iOS] Railway 서버 응답 실패 (${response.status}), 다른 IP 시도...`);
+        console.log(`⚠️ [autoDetectServerUrl] Railway 서버 응답 실패 (${response.status}), 다른 IP 시도...`);
       }
     } catch (error: any) {
-      console.log('⚠️ [iOS] Railway 서버 연결 실패, 다른 IP 시도...', error?.message || error);
+      console.log('⚠️ [autoDetectServerUrl] Railway 서버 연결 실패, 다른 IP 시도...', error?.message || error);
     }
   } else {
-    console.log('⚠️ [iOS] Railway URL이 설정되지 않았습니다.');
+    console.log('⚠️ [autoDetectServerUrl] Railway URL이 설정되지 않았습니다.');
   }
   
   // 웹 환경에서는 localhost 우선 시도
@@ -231,6 +232,7 @@ export async function autoDetectServerUrl(): Promise<string> {
   
   // 0. 하드코딩된 서버 URL 목록 확인 (병렬로 시도, 첫 번째 IP 우선)
   // 주의: Railway URL이 있으면 이미 위에서 처리되었으므로 여기서는 하드코딩된 IP만 시도
+  console.log(`⚠️ [autoDetectServerUrl] Railway URL 시도 실패 또는 없음, 하드코딩된 IP 목록 시도 시작`);
   const hardcodedUrls = HARDCODED_SERVER_IPS.map(ip => `http://${ip}:3000`);
   console.log(`🔍 하드코딩된 서버 IP 목록 확인 중: ${HARDCODED_SERVER_IPS.join(', ')}`);
   
