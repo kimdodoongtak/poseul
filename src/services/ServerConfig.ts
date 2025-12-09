@@ -80,6 +80,15 @@ export function getServerUrl(): string {
   if (typeof window !== 'undefined') {
     const savedUrl = localStorage.getItem(SERVER_URL_KEY);
     if (savedUrl && !savedUrl.includes('10.0.2.2')) {
+      // Railway URL이 설정되어 있는데 localStorage에 다른 URL이 저장되어 있으면 제거
+      if (RAILWAY_URL && !savedUrl.includes('railway.app')) {
+        console.log('🗑️ [iOS] Railway URL이 설정되어 있는데 다른 URL이 저장됨, 제거:', savedUrl);
+        localStorage.removeItem(SERVER_URL_KEY);
+        cachedServerUrl = null;
+        // Railway URL 반환
+        const railwayUrl = RAILWAY_URL.startsWith('http') ? RAILWAY_URL : `https://${RAILWAY_URL}`;
+        return railwayUrl;
+      }
       // iOS에서 localhost인 경우 제외
       if (savedUrl.includes('localhost')) {
         try {
@@ -285,20 +294,27 @@ export async function autoDetectServerUrl(): Promise<string> {
   if (typeof window !== 'undefined') {
     const savedUrl = localStorage.getItem(SERVER_URL_KEY);
     if (savedUrl) {
-      // 현재 하드코딩된 첫 번째 IP와 다르면 제거 (IP가 변경되었을 수 있음)
-      const currentFirstIp = HARDCODED_SERVER_IPS[0];
-      if (savedUrl.includes(currentFirstIp) === false && savedUrl.match(/192\.168\.68\.\d+/)) {
-        console.log(`⚠️ 저장된 URL이 현재 IP(${currentFirstIp})와 다름, 자동 감지 시작:`, savedUrl);
+      // Railway URL이 설정되어 있는데 localStorage에 다른 URL이 저장되어 있으면 제거
+      if (RAILWAY_URL && !savedUrl.includes('railway.app')) {
+        console.log('🗑️ [iOS] Railway URL이 설정되어 있는데 다른 URL이 저장됨, 제거:', savedUrl);
         localStorage.removeItem(SERVER_URL_KEY);
         cachedServerUrl = null;
       }
-      // 잘못된 IP 대역이면 즉시 제거하고 자동 감지 시작
-      // 10.0.2.2는 에뮬레이터용이므로 실제 기기에서는 작동하지 않음
-      else if (savedUrl.includes('192.168.68.74') || savedUrl.includes('192.168.68.76') || savedUrl.includes('192.168.68.77') || savedUrl.includes('192.168.0.57') || savedUrl.includes('10.0.2.2')) {
-        console.log('⚠️ 잘못된 URL 감지 (에뮬레이터용 또는 잘못된 IP), 자동 감지 시작:', savedUrl);
-        localStorage.removeItem(SERVER_URL_KEY);
-        cachedServerUrl = null;
-      } else {
+      // 현재 하드코딩된 첫 번째 IP와 다르면 제거 (IP가 변경되었을 수 있음)
+      else if (!savedUrl.includes('railway.app')) {
+        const currentFirstIp = HARDCODED_SERVER_IPS[0];
+        if (savedUrl.includes(currentFirstIp) === false && savedUrl.match(/192\.168\.68\.\d+/)) {
+          console.log(`⚠️ 저장된 URL이 현재 IP(${currentFirstIp})와 다름, 자동 감지 시작:`, savedUrl);
+          localStorage.removeItem(SERVER_URL_KEY);
+          cachedServerUrl = null;
+        }
+        // 잘못된 IP 대역이면 즉시 제거하고 자동 감지 시작
+        // 10.0.2.2는 에뮬레이터용이므로 실제 기기에서는 작동하지 않음
+        else if (savedUrl.includes('192.168.68.74') || savedUrl.includes('192.168.68.76') || savedUrl.includes('192.168.68.77') || savedUrl.includes('192.168.0.57') || savedUrl.includes('10.0.2.2')) {
+          console.log('⚠️ 잘못된 URL 감지 (에뮬레이터용 또는 잘못된 IP), 자동 감지 시작:', savedUrl);
+          localStorage.removeItem(SERVER_URL_KEY);
+          cachedServerUrl = null;
+        } else {
         // 유효한 URL이면 health 체크 후 서버가 알려준 IP로 업데이트
         try {
           const response = await fetch(`${savedUrl}/health`, { 
