@@ -570,6 +570,17 @@ IOT_MODULE_PATH = os.path.join(PROJECT_ROOT, 'android', 'plus', 'IoT')
 sys.path.insert(0, IOT_MODULE_PATH)
 
 AIR_CONDITIONER_AVAILABLE = False
+# 기본값 설정 (import 실패 시 사용)
+get_air_conditioner_state = None
+set_temperature = None
+set_job_mode = None
+set_wind_strength = None
+set_power = None
+set_timer = None
+AIR_CONDITIONER_DEVICE_ID = None
+get_devices = None
+generate_device_api_header = None
+
 try:
     from airconditional import (
         get_air_conditioner_state,
@@ -5008,18 +5019,21 @@ async def update_thresholds_api(data: ThresholdUpdateRequest, user_no: int = Dep
                 def update_thresholds_wrapper(new_cold: float, new_hot: float):
                     update_thresholds(new_cold, new_hot, user_no)
                 
-                # 제어 로직 즉시 실행
-                air_conditioner_auto_control.adjust_air_conditioner(
-                    engine=engine,
-                    air_conditioner_available=AIR_CONDITIONER_AVAILABLE,
-                    get_air_conditioner_state_func=get_air_conditioner_state,
-                    set_temperature_func=set_temperature,
-                    cold_threshold=cold_threshold,
-                    hot_threshold=hot_threshold,
-                    update_threshold_callback=update_thresholds_wrapper,
-                                min_interval_minutes=30.0,  # 30분 간격으로 조절
-                    user_no=user_no
-                )
+                # 제어 로직 즉시 실행 (에어컨 모듈이 있을 때만)
+                if AIR_CONDITIONER_AVAILABLE and get_air_conditioner_state is not None:
+                    air_conditioner_auto_control.adjust_air_conditioner(
+                        engine=engine,
+                        air_conditioner_available=AIR_CONDITIONER_AVAILABLE,
+                        get_air_conditioner_state_func=get_air_conditioner_state,
+                        set_temperature_func=set_temperature,
+                        cold_threshold=cold_threshold,
+                        hot_threshold=hot_threshold,
+                        update_threshold_callback=update_thresholds_wrapper,
+                                    min_interval_minutes=30.0,  # 30분 간격으로 조절
+                        user_no=user_no
+                    )
+                else:
+                    logger.info("ℹ️  에어컨 모듈이 없어 제어 로직을 건너뜁니다.")
                 logger.info(f"✅ 임계값 업데이트 즉시 적용 완료 (user_no={user_no})")
             else:
                 logger.info(f"ℹ️ 수면 모드가 비활성화되어 있어 즉시 적용하지 않습니다. (user_no={user_no})")
@@ -5771,12 +5785,15 @@ async def startup_event():
     # IoT 디바이스 등록 정보 초기화 (서버 재시작 시마다 매번 새로 등록하도록)
     load_iot_devices_from_db()  # 이 함수는 이제 등록 정보를 초기화만 함
     
-    air_conditioner_auto_control.initialize_air_conditioner_settings(
-        engine=engine,
-        air_conditioner_available=AIR_CONDITIONER_AVAILABLE,
-        get_air_conditioner_state_func=get_air_conditioner_state,
-        set_temperature_func=set_temperature
-    )
+    if AIR_CONDITIONER_AVAILABLE and get_air_conditioner_state is not None:
+        air_conditioner_auto_control.initialize_air_conditioner_settings(
+            engine=engine,
+            air_conditioner_available=AIR_CONDITIONER_AVAILABLE,
+            get_air_conditioner_state_func=get_air_conditioner_state,
+            set_temperature_func=set_temperature
+        )
+    else:
+        logger.info("ℹ️  에어컨 모듈이 없어 스케줄러 초기화를 건너뜁니다.")
     scheduler.start()
     logger.info("✅ 스케줄러 시작 완료 (30분마다 백업용 자동 조절)")
 
