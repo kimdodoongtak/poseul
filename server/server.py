@@ -169,7 +169,20 @@ except ImportError:
     logger.error("❌ bcrypt 모듈을 찾을 수 없습니다.")
     bcrypt_version = "not installed"
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# passlib의 bcrypt 백엔드를 명시적으로 설정하여 호환성 문제 해결
+try:
+    from passlib.hash import bcrypt as bcrypt_handler
+    # bcrypt 백엔드를 명시적으로 설정
+    pwd_context = CryptContext(
+        schemes=["bcrypt"],
+        deprecated="auto",
+        bcrypt__ident="2b",  # bcrypt 버전 2b 사용
+        bcrypt__rounds=12,   # 라운드 수 명시
+    )
+    logger.info("✅ passlib bcrypt 백엔드 설정 완료")
+except Exception as e:
+    logger.warning(f"⚠️ passlib bcrypt 백엔드 설정 실패, 기본 설정 사용: {e}")
+    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # HTTP Bearer 토큰
 security = HTTPBearer()
