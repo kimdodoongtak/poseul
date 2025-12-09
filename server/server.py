@@ -2940,11 +2940,56 @@ async def receive_health_data(data: HealthData, user_no: Optional[int] = Depends
                                     logger.error(f"❌ 사용자별 에어컨 상태 조회 실패 (user_no={user_no}): {e}")
                                     return None
                             
+                            # user_no를 사용하여 사용자별 PAT 토큰으로 온도를 설정하는 래퍼 함수 생성
+                            def set_temperature_with_user(target_temp: float, unit: str = 'C'):
+                                try:
+                                    # user_no로 user_id 조회 (login 테이블 사용)
+                                    with engine.connect() as conn:
+                                        user_query = text("SELECT id FROM login WHERE no = :user_no")
+                                        user_result = conn.execute(user_query, {'user_no': user_no})
+                                        user_row = user_result.fetchone()
+                                        if not user_row:
+                                            logger.warning(f"⚠️ user_no={user_no}에 해당하는 사용자를 찾을 수 없습니다.")
+                                            return
+                                        user_id = user_row.id
+                                    
+                                    # user_id로 PAT 토큰과 device_id 조회
+                                    with engine.connect() as conn:
+                                        device_query = text("""
+                                            SELECT pat_token, device_id
+                                            FROM iot_devices
+                                            WHERE user_id = :user_id
+                                            ORDER BY updated_at DESC
+                                            LIMIT 1
+                                        """)
+                                        device_result = conn.execute(device_query, {'user_id': user_id})
+                                        device_row = device_result.fetchone()
+                                        if not device_row:
+                                            logger.warning(f"⚠️ user_id={user_id}에 등록된 디바이스가 없습니다.")
+                                            return
+                                        pat_token = device_row.pat_token
+                                        device_id = device_row.device_id
+                                    
+                                    # PAT 토큰으로 온도 설정
+                                    command = {
+                                        "temperature": {
+                                            "targetTemperature": float(target_temp)
+                                        }
+                                    }
+                                    send_device_command_with_pat_token(pat_token, device_id, command)
+                                    logger.info(f"✅ 사용자별 에어컨 온도 설정 성공 (user_no={user_no}): {target_temp}°{unit}")
+                                except Exception as e:
+                                    logger.error(f"❌ 사용자별 에어컨 온도 설정 실패 (user_no={user_no}): {e}")
+                                    raise
+                            
+                            # set_temperature가 None이면 PAT 토큰 기반 함수 사용
+                            set_temperature_func_to_use = set_temperature if set_temperature is not None else set_temperature_with_user
+                            
                             air_conditioner_auto_control.adjust_air_conditioner(
                                 engine=engine,
-                                air_conditioner_available=AIR_CONDITIONER_AVAILABLE,
+                                air_conditioner_available=True,  # PAT 토큰 기반이므로 항상 True
                                 get_air_conditioner_state_func=get_air_conditioner_state_with_user,
-                                set_temperature_func=set_temperature,
+                                set_temperature_func=set_temperature_func_to_use,
                                 cold_threshold=cold_threshold,
                                 hot_threshold=hot_threshold,
                                 update_threshold_callback=update_thresholds_wrapper,
@@ -5733,11 +5778,56 @@ def adjust_air_conditioner_wrapper():
                     logger.error(f"❌ 사용자별 에어컨 상태 조회 실패 (user_no={user_no}): {e}")
                     return None
             
+            # user_no를 사용하여 사용자별 PAT 토큰으로 온도를 설정하는 래퍼 함수 생성
+            def set_temperature_with_user(target_temp: float, unit: str = 'C'):
+                try:
+                    # user_no로 user_id 조회 (login 테이블 사용)
+                    with engine.connect() as conn:
+                        user_query = text("SELECT id FROM login WHERE no = :user_no")
+                        user_result = conn.execute(user_query, {'user_no': user_no})
+                        user_row = user_result.fetchone()
+                        if not user_row:
+                            logger.warning(f"⚠️ user_no={user_no}에 해당하는 사용자를 찾을 수 없습니다.")
+                            return
+                        user_id = user_row.id
+                    
+                    # user_id로 PAT 토큰과 device_id 조회
+                    with engine.connect() as conn:
+                        device_query = text("""
+                            SELECT pat_token, device_id
+                            FROM iot_devices
+                            WHERE user_id = :user_id
+                            ORDER BY updated_at DESC
+                            LIMIT 1
+                        """)
+                        device_result = conn.execute(device_query, {'user_id': user_id})
+                        device_row = device_result.fetchone()
+                        if not device_row:
+                            logger.warning(f"⚠️ user_id={user_id}에 등록된 디바이스가 없습니다.")
+                            return
+                        pat_token = device_row.pat_token
+                        device_id = device_row.device_id
+                    
+                    # PAT 토큰으로 온도 설정
+                    command = {
+                        "temperature": {
+                            "targetTemperature": float(target_temp)
+                        }
+                    }
+                    send_device_command_with_pat_token(pat_token, device_id, command)
+                    logger.info(f"✅ 사용자별 에어컨 온도 설정 성공 (user_no={user_no}): {target_temp}°{unit}")
+                except Exception as e:
+                    logger.error(f"❌ 사용자별 에어컨 온도 설정 실패 (user_no={user_no}): {e}")
+                    raise
+            
+            # set_temperature가 None이면 PAT 토큰 기반 함수 사용
+            set_temperature_func_to_use = set_temperature if set_temperature is not None else set_temperature_with_user
+            
             air_conditioner_auto_control.adjust_air_conditioner(
                 engine=engine,
-                air_conditioner_available=AIR_CONDITIONER_AVAILABLE,
+                air_conditioner_available=True,  # PAT 토큰 기반이므로 항상 True
                 get_air_conditioner_state_func=get_air_conditioner_state_with_user,
-                set_temperature_func=set_temperature,
+                set_temperature_func=set_temperature_func_to_use,
                 cold_threshold=cold_threshold,
                 hot_threshold=hot_threshold,
                 update_threshold_callback=update_thresholds_wrapper,
