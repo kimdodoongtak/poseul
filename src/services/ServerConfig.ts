@@ -28,7 +28,10 @@ export function getServerUrl(): string {
   if (RAILWAY_URL) {
     const railwayUrl = RAILWAY_URL.startsWith('http') ? RAILWAY_URL : `https://${RAILWAY_URL}`;
     cachedServerUrl = railwayUrl;
+    console.log(`🚂 [getServerUrl] Railway URL 사용: ${railwayUrl}`);
     return railwayUrl;
+  } else {
+    console.log('⚠️ [getServerUrl] Railway URL이 설정되지 않았습니다.');
   }
   
   // 웹 환경에서는 localhost 우선 사용
@@ -146,6 +149,7 @@ export async function autoDetectServerUrl(): Promise<string> {
   // Railway URL이 설정되어 있으면 최우선 시도 (HTTPS)
   if (RAILWAY_URL) {
     const railwayUrl = RAILWAY_URL.startsWith('http') ? RAILWAY_URL : `https://${RAILWAY_URL}`;
+    console.log(`🚂 [iOS] Railway 서버 우선 시도: ${railwayUrl}`);
     try {
       const response = await fetch(`${railwayUrl}/health`, {
         method: 'GET',
@@ -158,12 +162,16 @@ export async function autoDetectServerUrl(): Promise<string> {
           localStorage.setItem(SERVER_URL_KEY, serverUrl);
         }
         cachedServerUrl = serverUrl;
-        console.log('✅ Railway 서버 연결 성공:', serverUrl);
+        console.log('✅ [iOS] Railway 서버 연결 성공:', serverUrl);
         return serverUrl;
+      } else {
+        console.log(`⚠️ [iOS] Railway 서버 응답 실패 (${response.status}), 다른 IP 시도...`);
       }
-    } catch (error) {
-      console.log('⚠️ Railway 서버 연결 실패, 다른 IP 시도...', error);
+    } catch (error: any) {
+      console.log('⚠️ [iOS] Railway 서버 연결 실패, 다른 IP 시도...', error?.message || error);
     }
+  } else {
+    console.log('⚠️ [iOS] Railway URL이 설정되지 않았습니다.');
   }
   
   // 웹 환경에서는 localhost 우선 시도
