@@ -1124,6 +1124,10 @@ class LoginRequest(BaseModel):
     id: str  # 이메일 또는 사용자 아이디
     password: str
 
+class ResetPasswordRequest(BaseModel):
+    id: str  # 사용자 아이디
+    new_password: str  # 새 비밀번호
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
@@ -1697,6 +1701,52 @@ async def login(data: LoginRequest, request: Request):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"로그인 실패: {str(e)}"
+        )
+
+@app.post("/auth/reset-password")
+async def reset_password(data: ResetPasswordRequest):
+    """
+    비밀번호 재설정 API (개발/테스트용 - 프로덕션에서는 이메일 인증 추가 필요)
+    """
+    try:
+        with engine.connect() as conn:
+            # 사용자 조회
+            query = text("""
+                SELECT no, id FROM login WHERE id = :id
+            """)
+            result = conn.execute(query, {"id": data.id})
+            user = result.fetchone()
+            
+            if not user:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="사용자를 찾을 수 없습니다."
+                )
+            
+            # 새 비밀번호 해싱
+            hashed_password = get_password_hash(data.new_password)
+            
+            # 비밀번호 업데이트
+            update_query = text("""
+                UPDATE login SET password = :password WHERE no = :no
+            """)
+            conn.execute(update_query, {"no": user.no, "password": hashed_password})
+            conn.commit()
+            
+            logger.info(f"✅ 비밀번호 재설정 완료: {data.id} (no: {user.no})")
+            
+            return {
+                "success": True,
+                "message": "비밀번호가 재설정되었습니다."
+            }
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 비밀번호 재설정 실패: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"비밀번호 재설정 실패: {str(e)}"
         )
 
 @app.get("/auth/me")
