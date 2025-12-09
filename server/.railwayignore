@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+
+# Logs
+*.log
+logs/
+server.log
+
+# Cache
+cache/
+*.json.bak
+feedback_count.json
+temperature_feedback.json
+temperature_feedback.json.bak
+
+# Profile images (업로드된 이미지는 Railway의 볼륨에 저장)
+profile_images/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test files
+test_*.py
+
+# Build artifacts
+*.pkl
+dist/
+build/
+
+# Environment
+.env
+.env.local
+

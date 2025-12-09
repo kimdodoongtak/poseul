@@ -121,7 +121,11 @@ async def track_connectivity_errors(request: Request, call_next):
 # Port: 3306
 # Database: main (URL에서 확인)
 # Password: dyvVyn-kihxe0-parxes
-DB_URL = "mysql+pymysql://iriskimhs:dyvVyn-kihxe0-parxes@aiservice.cd0you2cyo60.ap-northeast-2.rds.amazonaws.com:3306/main"
+# 환경 변수에서 DB_URL 가져오기 (Railway 배포 시 사용), 없으면 기본값 사용
+DB_URL = os.getenv(
+    "DB_URL",
+    "mysql+pymysql://iriskimhs:dyvVyn-kihxe0-parxes@aiservice.cd0you2cyo60.ap-northeast-2.rds.amazonaws.com:3306/main"
+)
 # 연결 옵션 추가 (SSL, 타임아웃 등)
 # pymysql의 SSL 설정: ssl_disabled=True로 비활성화하거나, ssl_ca 인증서 경로 지정
 # DBeaver에서 연결이 되면 SSL 없이도 연결 가능할 수 있음
@@ -5787,6 +5791,9 @@ if __name__ == "__main__":
     import uvicorn
     import os
     
+    # Railway는 PORT 환경 변수를 제공하므로 사용, 없으면 기본값 3000
+    port = int(os.getenv("PORT", 3000))
+    
     # SSL 인증서 파일 경로
     SSL_KEYFILE = os.path.join(os.path.dirname(__file__), "server.key")
     SSL_CERTFILE = os.path.join(os.path.dirname(__file__), "server.crt")
@@ -5797,10 +5804,10 @@ if __name__ == "__main__":
         uvicorn.run(
             app, 
             host="0.0.0.0", 
-            port=3000,
+            port=port,
             ssl_keyfile=SSL_KEYFILE,
             ssl_certfile=SSL_CERTFILE,
             access_log=False  # HTTP 요청 로그 비활성화
         )
     else:
-        uvicorn.run(app, host="0.0.0.0", port=3000, access_log=False)  # HTTP 요청 로그 비활성화
+        uvicorn.run(app, host="0.0.0.0", port=port, access_log=False)  # HTTP 요청 로그 비활성화

@@ -5,9 +5,15 @@
 
 const SERVER_URL_KEY = 'server_url';
 
+// Railway 배포 URL (환경 변수에서 가져오거나 하드코딩)
+// 배포 후 Railway에서 제공하는 URL로 변경하세요 (예: 'your-app.railway.app')
+const RAILWAY_URL = typeof import.meta !== 'undefined' && import.meta.env?.VITE_RAILWAY_URL 
+  ? import.meta.env.VITE_RAILWAY_URL 
+  : null; // Railway URL이 설정되지 않으면 null
+
 // 하드코딩된 서버 IP 목록 (우선 사용)
-// 현재 네트워크: 192.168.68.x 대역 (현재 컴퓨터 IP: 192.168.68.76)
-const HARDCODED_SERVER_IPS = ['192.168.68.76', '172.29.88.134', '172.15.5.58', '192.168.0.143', '172.30.1.68', '192.168.68.75', '192.168.68.77', '192.168.68.72', '172.15.5.72', '192.168.219.125'];
+// 현재 네트워크: 192.168.68.x 대역 (현재 컴퓨터 IP: 192.168.68.66)
+const HARDCODED_SERVER_IPS = ['192.168.68.66', '172.29.88.134', '172.15.5.58', '192.168.0.143', '172.30.1.68', '192.168.68.75', '192.168.68.76', '192.168.68.77', '192.168.68.72', '172.15.5.72', '192.168.219.125'];
 const HARDCODED_SERVER_URL = `http://${HARDCODED_SERVER_IPS[0]}:3000`; // 첫 번째를 기본값으로 사용
 
 // 동기 버전 (기본값 반환용)
@@ -15,9 +21,16 @@ let cachedServerUrl: string | null = null;
 
 /**
  * 서버 URL 가져오기 (동기 버전 - 빠른 접근용)
- * 우선순위: 웹 환경에서는 localhost > 하드코딩된 IP > 캐시 > localStorage > 환경 변수 > 기본값
+ * 우선순위: Railway URL > 웹 환경에서는 localhost > 하드코딩된 IP > 캐시 > localStorage > 환경 변수 > 기본값
  */
 export function getServerUrl(): string {
+  // Railway URL이 설정되어 있으면 최우선 사용 (HTTPS)
+  if (RAILWAY_URL) {
+    const railwayUrl = RAILWAY_URL.startsWith('http') ? RAILWAY_URL : `https://${RAILWAY_URL}`;
+    cachedServerUrl = railwayUrl;
+    return railwayUrl;
+  }
+  
   // 웹 환경에서는 localhost 우선 사용
   if (typeof window !== 'undefined') {
     try {
@@ -130,6 +143,29 @@ export function getServerUrl(): string {
  * 연결 실패 시 여러 IP를 시도하여 자동으로 찾음
  */
 export async function autoDetectServerUrl(): Promise<string> {
+  // Railway URL이 설정되어 있으면 최우선 시도 (HTTPS)
+  if (RAILWAY_URL) {
+    const railwayUrl = RAILWAY_URL.startsWith('http') ? RAILWAY_URL : `https://${RAILWAY_URL}`;
+    try {
+      const response = await fetch(`${railwayUrl}/health`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(10000)
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const serverUrl = data.server_url || railwayUrl;
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(SERVER_URL_KEY, serverUrl);
+        }
+        cachedServerUrl = serverUrl;
+        console.log('✅ Railway 서버 연결 성공:', serverUrl);
+        return serverUrl;
+      }
+    } catch (error) {
+      console.log('⚠️ Railway 서버 연결 실패, 다른 IP 시도...', error);
+    }
+  }
+  
   // 웹 환경에서는 localhost 우선 시도
   if (typeof window !== 'undefined') {
     try {
@@ -240,9 +276,16 @@ export async function autoDetectServerUrl(): Promise<string> {
   if (typeof window !== 'undefined') {
     const savedUrl = localStorage.getItem(SERVER_URL_KEY);
     if (savedUrl) {
+      // 현재 하드코딩된 첫 번째 IP와 다르면 제거 (IP가 변경되었을 수 있음)
+      const currentFirstIp = HARDCODED_SERVER_IPS[0];
+      if (savedUrl.includes(currentFirstIp) === false && savedUrl.match(/192\.168\.68\.\d+/)) {
+        console.log(`⚠️ 저장된 URL이 현재 IP(${currentFirstIp})와 다름, 자동 감지 시작:`, savedUrl);
+        localStorage.removeItem(SERVER_URL_KEY);
+        cachedServerUrl = null;
+      }
       // 잘못된 IP 대역이면 즉시 제거하고 자동 감지 시작
       // 10.0.2.2는 에뮬레이터용이므로 실제 기기에서는 작동하지 않음
-      if (savedUrl.includes('192.168.68.74') || savedUrl.includes('192.168.68.77') || savedUrl.includes('192.168.0.57') || savedUrl.includes('10.0.2.2')) {
+      else if (savedUrl.includes('192.168.68.74') || savedUrl.includes('192.168.68.76') || savedUrl.includes('192.168.68.77') || savedUrl.includes('192.168.0.57') || savedUrl.includes('10.0.2.2')) {
         console.log('⚠️ 잘못된 URL 감지 (에뮬레이터용 또는 잘못된 IP), 자동 감지 시작:', savedUrl);
         localStorage.removeItem(SERVER_URL_KEY);
         cachedServerUrl = null;
@@ -328,12 +371,12 @@ export async function autoDetectServerUrl(): Promise<string> {
     
     if (platform === 'android') {
       // 실제 기기에서는 10.0.2.2가 작동하지 않으므로, 실제 IP를 먼저 시도
-      // 하드코딩된 서버 IP 목록 최우선 시도
-      HARDCODED_SERVER_IPS.forEach(ip => {
+      // 현재 네트워크 IP 최우선 시도 (현재 컴퓨터 IP - 첫 번째)
+      ipCandidates.push(`http://${HARDCODED_SERVER_IPS[0]}:3000`);
+      // 하드코딩된 서버 IP 목록 나머지 시도
+      HARDCODED_SERVER_IPS.slice(1).forEach(ip => {
         ipCandidates.push(`http://${ip}:3000`);
       });
-      // 현재 네트워크 IP 최우선 시도 (192.168.68.76 - 현재 컴퓨터 IP)
-      ipCandidates.push('http://192.168.68.76:3000');
       // 192.168.0.x 대역 시도 (현재 네트워크)
       for (const ip of [1, 100, 143, 200, 254]) {
         const url = `http://192.168.0.${ip}:3000`;
@@ -388,12 +431,12 @@ export async function autoDetectServerUrl(): Promise<string> {
       // 마지막에 에뮬레이터용 IP 시도 (실제 기기에서는 실패할 것)
       ipCandidates.push('http://10.0.2.2:3000');
     } else if (platform === 'ios') {
-      // 하드코딩된 서버 IP 목록 최우선 시도
-      HARDCODED_SERVER_IPS.forEach(ip => {
+      // 현재 네트워크 IP 최우선 시도 (현재 컴퓨터 IP - 첫 번째)
+      ipCandidates.push(`http://${HARDCODED_SERVER_IPS[0]}:3000`);
+      // 하드코딩된 서버 IP 목록 나머지 시도
+      HARDCODED_SERVER_IPS.slice(1).forEach(ip => {
         ipCandidates.push(`http://${ip}:3000`);
       });
-      // 현재 네트워크 IP 최우선 시도 (192.168.68.76 - 현재 컴퓨터 IP)
-      ipCandidates.push('http://192.168.68.76:3000');
       // 192.168.0.x 대역 시도 (현재 네트워크)
       for (const ip of [1, 100, 143, 200, 254]) {
         const url = `http://192.168.0.${ip}:3000`;
@@ -439,12 +482,12 @@ export async function autoDetectServerUrl(): Promise<string> {
       ipCandidates.push('http://localhost:3000');
     } else {
       ipCandidates.push('http://localhost:3000');
-      // 하드코딩된 서버 IP 목록 최우선 시도
-      HARDCODED_SERVER_IPS.forEach(ip => {
+      // 웹에서도 현재 네트워크 IP 최우선 시도 (현재 컴퓨터 IP - 첫 번째)
+      ipCandidates.push(`http://${HARDCODED_SERVER_IPS[0]}:3000`);
+      // 하드코딩된 서버 IP 목록 나머지 시도
+      HARDCODED_SERVER_IPS.slice(1).forEach(ip => {
         ipCandidates.push(`http://${ip}:3000`);
       });
-      // 웹에서도 현재 네트워크 IP 최우선 시도 (192.168.68.76 - 현재 컴퓨터 IP)
-      ipCandidates.push('http://192.168.68.76:3000');
       // 192.168.0.x 대역 시도 (현재 네트워크)
       for (const ip of [1, 100, 143, 200, 254]) {
         const url = `http://192.168.0.${ip}:3000`;
