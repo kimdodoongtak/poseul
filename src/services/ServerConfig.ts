@@ -9,7 +9,7 @@ const SERVER_URL_KEY = 'server_url';
 // 배포 후 Railway에서 제공하는 URL로 변경하세요 (예: 'your-app.railway.app')
 const RAILWAY_URL = typeof import.meta !== 'undefined' && import.meta.env?.VITE_RAILWAY_URL 
   ? import.meta.env.VITE_RAILWAY_URL 
-  : null; // Railway URL이 설정되지 않으면 null
+  : 'poseul-production.up.railway.app'; // Railway URL (기본값)
 
 // 하드코딩된 서버 IP 목록 (우선 사용)
 // 현재 네트워크: 192.168.68.x 대역 (현재 컴퓨터 IP: 192.168.68.66)
