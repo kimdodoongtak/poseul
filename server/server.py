@@ -5062,21 +5062,99 @@ async def update_thresholds_api(data: ThresholdUpdateRequest, user_no: int = Dep
                 def update_thresholds_wrapper(new_cold: float, new_hot: float):
                     update_thresholds(new_cold, new_hot, user_no)
                 
-                # 제어 로직 즉시 실행 (에어컨 모듈이 있을 때만)
-                if AIR_CONDITIONER_AVAILABLE and get_air_conditioner_state is not None:
-                    air_conditioner_auto_control.adjust_air_conditioner(
-                        engine=engine,
-                        air_conditioner_available=AIR_CONDITIONER_AVAILABLE,
-                        get_air_conditioner_state_func=get_air_conditioner_state,
-                        set_temperature_func=set_temperature,
-                        cold_threshold=cold_threshold,
-                        hot_threshold=hot_threshold,
-                        update_threshold_callback=update_thresholds_wrapper,
-                                    min_interval_minutes=30.0,  # 30분 간격으로 조절
-                        user_no=user_no
-                    )
-                else:
-                    logger.info("ℹ️  에어컨 모듈이 없어 제어 로직을 건너뜁니다.")
+                # 제어 로직 즉시 실행 (PAT 토큰 기반)
+                # user_no를 사용하여 사용자별 PAT 토큰과 device_id를 가져오는 래퍼 함수 생성
+                def get_air_conditioner_state_with_user():
+                    try:
+                        # user_no로 user_id 조회 (login 테이블 사용)
+                        with engine.connect() as conn:
+                            user_query = text("SELECT id FROM login WHERE no = :user_no")
+                            user_result = conn.execute(user_query, {'user_no': user_no})
+                            user_row = user_result.fetchone()
+                            if not user_row:
+                                logger.warning(f"⚠️ user_no={user_no}에 해당하는 사용자를 찾을 수 없습니다.")
+                                return None
+                            user_id = user_row.id
+                        
+                        # user_id로 PAT 토큰과 device_id 조회
+                        with engine.connect() as conn:
+                            device_query = text("""
+                                SELECT pat_token, device_id
+                                FROM iot_devices
+                                WHERE user_id = :user_id
+                                ORDER BY updated_at DESC
+                                LIMIT 1
+                            """)
+                            device_result = conn.execute(device_query, {'user_id': user_id})
+                            device_row = device_result.fetchone()
+                            if not device_row:
+                                logger.warning(f"⚠️ user_id={user_id}에 등록된 디바이스가 없습니다.")
+                                return None
+                            pat_token = device_row.pat_token
+                            device_id = device_row.device_id
+                        
+                        # PAT 토큰으로 상태 조회
+                        return get_device_state_with_pat_token(pat_token, device_id)
+                    except Exception as e:
+                        logger.error(f"❌ 사용자별 에어컨 상태 조회 실패 (user_no={user_no}): {e}")
+                        return None
+                
+                # user_no를 사용하여 사용자별 PAT 토큰으로 온도를 설정하는 래퍼 함수 생성
+                def set_temperature_with_user(target_temp: float, unit: str = 'C'):
+                    try:
+                        # user_no로 user_id 조회 (login 테이블 사용)
+                        with engine.connect() as conn:
+                            user_query = text("SELECT id FROM login WHERE no = :user_no")
+                            user_result = conn.execute(user_query, {'user_no': user_no})
+                            user_row = user_result.fetchone()
+                            if not user_row:
+                                logger.warning(f"⚠️ user_no={user_no}에 해당하는 사용자를 찾을 수 없습니다.")
+                                return
+                            user_id = user_row.id
+                        
+                        # user_id로 PAT 토큰과 device_id 조회
+                        with engine.connect() as conn:
+                            device_query = text("""
+                                SELECT pat_token, device_id
+                                FROM iot_devices
+                                WHERE user_id = :user_id
+                                ORDER BY updated_at DESC
+                                LIMIT 1
+                            """)
+                            device_result = conn.execute(device_query, {'user_id': user_id})
+                            device_row = device_result.fetchone()
+                            if not device_row:
+                                logger.warning(f"⚠️ user_id={user_id}에 등록된 디바이스가 없습니다.")
+                                return
+                            pat_token = device_row.pat_token
+                            device_id = device_row.device_id
+                        
+                        # PAT 토큰으로 온도 설정
+                        command = {
+                            "temperature": {
+                                "targetTemperature": float(target_temp)
+                            }
+                        }
+                        send_device_command_with_pat_token(pat_token, device_id, command)
+                        logger.info(f"✅ 사용자별 에어컨 온도 설정 성공 (user_no={user_no}): {target_temp}°{unit}")
+                    except Exception as e:
+                        logger.error(f"❌ 사용자별 에어컨 온도 설정 실패 (user_no={user_no}): {e}")
+                        raise
+                
+                # set_temperature가 None이면 PAT 토큰 기반 함수 사용
+                set_temperature_func_to_use = set_temperature if set_temperature is not None else set_temperature_with_user
+                
+                air_conditioner_auto_control.adjust_air_conditioner(
+                    engine=engine,
+                    air_conditioner_available=True,  # PAT 토큰 기반이므로 항상 True
+                    get_air_conditioner_state_func=get_air_conditioner_state_with_user,
+                    set_temperature_func=set_temperature_func_to_use,
+                    cold_threshold=cold_threshold,
+                    hot_threshold=hot_threshold,
+                    update_threshold_callback=update_thresholds_wrapper,
+                                min_interval_minutes=30.0,  # 30분 간격으로 조절
+                    user_no=user_no
+                )
                 logger.info(f"✅ 임계값 업데이트 즉시 적용 완료 (user_no={user_no})")
             else:
                 logger.info(f"ℹ️ 수면 모드가 비활성화되어 있어 즉시 적용하지 않습니다. (user_no={user_no})")
