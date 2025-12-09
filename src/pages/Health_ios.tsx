@@ -907,11 +907,18 @@ const Health_ios: React.FC = () => {
       
       // 플러그인이 구현되지 않은 경우 서버에서 기존 데이터 가져오기
       if (pluginNotImplemented) {
-        console.log('⚠️ HealthData 플러그인이 구현되지 않아 서버에서 기존 데이터를 가져옵니다.');
+        console.error('❌ HealthData 플러그인이 iOS에서 구현되지 않았습니다.');
+        console.log('📱 서버에서 기존 건강 데이터를 가져옵니다...');
         try {
           await fetchHealthDataFromServer();
         } catch (err) {
           console.error('서버에서 건강 데이터 가져오기 실패:', err);
+        }
+        // 사용자에게 알림 (한 번만 표시)
+        const hasShownWarning = sessionStorage.getItem('healthdata_plugin_warning_shown');
+        if (!hasShownWarning) {
+          console.warn('⚠️ HealthData 플러그인이 작동하지 않습니다. Xcode에서 Clean Build 후 다시 빌드해주세요.');
+          sessionStorage.setItem('healthdata_plugin_warning_shown', 'true');
         }
         return;
       }
