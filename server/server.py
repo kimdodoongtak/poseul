@@ -1564,7 +1564,9 @@ async def login(data: LoginRequest, request: Request):
             
             # 비밀번호 검증 (DB에서 가져온 값을 문자열로 변환)
             stored_password = str(user.password) if user.password is not None else ""
-            logger.debug(f"🔍 로그인 시도 - 사용자: {data.id}, 저장된 비밀번호 타입: {type(user.password)}, 길이: {len(stored_password) if stored_password else 0}")
+            logger.info(f"🔍 로그인 시도 - 사용자: {data.id}, 저장된 비밀번호 타입: {type(user.password)}, 길이: {len(stored_password) if stored_password else 0}")
+            logger.info(f"🔍 로그인 시도 - 입력 비밀번호 길이: {len(data.password) if data.password else 0}")
+            logger.info(f"🔍 로그인 시도 - 저장된 해시 시작: {stored_password[:20] if stored_password else 'None'}")
             
             if not stored_password or not stored_password.strip():
                 logger.error(f"❌ 저장된 비밀번호가 비어있음: {data.id}")
@@ -1573,7 +1575,12 @@ async def login(data: LoginRequest, request: Request):
                     detail="아이디 또는 비밀번호가 올바르지 않습니다."
                 )
             
-            if not verify_password(data.password, stored_password):
+            # 비밀번호 검증
+            verification_result = verify_password(data.password, stored_password)
+            logger.info(f"🔍 비밀번호 검증 결과: {verification_result}")
+            
+            if not verification_result:
+                logger.error(f"❌ 비밀번호 검증 실패 - 사용자: {data.id}, 입력 비밀번호: {data.password[:3]}***")
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="아이디 또는 비밀번호가 올바르지 않습니다."
