@@ -203,15 +203,21 @@ security = HTTPBearer()
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
     """비밀번호 검증"""
     global pwd_context
 =======
+=======
+>>>>>>> Stashed changes
     """
     비밀번호 검증 (SHA-256 + bcrypt 방식, 기존 방식과 호환)
     
     새 방식: SHA-256으로 먼저 해시한 후 bcrypt
     기존 방식: 원본 비밀번호를 직접 bcrypt (호환성 유지)
     """
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
     # hashed_password가 문자열이 아닌 경우 문자열로 변환
     if not isinstance(hashed_password, str):
@@ -220,6 +226,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     if not hashed_password or not hashed_password.strip():
         return False
     
+<<<<<<< Updated upstream
 <<<<<<< Updated upstream
     # plain_password가 72바이트를 초과하면 잘라내기 (bcrypt 제한)
     if isinstance(plain_password, str):
@@ -269,6 +276,9 @@ def get_password_hash(password: str) -> str:
         return pwd_context.hash(password)
 =======
     try:
+=======
+    try:
+>>>>>>> Stashed changes
         # 새 방식: SHA-256으로 먼저 해시한 후 bcrypt 검증
         password_bytes = plain_password.encode('utf-8')
         password_hash = hashlib.sha256(password_bytes).hexdigest()
@@ -323,6 +333,9 @@ def get_password_hash(password: str) -> str:
             logger.warning(f"⚠️ Fallback: 비밀번호를 72바이트로 자름: 원본 {original_length}바이트")
             return pwd_context.hash(password)
         raise
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
