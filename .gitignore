@@ -19,6 +19,8 @@
 *.pkl
 android/plus/model/pycode/*.pkl
 **/ai_thermal_model*.pkl
+# Railway 배포를 위해 서버 모델 파일은 제외
+!server/ai_thermal_model_final.pkl
 
 # misc
 .DS_Store
