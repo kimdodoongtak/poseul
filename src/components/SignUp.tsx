@@ -304,6 +304,20 @@ const SignUp: React.FC<SignUpProps> = ({ onClose, onSuccess }) => {
           localStorage.setItem(`disclaimer_accepted_${userNo}`, 'true');
           console.log(`✅ 면책사항 동의 사용자별로 저장 (user_no: ${userNo})`);
         }
+        
+        // 회원가입 시 입력한 나이/BMI/성별을 localStorage에 저장 (건강데이터 전송 시 사용)
+        if (age.trim()) {
+          localStorage.setItem(`userAge_${userNo}`, age.trim());
+          console.log(`✅ 나이 저장: ${age.trim()} (user_no: ${userNo})`);
+        }
+        if (bmi.trim()) {
+          localStorage.setItem(`userBmi_${userNo}`, bmi.trim());
+          console.log(`✅ BMI 저장: ${bmi.trim()} (user_no: ${userNo})`);
+        }
+        if (gender.trim()) {
+          localStorage.setItem(`userGender_${userNo}`, gender.trim());
+          console.log(`✅ 성별 저장: ${gender.trim()} (user_no: ${userNo})`);
+        }
       }
       
       // 회원가입 성공 후 IoT 등록 시도 (PAT 토큰이 입력되어 있으면)
