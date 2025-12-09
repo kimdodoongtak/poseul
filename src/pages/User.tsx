@@ -71,7 +71,11 @@ const User: React.FC = () => {
 
   const scheduleDailyNotification = async () => {
     try {
-      const savedTime = localStorage.getItem('feedbackTime') || '22:00';
+      // 사용자별 피드백 시간 가져오기
+      const userNo = getUserNo();
+      const savedTime = userNo 
+        ? (localStorage.getItem(`feedbackTime_${userNo}`) || '22:00')
+        : (localStorage.getItem('feedbackTime') || '22:00'); // 하위 호환성
       const [hours, minutes] = savedTime.split(':').map(Number);
       
       // 기존 알림 취소
@@ -405,10 +409,27 @@ const User: React.FC = () => {
     };
     
     
-    // 피드백 시간은 localStorage에서 가져오기 (앱 설정이므로 로그인 여부와 무관)
+    // 피드백 시간은 사용자별로 localStorage에서 가져오기
     try {
-      const savedFeedbackTime = localStorage.getItem('feedbackTime');
-      if (savedFeedbackTime) setFeedbackTime(savedFeedbackTime);
+      const currentUserNo = getUserNo();
+      if (currentUserNo) {
+        // 사용자별 피드백 시간 가져오기
+        const savedFeedbackTime = localStorage.getItem(`feedbackTime_${currentUserNo}`);
+        if (savedFeedbackTime) {
+          setFeedbackTime(savedFeedbackTime);
+        } else {
+          // 하위 호환성: 기존 공통 feedbackTime이 있으면 사용하고 사용자별로 저장
+          const oldFeedbackTime = localStorage.getItem('feedbackTime');
+          if (oldFeedbackTime) {
+            setFeedbackTime(oldFeedbackTime);
+            localStorage.setItem(`feedbackTime_${currentUserNo}`, oldFeedbackTime);
+          }
+        }
+      } else {
+        // 로그인하지 않은 경우 기본값 사용
+        const savedFeedbackTime = localStorage.getItem('feedbackTime');
+        if (savedFeedbackTime) setFeedbackTime(savedFeedbackTime);
+      }
     } catch (err) {
       console.log('피드백 시간 불러오기 실패:', err);
     }
@@ -639,7 +660,14 @@ const User: React.FC = () => {
   const handleFeedbackTimeChange = async (value: string) => {
     setFeedbackTime(value);
     try {
-      localStorage.setItem('feedbackTime', value || '22:00');
+      const userNo = getUserNo();
+      if (userNo) {
+        // 사용자별로 피드백 시간 저장
+        localStorage.setItem(`feedbackTime_${userNo}`, value || '22:00');
+      } else {
+        // 로그인하지 않은 경우 공통 저장 (하위 호환성)
+        localStorage.setItem('feedbackTime', value || '22:00');
+      }
       // 알림 재스케줄
       if (Capacitor.isNativePlatform()) {
         await scheduleDailyNotification();
@@ -889,6 +917,7 @@ const User: React.FC = () => {
       localStorage.removeItem(`userAge_${currentUserNo}`);
       localStorage.removeItem(`userBmi_${currentUserNo}`);
       localStorage.removeItem(`userGender_${currentUserNo}`);
+      localStorage.removeItem(`feedbackTime_${currentUserNo}`);
     }
     
     // 로그아웃 전에 수면 모드 종료 시도
