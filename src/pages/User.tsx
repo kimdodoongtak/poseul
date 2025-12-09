@@ -686,6 +686,10 @@ const User: React.FC = () => {
       
       console.log('📤 피드백 전송 시작:', { feedback, apiBaseUrl });
       
+      // 인증 헤더 가져오기
+      const { getAuthHeaders } = await import('../services/AuthService');
+      const headers = getAuthHeaders();
+      
       // 타임아웃 추가 (10초)
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
@@ -693,9 +697,7 @@ const User: React.FC = () => {
       try {
         const response = await fetch(`${apiBaseUrl}/temperature_feedback`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: headers,
           body: JSON.stringify({
             feedback: feedback,
             date: new Date().toISOString()
@@ -963,15 +965,17 @@ const User: React.FC = () => {
       
       console.log('📤 피드백 기간 재갱신 요청:', apiBaseUrl);
       
+      // 인증 헤더 가져오기
+      const { getAuthHeaders } = await import('../services/AuthService');
+      const headers = getAuthHeaders();
+      
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
       
       try {
         const response = await fetch(`${apiBaseUrl}/feedback/reset`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: headers,
           signal: controller.signal,
         });
 
