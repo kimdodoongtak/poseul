@@ -299,9 +299,9 @@ export async function autoDetectServerUrl(): Promise<string> {
         console.log('🗑️ [iOS] Railway URL이 설정되어 있는데 다른 URL이 저장됨, 제거:', savedUrl);
         localStorage.removeItem(SERVER_URL_KEY);
         cachedServerUrl = null;
-      }
-      // 현재 하드코딩된 첫 번째 IP와 다르면 제거 (IP가 변경되었을 수 있음)
-      else if (!savedUrl.includes('railway.app')) {
+        // Railway URL로 계속 진행하지 않고 자동 감지 계속
+      } else if (!savedUrl.includes('railway.app')) {
+        // 현재 하드코딩된 첫 번째 IP와 다르면 제거 (IP가 변경되었을 수 있음)
         const currentFirstIp = HARDCODED_SERVER_IPS[0];
         if (savedUrl.includes(currentFirstIp) === false && savedUrl.match(/192\.168\.68\.\d+/)) {
           console.log(`⚠️ 저장된 URL이 현재 IP(${currentFirstIp})와 다름, 자동 감지 시작:`, savedUrl);
@@ -315,32 +315,33 @@ export async function autoDetectServerUrl(): Promise<string> {
           localStorage.removeItem(SERVER_URL_KEY);
           cachedServerUrl = null;
         } else {
-        // 유효한 URL이면 health 체크 후 서버가 알려준 IP로 업데이트
-        try {
-          const response = await fetch(`${savedUrl}/health`, { 
-            method: 'GET',
-            signal: AbortSignal.timeout(1000) // 1초로 단축
-          });
-          if (response.ok) {
-            const data = await response.json();
-            // 서버가 자신의 IP를 알려주면 그것을 사용
-            if (data.server_url) {
-              if (data.server_url !== savedUrl) {
-                localStorage.setItem(SERVER_URL_KEY, data.server_url);
-                cachedServerUrl = data.server_url;
-                console.log('✅ 서버가 알려준 IP로 업데이트:', data.server_url);
+          // 유효한 URL이면 health 체크 후 서버가 알려준 IP로 업데이트
+          try {
+            const response = await fetch(`${savedUrl}/health`, { 
+              method: 'GET',
+              signal: AbortSignal.timeout(1000) // 1초로 단축
+            });
+            if (response.ok) {
+              const data = await response.json();
+              // 서버가 자신의 IP를 알려주면 그것을 사용
+              if (data.server_url) {
+                if (data.server_url !== savedUrl) {
+                  localStorage.setItem(SERVER_URL_KEY, data.server_url);
+                  cachedServerUrl = data.server_url;
+                  console.log('✅ 서버가 알려준 IP로 업데이트:', data.server_url);
+                }
+                return data.server_url;
               }
-              return data.server_url;
+              cachedServerUrl = savedUrl;
+              return savedUrl;
             }
-            cachedServerUrl = savedUrl;
-            return savedUrl;
+          } catch (error) {
+            // 저장된 URL이 실패하면 자동 감지 시도
+            console.log('⚠️ 저장된 URL 실패, 자동 감지 시작:', savedUrl, error);
+            // 실패한 URL을 localStorage에서 제거하여 다음에는 자동 감지부터 시작
+            localStorage.removeItem(SERVER_URL_KEY);
+            cachedServerUrl = null;
           }
-        } catch (error) {
-          // 저장된 URL이 실패하면 자동 감지 시도
-          console.log('⚠️ 저장된 URL 실패, 자동 감지 시작:', savedUrl, error);
-          // 실패한 URL을 localStorage에서 제거하여 다음에는 자동 감지부터 시작
-          localStorage.removeItem(SERVER_URL_KEY);
-          cachedServerUrl = null;
         }
       }
     }
