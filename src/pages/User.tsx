@@ -642,6 +642,14 @@ const User: React.FC = () => {
             console.log('✅ 사용자 정보 업데이트 완료 (성별 변경으로 room_threshold 재계산됨):', result);
             if (result.gender_changed) {
               alert('성별이 변경되어 쾌적 온도 범위가 재계산되었습니다.');
+              // IoT 페이지에 온도 범위 갱신 이벤트 발생
+              window.dispatchEvent(new CustomEvent('temperatureRangeUpdated', {
+                detail: { 
+                  gender_changed: true,
+                  min_temp: result.min_temp,
+                  max_temp: result.max_temp
+                }
+              }));
             }
           } else {
             console.error('❌ 사용자 정보 업데이트 실패:', response.status);

@@ -278,9 +278,89 @@ const Iot: React.FC = () => {
         }
       }
     };
+
+    // 온도 범위 갱신 이벤트 리스너 (성별 변경 등으로 온도 범위가 재계산되었을 때)
+    const handleTemperatureRangeUpdated = async (event: CustomEvent) => {
+      console.log('🌡️ IoT 페이지 - 온도 범위 갱신 이벤트 감지:', event.detail);
+      if (isAuthenticated()) {
+        // 온도 범위 다시 조회
+        try {
+          const baseUrl = getIotServiceBaseUrl();
+          const { getAuthHeaders } = await import('../services/AuthService');
+          console.log('🌡️ 온도 범위 재조회 시작:', `${baseUrl}/temperature-range`);
+          const rangeResponse = await fetch(`${baseUrl}/temperature-range`, {
+            headers: getAuthHeaders()
+          });
+          
+          if (rangeResponse.ok) {
+            const rangeData = await rangeResponse.json();
+            console.log('🌡️ 온도 범위 재조회 데이터:', rangeData);
+            
+            if (rangeData.success && rangeData.min_temp != null && rangeData.max_temp != null) {
+              console.log('✅ 온도 범위 갱신 완료:', rangeData.min_temp, '~', rangeData.max_temp);
+              setTemperatureRange({
+                min: rangeData.min_temp,
+                max: rangeData.max_temp,
+              });
+              
+              setIsCachedRange(rangeData.is_cached === true);
+              setIsAutoRange(rangeData.is_auto === true);
+              
+              if (rangeData.original_min_temp != null && rangeData.original_max_temp != null) {
+                setOriginalTemperatureRange({
+                  min: rangeData.original_min_temp,
+                  max: rangeData.original_max_temp,
+                });
+              }
+            }
+          } else {
+            console.error('❌ 온도 범위 재조회 실패:', rangeResponse.status);
+          }
+        } catch (error) {
+          console.error('❌ 온도 범위 재조회 중 오류:', error);
+        }
+      }
+    };
+
+    // 페이지 포커스 시 온도 범위 다시 조회
+    const handlePageFocus = async () => {
+      if (isAuthenticated()) {
+        console.log('🔍 IoT 페이지 - 포커스 이벤트, 온도 범위 재조회');
+        try {
+          const baseUrl = getIotServiceBaseUrl();
+          const { getAuthHeaders } = await import('../services/AuthService');
+          const rangeResponse = await fetch(`${baseUrl}/temperature-range`, {
+            headers: getAuthHeaders()
+          });
+          
+          if (rangeResponse.ok) {
+            const rangeData = await rangeResponse.json();
+            if (rangeData.success && rangeData.min_temp != null && rangeData.max_temp != null) {
+              console.log('✅ 포커스 시 온도 범위 갱신:', rangeData.min_temp, '~', rangeData.max_temp);
+              setTemperatureRange({
+                min: rangeData.min_temp,
+                max: rangeData.max_temp,
+              });
+              setIsCachedRange(rangeData.is_cached === true);
+              setIsAutoRange(rangeData.is_auto === true);
+              if (rangeData.original_min_temp != null && rangeData.original_max_temp != null) {
+                setOriginalTemperatureRange({
+                  min: rangeData.original_min_temp,
+                  max: rangeData.original_max_temp,
+                });
+              }
+            }
+          }
+        } catch (error) {
+          console.error('❌ 포커스 시 온도 범위 조회 실패:', error);
+        }
+      }
+    };
     
     window.addEventListener('authStateChanged', handleAuthStateChanged as EventListener);
     window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('temperatureRangeUpdated', handleTemperatureRangeUpdated as unknown as EventListener);
+    window.addEventListener('focus', handlePageFocus);
 
     // UI를 먼저 렌더링하고, 그 다음에 상태 조회
     // 자동 감지는 연결 실패 시에만 실행
@@ -294,6 +374,8 @@ const Iot: React.FC = () => {
     return () => {
       window.removeEventListener('authStateChanged', handleAuthStateChanged as EventListener);
       window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('temperatureRangeUpdated', handleTemperatureRangeUpdated as unknown as EventListener);
+      window.removeEventListener('focus', handlePageFocus);
     };
   }, [loadStatus, history, showLoginAlert]);
 

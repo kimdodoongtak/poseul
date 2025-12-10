@@ -1199,11 +1199,15 @@ const Health_ios: React.FC = () => {
       }
       
       // 3. DB 데이터가 있으면 DB 데이터 사용, 없으면 빈 데이터 표시
+      const { getUserNo } = await import('../services/AuthService');
+      const userNo = getUserNo();
+      const storageKey = userNo ? `night_chart_data_${userNo}` : 'night_chart_data';
+      
       if (dbChartData.temperatureData.length > 0 || dbChartData.heartRateData.length > 0) {
         console.log(`✅ DB 데이터 ${dbChartData.temperatureData.length}개(온도), ${dbChartData.heartRateData.length}개(심박수) 로드 완료`);
         // DB 데이터를 차트에 표시
         try {
-          localStorage.setItem('night_chart_data', JSON.stringify(dbChartData));
+          localStorage.setItem(storageKey, JSON.stringify(dbChartData));
           setChartData(dbChartData);
           console.log('✅ DB 데이터를 차트에 표시했습니다.');
         } catch (error) {
@@ -1214,7 +1218,7 @@ const Health_ios: React.FC = () => {
         console.log('⚠️ DB에 데이터가 없습니다.');
         // 빈 데이터로 설정
         try {
-          localStorage.setItem('night_chart_data', JSON.stringify(dbChartData));
+          localStorage.setItem(storageKey, JSON.stringify(dbChartData));
           setChartData(dbChartData);
           console.log('✅ 빈 데이터로 설정했습니다.');
         } catch (error) {
@@ -1225,6 +1229,9 @@ const Health_ios: React.FC = () => {
     } catch (error) {
       console.error('DB 차트 데이터 로드 실패:', error);
       // 실패 시 빈 데이터로 설정
+      const { getUserNo } = await import('../services/AuthService');
+      const userNo = getUserNo();
+      const storageKey = userNo ? `night_chart_data_${userNo}` : 'night_chart_data';
       const today = new Date().toISOString().split('T')[0];
       const emptyData: NightChartData = {
         date: today,
@@ -1233,7 +1240,7 @@ const Health_ios: React.FC = () => {
         lastUpdated: new Date().toISOString(),
       };
       try {
-        localStorage.setItem('night_chart_data', JSON.stringify(emptyData));
+        localStorage.setItem(storageKey, JSON.stringify(emptyData));
         setChartData(emptyData);
         console.log('✅ 빈 데이터로 설정했습니다.');
       } catch (err) {
@@ -1244,7 +1251,7 @@ const Health_ios: React.FC = () => {
   };
 
   // 테스트 데이터 생성 함수
-  const generateTestData = () => {
+  const generateTestData = async () => {
     const now = new Date();
     const testData: NightChartData = {
       date: now.toISOString().split('T')[0],
@@ -1296,9 +1303,12 @@ const Health_ios: React.FC = () => {
       });
     }
 
-    // localStorage에 저장
+    // localStorage에 저장 (사용자별)
     try {
-      localStorage.setItem('night_chart_data', JSON.stringify(testData));
+      const { getUserNo, isAuthenticated } = await import('../services/AuthService');
+      const userNo = isAuthenticated() ? getUserNo() : null;
+      const storageKey = userNo ? `night_chart_data_${userNo}` : 'night_chart_data';
+      localStorage.setItem(storageKey, JSON.stringify(testData));
       setChartData(testData);
       console.log('✅ 테스트 데이터 생성 완료:', testData);
     } catch (error) {
@@ -1572,15 +1582,43 @@ const Health_ios: React.FC = () => {
 
   // 차트 데이터 초기 로드 및 DB에서 데이터 가져오기
   useEffect(() => {
-    // 초기 빈 데이터 설정 (가상 데이터 로드하지 않음)
-    const today = new Date().toISOString().split('T')[0];
-    const emptyData: NightChartData = {
-      date: today,
-      temperatureData: [],
-      heartRateData: [],
-      lastUpdated: new Date().toISOString(),
+    // 사용자별 차트 데이터 복구 시도
+    const restoreChartData = async () => {
+      try {
+        const { getUserNo, isAuthenticated } = await import('../services/AuthService');
+        if (isAuthenticated()) {
+          const userNo = getUserNo();
+          if (userNo) {
+            const storageKey = `night_chart_data_${userNo}`;
+            const savedData = localStorage.getItem(storageKey);
+            if (savedData) {
+              const parsedData = JSON.parse(savedData);
+              const today = new Date().toISOString().split('T')[0];
+              // 오늘 날짜의 데이터만 복구
+              if (parsedData.date === today) {
+                setChartData(parsedData);
+                console.log('✅ 사용자별 차트 데이터 복구 완료');
+                return;
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error('차트 데이터 복구 실패:', error);
+      }
+      
+      // 복구 실패 시 빈 데이터 설정
+      const today = new Date().toISOString().split('T')[0];
+      const emptyData: NightChartData = {
+        date: today,
+        temperatureData: [],
+        heartRateData: [],
+        lastUpdated: new Date().toISOString(),
+      };
+      setChartData(emptyData);
     };
-    setChartData(emptyData);
+
+    restoreChartData();
 
     // DB에서 차트 데이터 로드 (predicted_results, test_script_logs)
     loadChartDataFromDB().then((hasDbData) => {
@@ -1591,21 +1629,27 @@ const Health_ios: React.FC = () => {
       }
     }).catch((error) => {
       console.error('DB 데이터 로드 실패:', error);
-      // 에러 발생 시 빈 데이터로 설정
-      const today = new Date().toISOString().split('T')[0];
-      const emptyData: NightChartData = {
-        date: today,
-        temperatureData: [],
-        heartRateData: [],
-        lastUpdated: new Date().toISOString(),
+      // 에러 발생 시 사용자별 저장 시도
+      const saveEmptyData = async () => {
+        try {
+          const { getUserNo, isAuthenticated } = await import('../services/AuthService');
+          const userNo = isAuthenticated() ? getUserNo() : null;
+          const storageKey = userNo ? `night_chart_data_${userNo}` : 'night_chart_data';
+          const today = new Date().toISOString().split('T')[0];
+          const emptyData: NightChartData = {
+            date: today,
+            temperatureData: [],
+            heartRateData: [],
+            lastUpdated: new Date().toISOString(),
+          };
+          localStorage.setItem(storageKey, JSON.stringify(emptyData));
+          setChartData(emptyData);
+          console.log('✅ 빈 데이터로 설정했습니다.');
+        } catch (err) {
+          console.error('빈 데이터 저장 실패:', err);
+        }
       };
-      try {
-        localStorage.setItem('night_chart_data', JSON.stringify(emptyData));
-        setChartData(emptyData);
-        console.log('✅ 빈 데이터로 설정했습니다.');
-      } catch (err) {
-        console.error('빈 데이터 저장 실패:', err);
-      }
+      saveEmptyData();
     });
 
     // 주기적으로 DB에서 데이터 갱신 (5분마다)
@@ -2082,8 +2126,10 @@ const Health_ios: React.FC = () => {
             >
               {/* 상단 민트색 헤더 */}
               <div style={{
-                background: 'linear-gradient(135deg, #b8d8e0 0%, #a0c8d4 100%)',
-                backgroundColor: '#b8d8e0',
+                background: isDarkMode 
+                  ? 'linear-gradient(135deg, #4A5568 0%, #2D3748 50%, #1A202C 100%)'
+                  : 'linear-gradient(135deg, #b8d8e0 0%, #a0c8d4 100%)',
+                backgroundColor: isDarkMode ? '#4A5568' : '#b8d8e0',
                 padding: '14px 18px 32px 18px',
                 position: 'relative',
                 overflow: 'hidden'
@@ -2513,8 +2559,8 @@ const Health_ios: React.FC = () => {
                       oxygenSaturation: null,
                     });
                     
-                    // 차트 데이터 초기화
-                    setChartData(null);
+                    // 차트 데이터는 유지 (로그아웃 후에도 그래프 유지)
+                    // setChartData(null); // 주석 처리 - 그래프 데이터 유지
                     setLastCollectionTime(0);
                     lastCollectionTimeRef.current = 0;
                     
@@ -2523,7 +2569,8 @@ const Health_ios: React.FC = () => {
                       localStorage.removeItem(`userAge_${userNo}`);
                       localStorage.removeItem(`userBmi_${userNo}`);
                       localStorage.removeItem(`userGender_${userNo}`);
-                      localStorage.removeItem(`night_chart_data`);
+                      // 그래프 데이터는 삭제하지 않음 (로그아웃 후에도 유지)
+                      // localStorage.removeItem(`night_chart_data_${userNo}`); // 주석 처리
                     }
                     
                     console.log('✅ 로그아웃 완료 - 모든 상태 초기화');

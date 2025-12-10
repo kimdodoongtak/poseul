@@ -28,16 +28,28 @@ export interface NightChartData {
 }
 
 class ChartDataService {
-  private readonly STORAGE_KEY = 'night_chart_data';
+  private readonly STORAGE_KEY_PREFIX = 'night_chart_data_';
   private readonly MAX_DATA_POINTS = 12; // 최대 12시간 (1시간 단위)
+
+  /**
+   * 사용자별 스토리지 키 가져오기
+   */
+  private getStorageKey(userNo?: number | null): string {
+    if (userNo) {
+      return `${this.STORAGE_KEY_PREFIX}${userNo}`;
+    }
+    // userNo가 없으면 기본 키 사용 (하위 호환성)
+    return 'night_chart_data';
+  }
 
   /**
    * 오늘 날짜의 데이터 가져오기
    */
-  getTodayData(): NightChartData | null {
+  getTodayData(userNo?: number | null): NightChartData | null {
     try {
       const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-      const stored = localStorage.getItem(this.STORAGE_KEY);
+      const storageKey = this.getStorageKey(userNo);
+      const stored = localStorage.getItem(storageKey);
       
       if (!stored) {
         return this.createEmptyData(today);
@@ -59,6 +71,20 @@ class ChartDataService {
   }
 
   /**
+   * 사용자 번호 가져오기 (AuthService에서)
+   * 동적 import를 사용하여 순환 참조 방지
+   */
+  private async getUserNo(): Promise<number | null> {
+    try {
+      const authModule = await import('./AuthService');
+      return authModule.getUserNo ? authModule.getUserNo() : null;
+    } catch (error) {
+      console.error('사용자 번호 가져오기 실패:', error);
+      return null;
+    }
+  }
+
+  /**
    * 빈 데이터 구조 생성
    */
   private createEmptyData(date: string): NightChartData {
@@ -73,12 +99,13 @@ class ChartDataService {
   /**
    * 온도 데이터 포인트 추가 (1시간마다)
    */
-  addTemperatureDataPoint(
+  async addTemperatureDataPoint(
     predictedTemperature: number,
     temperatureCategory: '더움' | '추움' | '적정',
     currentTemperature: number | null = null,
-    targetTemperature: number | null = null
-  ): void {
+    targetTemperature: number | null = null,
+    userNo?: number | null
+  ): Promise<void> {
     try {
       const now = new Date();
       const hour = now.getHours();
@@ -95,7 +122,8 @@ class ChartDataService {
         targetTemperature,
       };
 
-      const data = this.getTodayData();
+      const finalUserNo = userNo !== undefined ? userNo : await this.getUserNo();
+      const data = this.getTodayData(finalUserNo);
       if (!data) return;
 
       // 같은 시간대의 데이터가 있으면 업데이트, 없으면 추가
@@ -118,7 +146,7 @@ class ChartDataService {
       }
 
       data.lastUpdated = timestamp;
-      this.saveData(data);
+      this.saveData(data, finalUserNo);
     } catch (error) {
       console.error('온도 데이터 저장 실패:', error);
     }
@@ -127,7 +155,7 @@ class ChartDataService {
   /**
    * 심박수 데이터 포인트 추가 (1시간마다)
    */
-  addHeartRateDataPoint(heartRate: number): void {
+  async addHeartRateDataPoint(heartRate: number, userNo?: number | null): Promise<void> {
     try {
       const now = new Date();
       const hour = now.getHours();
@@ -141,7 +169,8 @@ class ChartDataService {
         heartRate,
       };
 
-      const data = this.getTodayData();
+      const finalUserNo = userNo !== undefined ? userNo : await this.getUserNo();
+      const data = this.getTodayData(finalUserNo);
       if (!data) return;
 
       // 같은 시간대의 데이터가 있으면 업데이트, 없으면 추가
@@ -164,7 +193,7 @@ class ChartDataService {
       }
 
       data.lastUpdated = timestamp;
-      this.saveData(data);
+      this.saveData(data, finalUserNo);
     } catch (error) {
       console.error('심박수 데이터 저장 실패:', error);
     }
@@ -173,9 +202,10 @@ class ChartDataService {
   /**
    * 데이터 저장
    */
-  private saveData(data: NightChartData): void {
+  private saveData(data: NightChartData, userNo?: number | null): void {
     try {
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
+      const storageKey = this.getStorageKey(userNo);
+      localStorage.setItem(storageKey, JSON.stringify(data));
     } catch (error) {
       console.error('차트 데이터 저장 실패:', error);
     }
@@ -184,9 +214,10 @@ class ChartDataService {
   /**
    * 데이터 초기화
    */
-  clearData(): void {
+  clearData(userNo?: number | null): void {
     try {
-      localStorage.removeItem(this.STORAGE_KEY);
+      const storageKey = this.getStorageKey(userNo);
+      localStorage.removeItem(storageKey);
     } catch (error) {
       console.error('차트 데이터 삭제 실패:', error);
     }
@@ -195,8 +226,8 @@ class ChartDataService {
   /**
    * JSON 데이터 내보내기 (다운로드용)
    */
-  exportData(): string {
-    const data = this.getTodayData();
+  exportData(userNo?: number | null): string {
+    const data = this.getTodayData(userNo);
     return JSON.stringify(data, null, 2);
   }
 }
