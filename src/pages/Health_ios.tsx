@@ -1878,6 +1878,44 @@ const Health_ios: React.FC = () => {
                     setShowUserInfo(true);
                     console.log('✅ Health 페이지 - 사용자 정보 모달 표시');
                     
+                    // 로그인 성공 시 그래프 데이터 즉시 복구
+                    const restoreChartDataOnLogin = async () => {
+                      try {
+                        const { getUserNo } = await import('../services/AuthService');
+                        const userNo = getUserNo();
+                        if (userNo) {
+                          const storageKey = `night_chart_data_${userNo}`;
+                          const savedData = localStorage.getItem(storageKey);
+                          if (savedData) {
+                            const parsedData = JSON.parse(savedData);
+                            const today = new Date().toISOString().split('T')[0];
+                            // 오늘 날짜의 데이터만 복구
+                            if (parsedData.date === today) {
+                              setChartData(parsedData);
+                              console.log('✅ 로그인 시 그래프 데이터 즉시 복구 완료');
+                              // 복구 후 DB에서 최신 데이터로 업데이트
+                              setTimeout(() => {
+                                loadChartDataFromDB();
+                              }, 500);
+                              return;
+                            }
+                          }
+                        }
+                        // 저장된 데이터가 없으면 DB에서 로드
+                        console.log('📊 로그인 시 저장된 그래프 데이터 없음, DB에서 로드');
+                        setTimeout(() => {
+                          loadChartDataFromDB();
+                        }, 500);
+                      } catch (error) {
+                        console.error('❌ 로그인 시 그래프 데이터 복구 실패:', error);
+                        // 실패해도 DB에서 로드 시도
+                        setTimeout(() => {
+                          loadChartDataFromDB();
+                        }, 500);
+                      }
+                    };
+                    restoreChartDataOnLogin();
+                    
                     // 로그인 성공 시 건강 데이터 한 번 가져와서 저장 (즉시 실행)
                     const tryFetchHealthData = () => {
                       if (platform === 'ios' && healthDataPlugin) {
@@ -1916,6 +1954,40 @@ const Health_ios: React.FC = () => {
                         setIsSetupComplete(true);
                         loadUserInfo();
                         setShowUserInfo(true);
+                        
+                        // 로그인 성공 시 그래프 데이터 즉시 복구 (재시도)
+                        const restoreChartDataOnLoginRetry = async () => {
+                          try {
+                            const { getUserNo } = await import('../services/AuthService');
+                            const userNo = getUserNo();
+                            if (userNo) {
+                              const storageKey = `night_chart_data_${userNo}`;
+                              const savedData = localStorage.getItem(storageKey);
+                              if (savedData) {
+                                const parsedData = JSON.parse(savedData);
+                                const today = new Date().toISOString().split('T')[0];
+                                if (parsedData.date === today) {
+                                  setChartData(parsedData);
+                                  console.log('✅ 로그인 재시도 시 그래프 데이터 즉시 복구 완료');
+                                  setTimeout(() => {
+                                    loadChartDataFromDB();
+                                  }, 500);
+                                  return;
+                                }
+                              }
+                            }
+                            console.log('📊 로그인 재시도 시 저장된 그래프 데이터 없음, DB에서 로드');
+                            setTimeout(() => {
+                              loadChartDataFromDB();
+                            }, 500);
+                          } catch (error) {
+                            console.error('❌ 로그인 재시도 시 그래프 데이터 복구 실패:', error);
+                            setTimeout(() => {
+                              loadChartDataFromDB();
+                            }, 500);
+                          }
+                        };
+                        restoreChartDataOnLoginRetry();
                         
                         // 로그인 성공 시 건강 데이터 한 번 가져와서 저장 (재시도)
                         const tryFetchHealthDataRetry = () => {
@@ -2106,7 +2178,7 @@ const Health_ios: React.FC = () => {
           >
             <div className="user-info-modal" style={{
               background: isDarkMode 
-                ? 'linear-gradient(135deg, #3A3B45 0%, #323340 50%, #2E2F3A 100%)' 
+                ? 'linear-gradient(135deg, #2A2B35 0%, #252630 50%, #1F2028 100%)' 
                 : 'linear-gradient(135deg, #ffffff 0%, #f5f7fa 100%)',
               borderRadius: '24px',
               padding: '0',
@@ -2121,7 +2193,7 @@ const Health_ios: React.FC = () => {
               display: 'flex',
               flexDirection: 'column',
               border: isDarkMode ? '1px solid rgba(124, 136, 169, 0.3)' : 'none'
-            }}
+            } as React.CSSProperties}
             onClick={(e) => e.stopPropagation()}
             >
               {/* 상단 민트색 헤더 */}
@@ -2303,8 +2375,11 @@ const Health_ios: React.FC = () => {
                 flex: 1,
                 display: 'flex',
                 flexDirection: 'column',
-                overflowY: 'auto'
-              }}>
+                overflowY: 'auto',
+                background: isDarkMode 
+                  ? 'linear-gradient(135deg, #2A2B35 0%, #252630 50%, #1F2028 100%)'
+                  : 'linear-gradient(135deg, #ffffff 0%, #f5f7fa 100%)'
+              } as React.CSSProperties}>
                 <input
                   type="file"
                   accept="image/*"

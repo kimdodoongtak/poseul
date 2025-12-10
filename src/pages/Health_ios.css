@@ -1513,7 +1513,7 @@ body.dark .health-ios-page .stars-background {
 }
 
 .user-info-modal {
-  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+  background: linear-gradient(135deg, #ffffff 0%, #f5f7fa 100%) !important;
   border-radius: 28px;
   padding: 32px;
   width: 90%;
@@ -1522,6 +1522,11 @@ body.dark .health-ios-page .stars-background {
   position: relative;
   overflow: hidden;
   animation: slideUp 0.3s ease-out;
+}
+
+/* 라이트 모드 사용자 정보 모달 (명시적으로 밝게) */
+body:not(.dark) .user-info-modal {
+  background: linear-gradient(135deg, #ffffff 0%, #f5f7fa 100%) !important;
 }
 
 @keyframes slideUp {
@@ -1579,7 +1584,7 @@ body.dark .user-info-modal-backdrop {
 }
 
 body.dark .user-info-modal {
-  background: linear-gradient(135deg, #3A3B45 0%, #323340 50%, #2E2F3A 100%) !important;
+  background: linear-gradient(135deg, #2A2B35 0%, #252630 50%, #1F2028 100%) !important;
   border: 1px solid rgba(124, 136, 169, 0.3) !important;
   color: #E0E5ED !important;
 }
